@@ -1,0 +1,9 @@
+node_modules
+dist
+dist-server
+.git
+.env
+.env.example
+local_db.json
+*.log
+uploads

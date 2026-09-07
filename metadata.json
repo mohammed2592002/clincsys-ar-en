@@ -1,0 +1,6 @@
+{
+  "name": "CoreDentSys",
+  "description": "A comprehensive multi-tenant SaaS application for dental clinics featuring global admin controls, clinic management, and isolated patient records.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

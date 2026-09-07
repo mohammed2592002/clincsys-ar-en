@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+@source "./**/*.{ts,tsx,html}";
+
+@theme {
+  --font-sans: "Cairo", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* 
+  Dynamic Base Scale Optimization:
+  By adjusting the root font size, all REM-based spacing, padding, margins, 
+  and text sizes of Tailwind scale down proportionally. This fixes the "zoomed in" feel
+  and makes the dashboard look compact, crisp, and high-density like premium SaaS products.
+*/
+html {
+  font-size: 13.5px; /* Perfect base for mobile phones to prevent layout wrapping */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (min-width: 640px) {
+  html {
+    font-size: 14px; /* Crisp base size for tablets and small laptops */
+  }
+}
+
+@media (min-width: 1024px) {
+  html {
+    font-size: 14px; /* High-density view for desktop monitors */
+  }
+}
+
+@media (min-width: 1440px) {
+  html {
+    font-size: 14.5px; /* Well-proportioned view for large screen laptops */
+  }
+}
+
+@media (min-width: 1920px) {
+  html {
+    font-size: 15px; /* Crisp scaling for ultra-wide desktop monitors */
+  }
+}
+
+html, body {
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+  font-family: "Cairo", sans-serif;
+  background-color: #f8fafc; /* bg-slate-50 */
+}
+
+/* Premium micro scrollbars for a clean look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1; /* slate-300 */
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8; /* slate-400 */
+}
+

@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    image: crowndent:latest
+    container_name: crowndent-container
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - PORT=3000
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - crowndent-network
+
+networks:
+  crowndent-network:
+    driver: bridge
