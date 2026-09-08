@@ -823,13 +823,28 @@ export default function InteractiveCalendar({
         }
       }
 
-      const isTurnBooking = clinicBookingMode === 'turn' || selectedBookingType === 'turn' || (clinicBookingMode === 'hybrid' && turnNumberInput !== undefined && turnNumberInput !== '');
+      const isTurnBooking = clinicBookingMode === 'turn' || (clinicBookingMode === 'hybrid' && selectedBookingType === 'turn');
       const targetTurn = isTurnBooking ? (Number(turnNumberInput) || getRecommendedTurnNumber(selectedDate)) : undefined;
 
-      const sameDayActiveApps = appointments.filter(a => a.date === selectedDate && a.status !== 'cancelled');
+      const normSelDate = normalizeDateStr(selectedDate);
+      const sameDayActiveApps = appointments.filter(a =>
+        normalizeDateStr(a.date) === normSelDate &&
+        a.status?.toLowerCase() !== 'cancelled' &&
+        a.status?.toLowerCase() !== 'canceled'
+      );
 
-      // Check for double booking at the same date and time/turn (excluding cancelled ones) for other patients
+      // Find if this patient already has an active appointment on the target date
+      let existingAppForPatient = (!isNewPatient && selectedPatientId)
+        ? sameDayActiveApps.find(a => a.patientId === selectedPatientId)
+        : undefined;
+
+      // Check for double booking conflict with OTHER appointments
       const hasConflict = sameDayActiveApps.some((app, index) => {
+        // If updating/merging an existing appointment for the same patient, ignore conflict with itself
+        if (existingAppForPatient && app.id === existingAppForPatient.id) {
+          return false;
+        }
+
         if (isTurnBooking) {
           // In turn-based booking, check conflict on turn number
           const appTurn = (app.turnNumber !== undefined && app.turnNumber !== null && !isNaN(Number(app.turnNumber)))
@@ -842,17 +857,11 @@ export default function InteractiveCalendar({
         }
       });
 
-      // We only block due to conflict if we are booking a new slot.
-      // A new slot is booked if the patient does NOT have an existing appointment on that day.
-      const willMerge = !isNewPatient && appointments.some(
-        (app) => app.patientId === selectedPatientId && app.date === selectedDate && app.status !== 'cancelled'
-      );
-
-      if (hasConflict && !willMerge) {
+      if (hasConflict) {
         dialogs.alert(
           isTurnBooking
-            ? (isEn ? 'Sorry, this turn number is already booked!' : 'عفوا هناك موعد محجوز بهذا الرقم!')
-            : (isEn ? 'Sorry, an appointment is already booked at the same hour/time slot!' : 'عفواً، يوجد موعد محجوز مسبقاً في نفس الساعة/الوقت!'),
+            ? (isEn ? 'Sorry, this turn number is already booked on this date!' : 'عفواً، يوجد موعد محجوز بهذا الرقم في هذا اليوم!')
+            : (isEn ? `Sorry, an appointment is already booked at ${formatTimeTo12Hour(appointmentTime, true)}! Please select a different time.` : `عفواً، يوجد موعد محجوز بالفعل في الساعة (${formatTimeTo12Hour(appointmentTime, false)})! يرجى تغيير الوقت لتفادي التضارب.`),
           { severity: 'error' }
         );
         setLoading(false);
@@ -930,9 +939,14 @@ export default function InteractiveCalendar({
       }
 
       // Check if the patient already has an active or completed appointment on that day (not cancelled)
-      const existingAppForPatient = appointments.find(
-        (app) => app.patientId === targetPatientId && app.date === selectedDate && app.status !== 'cancelled'
-      );
+      if (!existingAppForPatient && !isNewPatient && targetPatientId) {
+        // Fallback check if targetPatientId was resolved above
+        const found = sameDayActiveApps.find((app) => app.patientId === targetPatientId);
+        if (found) {
+          // Assign to existingAppForPatient variable
+          (existingAppForPatient as any) = found;
+        }
+      }
 
       if (existingAppForPatient) {
         const ref = getAppointmentsRef(clinic.id);
@@ -992,6 +1006,8 @@ export default function InteractiveCalendar({
         await setDoc(appDocRef, cleanDbData({
           ...existingAppForPatient,
           status: 'scheduled', // change status of the completed appointment back to scheduled/active for doctor queue
+          time: appointmentTime,
+          date: selectedDate,
           treatmentType: combinedTreatment,
           price: combinedPrice,
           paidAmount: currentPaid,
@@ -1040,8 +1056,8 @@ export default function InteractiveCalendar({
         isPendingNewPatient: false,
         date: selectedDate,
         time: appointmentTime,
-        bookingType: clinicBookingMode === 'turn' ? 'turn' : (clinicBookingMode === 'time' ? 'time' : selectedBookingType),
-        turnNumber: (clinicBookingMode === 'turn' || selectedBookingType === 'turn') ? (Number(turnNumberInput) || getRecommendedTurnNumber(selectedDate)) : undefined,
+        bookingType: isTurnBooking ? 'turn' : 'time',
+        turnNumber: isTurnBooking ? (Number(turnNumberInput) || getRecommendedTurnNumber(selectedDate)) : undefined,
         treatmentType,
         price: numPrice,
         paidAmount: 0,
