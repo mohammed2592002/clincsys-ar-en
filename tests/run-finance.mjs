@@ -109,7 +109,7 @@ try {
       throw Error("Offline integration failed");
   }
   if (process.env.TEST_UI === "1") {
-    const ui = spawn(process.execPath, [resolve("tests/finance.ui.cjs")], {
+    const ui = spawn(process.execPath, [resolve(process.env.TEST_UI_ENTRY || "tests/finance.ui.cjs")], {
       env,
       stdio: "inherit",
     });

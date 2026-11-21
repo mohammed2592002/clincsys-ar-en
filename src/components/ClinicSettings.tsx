@@ -602,8 +602,6 @@ export default function ClinicSettings({
   const [supportSettings, setSupportSettings] = useState<SupportSettings>(DEFAULT_SUPPORT_SETTINGS);
   const [loadingSupportSettings, setLoadingSupportSettings] = useState(false);
   const [copiedClinicId, setCopiedClinicId] = useState(false);
-  const [trialPhoneInput, setTrialPhoneInput] = useState<string>('');
-  const [savingTrialPhone, setSavingTrialPhone] = useState(false);
 
   useEffect(() => {
     async function loadSupportData() {
@@ -614,7 +612,6 @@ export default function ClinicSettings({
         if (snap && snap.exists() && snap.data()) {
           const d = snap.data();
           const trialP = d.trialPhoneNumber || DEFAULT_SUPPORT_SETTINGS.trialPhoneNumber || '';
-          setTrialPhoneInput(trialP);
           setSupportSettings({
             trialPhoneNumber: trialP,
             phoneNumbers: Array.isArray(d.phoneNumbers) ? d.phoneNumbers : DEFAULT_SUPPORT_SETTINGS.phoneNumbers,
@@ -633,31 +630,6 @@ export default function ClinicSettings({
     window.addEventListener('focus', refresh);
     return () => window.removeEventListener('focus', refresh);
   }, [settingsSubTab]);
-
-  const handleSaveTrialPhone = async () => {
-    const clean = formatEgyptianPhoneInput(trialPhoneInput);
-    const phoneErr = getEgyptianPhoneError(clean, true, 'رقم التواصل للنسخة التجريبية');
-    if (phoneErr) {
-      dialogs.alert(phoneErr, { severity: 'warning' });
-      return;
-    }
-    setSavingTrialPhone(true);
-    try {
-      const docRef = doc(db, 'system_settings', 'support');
-      await setDoc(docRef, {
-        ...supportSettings,
-        trialPhoneNumber: clean,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-
-      setSupportSettings(prev => ({ ...prev, trialPhoneNumber: clean }));
-      dialogs.alert('تم حفظ رقم التواصل لطلب النسخة التجريبية (7 أيام) بنجاح!', { severity: 'success' });
-    } catch (err: any) {
-      dialogs.alert('حدث خطأ أثناء حفظ الرقم: ' + (err?.message || err), { severity: 'error' });
-    } finally {
-      setSavingTrialPhone(false);
-    }
-  };
 
   const handleOpenWhatsApp = (phoneNum: string) => {
     let cleanPhone = phoneNum.replace(/[^0-9]/g, '');
@@ -4192,47 +4164,6 @@ export default function ClinicSettings({
                 >
                   {copiedClinicId ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
                   <span>{copiedClinicId ? (isEn ? 'Copied' : 'تم النسخ') : (isEn ? 'Copy ID' : 'نسخ ID')}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Trial Phone Number Configuration Card */}
-            <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-sky-50 border border-emerald-200/90 rounded-2xl p-5 space-y-3 shadow-3xs">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                  <Gift className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-slate-900">{isEn ? 'WhatsApp Phone for Free 7-Day Trial Requests' : 'رقم الواتساب لطلب النسخة التجريبية (7 أيام مجاناً)'}</h3>
-                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                    {isEn ? 'The phone number visitors contact when requesting a 7-day trial on the login page.' : 'الرقم الذي يتواصل معه الزائر عند الضغط على زر "اطلب نسختك المجانية لمدة 7 أيام مجاناً" بصفحة تسجيل الدخول.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-center gap-3 pt-1">
-                <div className="relative flex-1 w-full">
-                  <input
-                    type="tel"
-                    maxLength={11}
-                    inputMode="numeric"
-                    value={trialPhoneInput}
-                    onChange={(e) => setTrialPhoneInput(formatEgyptianPhoneInput(e.target.value))}
-                    placeholder="01012345678"
-                    className="w-full pl-4 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
-                    dir="ltr"
-                  />
-                  <Phone className="absolute right-3.5 top-3 h-4 w-4 text-emerald-600" />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleSaveTrialPhone}
-                  disabled={savingTrialPhone}
-                  className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black px-5 py-2.5 rounded-xl text-xs transition shadow-xs flex items-center justify-center gap-2 cursor-pointer shrink-0"
-                >
-                  {savingTrialPhone ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                  <span>{isEn ? 'Save Number' : 'حفظ الرقم'}</span>
                 </button>
               </div>
             </div>
