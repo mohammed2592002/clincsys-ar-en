@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { motion } from 'motion/react';
 import { getPatientRecordsRef, getPatientXRaysRef, getPatientsRef, getPrescriptionsRef, getAppointmentsRef, OperationType, handleDbError, cleanDbData, db, storage, getDocsSmart as getDocs, getDocSmart as getDoc, ref, uploadBytes, getDownloadURL, collection, addDoc, updateDoc, setDoc, deleteDoc, doc, query, where, orderBy, limit, clearQueryCache } from '../dbClient';
 import { Patient, Clinic, PatientRecord, DentalTooth, Prescription, Appointment, CustomDentalService, PatientXRay, DoctorNote } from '../types';
-import { FileText, Plus, Calendar, DollarSign, Image, Heart, Trash2, Shield, Eye, RefreshCw, Sparkles, Check, Printer, Receipt, CreditCard, Clock, AlertCircle, Send, ZoomIn, ZoomOut, RotateCw, Contrast, Download, X, Edit, Edit3, Camera, Save, Clipboard, MessageSquare, StickyNote, User } from 'lucide-react';
+import { FileText, Plus, Calendar, DollarSign, Image, Heart, Trash2, Shield, Eye, RefreshCw, Sparkles, Check, Printer, Receipt, CreditCard, Clock, AlertCircle, Send, ZoomIn, ZoomOut, RotateCw, Contrast, Download, X, Edit, Edit3, Camera, Save, Clipboard, MessageSquare, StickyNote, User, Wallet } from 'lucide-react';
 const DentalChart = React.lazy(() => import('./DentalChart'));
 import { useDialogs } from './DialogContext';
 import { PrintPreviewModal } from './PrintPreviewModal';
@@ -20,6 +20,13 @@ import { compressImage, formatFileSize } from '../utils/imageCompressor';
 import { uploadFileToR2, deleteFileFromR2, dataUrlToBlob } from '../utils/r2Upload';
 import { saveOfflineMedia, getOfflineMedia, addToSyncQueue } from '../utils/offlineDb';
 
+
+// Lucide has no tooth icon in this version; simple tooth outline for the X-Rays tab
+const ToothIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+    <path d="M12 5.2c-.9-.9-2.4-1.5-3.9-1C5.9 4.8 5 6.4 5 8.1c0 1.4.5 2.6 1 4 .5 1.6.9 3.3 1.2 4.9.2 1 .5 2.2 1.5 2.2 1.1 0 1.5-1.3 1.7-2.4.2-1.2.5-2.8 1.6-2.8s1.4 1.6 1.6 2.8c.2 1.1.6 2.4 1.7 2.4 1 0 1.3-1.2 1.5-2.2.3-1.6.7-3.3 1.2-4.9.5-1.4 1-2.6 1-4 0-1.7-.9-3.3-3.1-3.9-1.5-.5-3 .1-3.9 1Z" />
+  </svg>
+);
 
 interface PatientMedicalFileProps {
   clinic: Clinic;
@@ -3327,9 +3334,9 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
               </div>
             </div>
 
-            {/* Vibrant Tabs for Medical Visits, Saved Prescriptions, Financials, and X-Rays */}
+            {/* Patient-file tab bar: 5 equal-width tabs, icon over label, circular badge counters (badges on inactive corner, hidden when no counter) */}
             <div className="space-y-4">
-              <div className="flex bg-slate-900/90 p-1 rounded-2xl gap-1 overflow-x-auto scrollbar-none shadow-md border border-slate-800">
+              <div className="flex items-stretch w-full bg-[#272E40] p-1 rounded-[14px] gap-1 shadow-md border border-slate-800 h-[58px]">
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   type="button"
@@ -3340,60 +3347,33 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                     }
                     setRightColTab(rightColTab === 'notes' ? null : 'notes');
                   }}
-                  className={`flex-1 min-w-[80px] sm:min-w-[90px] py-2 px-2 flex items-center justify-center gap-1.5 text-xs font-bold rounded-xl transition-all duration-200 shrink-0 cursor-pointer ${
+                  className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-[3px] py-1.5 px-0.5 rounded-[10px] transition-all duration-200 cursor-pointer ${
                     rightColTab === 'notes'
                       ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md shadow-green-500/25'
                       : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                   }`}
                 >
-                  <StickyNote className={`h-3.5 w-3.5 shrink-0 ${rightColTab === 'notes' ? 'text-white' : 'text-green-400'}`} />
-                  <span>{isEn ? `Notes (${doctorNotes.length})` : `الملاحظات (${doctorNotes.length})`}</span>
+                  <span className="relative">
+                    <StickyNote className={`h-4 w-4 block ${rightColTab === 'notes' ? 'text-white' : 'text-green-400'}`} />
+                    <span className={`absolute -top-1.5 -end-2 h-[14px] min-w-[14px] px-[2px] rounded-full flex items-center justify-center text-[9px] font-bold leading-none ${rightColTab === 'notes' ? 'bg-white text-emerald-600' : 'bg-emerald-500 text-white'}`}>{doctorNotes.length}</span>
+                  </span>
+                  <span className="text-[11px] font-bold whitespace-nowrap leading-[1.2]">{isEn ? 'Notes' : 'الملاحظات'}</span>
                 </motion.button>
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   type="button"
                   onClick={() => setRightColTab(rightColTab === 'visits' ? null : 'visits')}
-                  className={`flex-1 min-w-[80px] sm:min-w-[90px] py-2 px-2 flex items-center justify-center gap-1.5 text-xs font-bold rounded-xl transition-all duration-200 shrink-0 cursor-pointer ${
+                  className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-[3px] py-1.5 px-0.5 rounded-[10px] transition-all duration-200 cursor-pointer ${
                     rightColTab === 'visits'
                       ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/25'
                       : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                   }`}
                 >
-                  <Clipboard className={`h-3.5 w-3.5 shrink-0 ${rightColTab === 'visits' ? 'text-white' : 'text-emerald-400'}`} />
-                  <span>{isEn ? `Visits (${groupedVisits.length})` : `الزيارات (${groupedVisits.length})`}</span>
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => setRightColTab(rightColTab === 'prescriptions' ? null : 'prescriptions')}
-                  className={`flex-1 min-w-[80px] sm:min-w-[90px] py-2 px-2 flex items-center justify-center gap-1.5 text-xs font-bold rounded-xl transition-all duration-200 shrink-0 cursor-pointer ${
-                    rightColTab === 'prescriptions'
-                      ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/25'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
-                  }`}
-                >
-                  <FileText className={`h-3.5 w-3.5 shrink-0 ${rightColTab === 'prescriptions' ? 'text-white' : 'text-blue-400'}`} />
-                  <span>{isEn ? `Rx (${prescriptions.length})` : `الروشتات (${prescriptions.length})`}</span>
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => {
-                    if (!selectedPatientId || !activePatient) {
-                      dialogs.alert(isEn ? 'Please select a patient first' : 'يرجى اختيار مريض أولاً', { severity: 'warning' });
-                      return;
-                    }
-                    setRightColTab('financials');
-                    setIsFinancialsModalOpen(true);
-                  }}
-                  className={`flex-1 min-w-[80px] sm:min-w-[90px] py-2 px-2 flex items-center justify-center gap-1.5 text-xs font-bold rounded-xl transition-all duration-200 shrink-0 cursor-pointer ${
-                    rightColTab === 'financials'
-                      ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md shadow-amber-500/25'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
-                  }`}
-                >
-                  <Receipt className={`h-3.5 w-3.5 shrink-0 ${rightColTab === 'financials' ? 'text-white' : 'text-amber-400'}`} />
-                  <span>{isEn ? 'Financials' : 'المالية'}</span>
+                  <span className="relative">
+                    <Clipboard className={`h-4 w-4 block ${rightColTab === 'visits' ? 'text-white' : 'text-emerald-400'}`} />
+                    <span className={`absolute -top-1.5 -end-2 h-[14px] min-w-[14px] px-[2px] rounded-full flex items-center justify-center text-[9px] font-bold leading-none ${rightColTab === 'visits' ? 'bg-white text-emerald-600' : 'bg-emerald-500 text-white'}`}>{groupedVisits.length}</span>
+                  </span>
+                  <span className="text-[11px] font-bold whitespace-nowrap leading-[1.2]">{isEn ? 'Visits' : 'الزيارات'}</span>
                 </motion.button>
                 <motion.button
                   whileTap={{ scale: 0.98 }}
@@ -3406,14 +3386,55 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                     setRightColTab('xrays');
                     setIsXrayModalOpen(true);
                   }}
-                  className={`flex-1 min-w-[80px] sm:min-w-[90px] py-2 px-2 flex items-center justify-center gap-1.5 text-xs font-bold rounded-xl transition-all duration-200 shrink-0 cursor-pointer ${
+                  className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-[3px] py-1.5 px-0.5 rounded-[10px] transition-all duration-200 cursor-pointer ${
                     rightColTab === 'xrays'
                       ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
                       : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
                   }`}
                 >
-                  <Image className={`h-3.5 w-3.5 shrink-0 ${rightColTab === 'xrays' ? 'text-white' : 'text-purple-400'}`} />
-                  <span>{isEn ? `X-Rays (${xrays.length})` : `الأشعة (${xrays.length})`}</span>
+                  <span className="relative">
+                    <ToothIcon className={`h-4 w-4 block ${rightColTab === 'xrays' ? 'text-white' : 'text-sky-400'}`} />
+                    <span className={`absolute -top-1.5 -end-2 h-[14px] min-w-[14px] px-[2px] rounded-full flex items-center justify-center text-[9px] font-bold leading-none ${rightColTab === 'xrays' ? 'bg-white text-purple-600' : 'bg-emerald-500 text-white'}`}>{xrays.length}</span>
+                  </span>
+                  <span className="text-[11px] font-bold whitespace-nowrap leading-[1.2]">{isEn ? 'X-Rays' : 'الأشعة'}</span>
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={() => setRightColTab(rightColTab === 'prescriptions' ? null : 'prescriptions')}
+                  className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-[3px] py-1.5 px-0.5 rounded-[10px] transition-all duration-200 cursor-pointer ${
+                    rightColTab === 'prescriptions'
+                      ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/25'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  }`}
+                >
+                  <span className="relative">
+                    <FileText className={`h-4 w-4 block ${rightColTab === 'prescriptions' ? 'text-white' : 'text-blue-400'}`} />
+                    <span className={`absolute -top-1.5 -end-2 h-[14px] min-w-[14px] px-[2px] rounded-full flex items-center justify-center text-[9px] font-bold leading-none ${rightColTab === 'prescriptions' ? 'bg-white text-blue-600' : 'bg-emerald-500 text-white'}`}>{prescriptions.length}</span>
+                  </span>
+                  <span className="text-[11px] font-bold whitespace-nowrap leading-[1.2]">{isEn ? 'Rx' : 'الروشتات'}</span>
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={() => {
+                    if (!selectedPatientId || !activePatient) {
+                      dialogs.alert(isEn ? 'Please select a patient first' : 'يرجى اختيار مريض أولاً', { severity: 'warning' });
+                      return;
+                    }
+                    setRightColTab('financials');
+                    setIsFinancialsModalOpen(true);
+                  }}
+                  className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-[3px] py-1.5 px-0.5 rounded-[10px] transition-all duration-200 cursor-pointer ${
+                    rightColTab === 'financials'
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md shadow-amber-500/25'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  }`}
+                >
+                  <span className="relative">
+                    <Wallet className={`h-4 w-4 block ${rightColTab === 'financials' ? 'text-white' : 'text-amber-400'}`} />
+                  </span>
+                  <span className="text-[11px] font-bold whitespace-nowrap leading-[1.2]">{isEn ? 'Financials' : 'المالية'}</span>
                 </motion.button>
               </div>
 
