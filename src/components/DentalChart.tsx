@@ -643,7 +643,7 @@ interface ToothAbsoluteItemProps {
 
 const ToothAbsoluteItem = React.memo(({ num, data, isEditing, isHovered, isSelectedMulti, activeSystem, onClick, onHover }: ToothAbsoluteItemProps) => {
   const { i18n } = useTranslation();
-  const isEn = i18n.language === 'en';
+  const isEn = i18n.language?.startsWith('en');
   const isChild = num >= 101 && num <= 120;
   const isUpper = num <= 16 || (num >= 101 && num <= 110);
 
@@ -1138,7 +1138,7 @@ ConnectedProstheticsOverlay.displayName = 'ConnectedProstheticsOverlay';
 
 export default function DentalChart({ patientId, initialChart = {}, onSaveChart, readOnly = false, onSaveToothSession, clinicId, customServices, onUpdateCustomServices, categories, onUpdateCategories, patientAppointments, patientRecords }: DentalChartProps) {
   const { t, i18n } = useTranslation();
-  const isEn = i18n.language === 'en';
+  const isEn = i18n.language?.startsWith('en');
   const dialogs = useDialogs();
   const [chartState, setChartState] = useState<{ [toothNumber: number]: DentalTooth }>(initialChart);
   const [dentitionType, setDentitionType] = useState<'adult' | 'child'>('adult');
@@ -2517,50 +2517,56 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
               onClick={(e) => e.stopPropagation()}
             >
             <div className={`p-4 sm:p-6 overflow-y-auto flex-1 space-y-4 ${isEn ? 'text-left' : 'text-right'} scroll-smooth [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400 [scrollbar-width:thin] [scrollbar-color:#cbd5e1_transparent]`} dir={isEn ? "ltr" : "rtl"}>
-              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-            <div className="flex items-center gap-2">
-              <span className={`w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black shadow-sm ${selectedTooth >= 101 ? 'font-sans text-emerald-100 bg-emerald-600' : 'font-mono'}`}>
-                {getToothLetter(selectedTooth)}
-              </span>
-              <div>
-                <h4 className="font-bold text-slate-800 text-sm">
-                  {isEn ? (
-                    `Edit Tooth Condition ${selectedTooth >= 101 ? `Primary #${getToothLetter(selectedTooth)}` : `#${getToothLetter(selectedTooth)}`} (${getToothName(selectedTooth, true)})`
-                  ) : (
-                    `تعديل حالة السن ${selectedTooth >= 101 ? `اللبني رقم (${getToothLetter(selectedTooth)})` : `رقم (${getToothLetter(selectedTooth)})`} (${getToothArabicName(selectedTooth)})`
+              {/* Header: dark identity band - tooth, numbering system, current status, actions */}
+              <div className="bg-[#272E40] -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 mb-4 px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <span className={`w-11 h-11 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 text-white flex items-center justify-center font-black text-lg shadow-md shadow-green-500/25 ${selectedTooth >= 101 ? 'font-sans' : 'font-mono'}`}>
+                    {getToothLetter(selectedTooth)}
+                  </span>
+                  <div>
+                    <h4 className="font-black text-white text-sm sm:text-base">
+                      {isEn
+                        ? `Tooth ${getToothLetter(selectedTooth)} — ${getToothName(selectedTooth, true)}`
+                        : `السن ${getToothLetter(selectedTooth)} — ${getToothName(selectedTooth)}`}
+                    </h4>
+                    <p className="text-[11px] text-slate-400 font-bold mt-0.5">
+                      {getToothTypeName(getToothType(selectedTooth), isEn)} • {isEn
+                        ? `${activeSystem === 'all' ? 'FDI' : activeSystem.toUpperCase()} numbering`
+                        : `نظام ${activeSystem === 'palmer' ? 'Palmer' : activeSystem === 'universal' || activeSystem === 'all' ? 'Universal' : 'FDI'}`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-3 py-1.5 rounded-full border border-green-500/50 text-green-300 text-[11px] font-bold flex items-center gap-1.5">
+                    <Check className="h-3 w-3 stroke-[3]" />
+                    {isEn ? 'Current status: ' : 'الحالة الحالية: '}{getConditionLabel((chartState[selectedTooth]?.condition || 'healthy') as DentalTooth['condition'], isEn).split(' ')[0]}
+                  </span>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const currentTooth = selectedTooth;
+                        setMultiSelectedTeeth([currentTooth]);
+                        setIsMultiSelectMode(true);
+                        setSelectedTooth(null);
+                      }}
+                      className="px-3 py-1.5 rounded-full bg-slate-700/50 hover:bg-slate-700 text-slate-200 border border-slate-600 text-[11px] font-bold transition cursor-pointer"
+                      title={isEn ? 'Convert to multi-tooth selection (Bridge/Denture/Ortho)' : 'تحويل لتحديد أسنان متعددة مع هذا السن (جسر/تركيبة/متحرك)'}
+                    >
+                      {isEn ? 'Select with other teeth (Bridge/Denture)' : 'تحديد مع أسنان أخرى (جسر/تركيبة)'}
+                    </button>
                   )}
-                </h4>
-                <p className="text-xs text-slate-400 font-bold">{getToothTypeName(getToothType(selectedTooth), isEn)}</p>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTooth(null)}
+                    className="w-8 h-8 rounded-full flex items-center justify-center bg-rose-600 text-white hover:bg-rose-700 transition-all duration-150 cursor-pointer shadow-md active:scale-90"
+                    title={isEn ? 'Close' : 'إغلاق'}
+                  >
+                    <X className="h-4 w-4 stroke-[3]" />
+                  </button>
+                </div>
               </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {!readOnly && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const currentTooth = selectedTooth;
-                    setMultiSelectedTeeth([currentTooth]);
-                    setIsMultiSelectMode(true);
-                    setSelectedTooth(null);
-                  }}
-                  className="px-3 py-1.5 bg-sky-100 hover:bg-sky-200 text-sky-800 border border-sky-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-3xs"
-                  title={isEn ? 'Convert to multi-tooth selection (Bridge/Denture/Ortho)' : 'تحويل لتحديد أسنان متعددة مع هذا السن (جسر/متحرك/تركيبة)'}
-                >
-                  <span>{isEn ? '🔘 Select with other teeth (Bridge/Denture)' : '🔘 تحديده مع أسنان أخرى (جسر/تركيبة/متحرك)'}</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setSelectedTooth(null)}
-                className="w-8 h-8 rounded-full flex items-center justify-center bg-rose-600 text-white hover:bg-rose-700 transition-all duration-150 cursor-pointer shadow-md active:scale-90"
-                title={isEn ? 'Close' : 'إغلاق'}
-              >
-                <X className="h-4 w-4 stroke-[3]" />
-              </button>
-            </div>
-          </div>
 
           {readOnly ? (
             <div className="space-y-4">
@@ -2612,69 +2618,23 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Diagnostic Notes Top Bar */}
-              <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80">
-                <label className="block text-xs font-black text-slate-700 mb-1.5 flex items-center gap-1.5">
-                  <Info className="h-4 w-4 text-indigo-600" />
-                  {isEn 
-                    ? `Diagnostic notes & details for (${getToothName(selectedTooth, true)}) #${getToothLetter(selectedTooth)} (Optional)`
-                    : `ملاحظات تشخيصية وتفاصيل خاصة بـ (${getToothArabicName(selectedTooth)}) #${getToothLetter(selectedTooth)} (اختياري)`}
-                </label>
-                <input
-                  type="text"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder={isEn ? 'Write diagnosis details, local anesthesia type, or follow-up notes...' : 'اكتب تفاصيل التشخيص، نوع البنج المستخدم، أو ملاحظات المتابعة القادمة...'}
-                  className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-medium text-slate-800 shadow-2xs"
-                />
-              </div>
-
-              {/* Redesigned Clean & Simple Tooth Procedure Selector */}
-              <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden animate-fade-in">
-                {/* Clean Header */}
-                <div className="bg-slate-900 text-white p-4 sm:p-5 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-emerald-500/20 border border-emerald-500/30 rounded-2xl shrink-0">
-                      <Stethoscope className="h-5 w-5 text-emerald-400" />
-                    </div>
-                    <div>
-                      {multiSelectedTeeth.length > 1 ? (
-                        <div>
-                          <h5 className="font-black text-sm sm:text-base text-white flex flex-wrap items-center gap-2">
-                            <span>{isEn ? `Select & apply procedure for (${multiSelectedTeeth.length} selected teeth)` : `تحديد وتطبيق الإجراء لـ (${multiSelectedTeeth.length} أسنان محددة)`}</span>
-                            <span className="bg-sky-500/30 text-sky-200 border border-sky-400/50 px-2.5 py-0.5 rounded-full font-extrabold text-xs">
-                              {multiSelectedTeeth.map(n => `#${convertToFDI(n)}`).join(', ')}
-                            </span>
-                          </h5>
-                          <p className="text-xs text-slate-300 font-medium mt-0.5">
-                            {isEn ? 'Choose a medical procedure from the list to automatically apply and save for all selected teeth' : 'اختر الإجراء الطبي من القائمة لتطبيقه وحفظه تلقائياً لجميع الأسنان المحددة'}
-                          </p>
-                        </div>
-                      ) : (
-                        <div>
-                          <h5 className="font-black text-sm sm:text-base text-white">
-                            {isEn ? `Select procedure for (${getToothName(selectedTooth, true)}) #${getToothLetter(selectedTooth)}` : `تحديد الإجراء المطلوب لـ (${getToothArabicName(selectedTooth)}) #${getToothLetter(selectedTooth)}`}
-                          </h5>
-                          <p className="text-xs text-slate-300 font-medium mt-0.5">
-                            {isEn ? 'Select a procedure from the list below to calculate price, set session, and update tooth chart' : 'اختر الإجراء من القائمة أدناه لحساب السعر وتجهيز الجلسة وتحديث رسم الضرس تلقائياً'}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTooth(null)}
-                    className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
-                    title={isEn ? 'Close' : 'إغلاق'}
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-
-                <div className="p-4 sm:p-5 space-y-4">
-                  {/* Category Filter Pills & Unified Services List */}
+              <div className="flex flex-col lg:flex-row gap-4 items-start">
+                {/* Main column: steps 1-2 */}
+                <div className="flex-1 min-w-0 w-full space-y-5">
+                  {/* Step 1: Required procedure */}
+                  <div>
+                    <h5 className="font-black text-slate-800 text-sm mb-2">
+                      {isEn ? '1. Required Procedure ' : '١. الإجراء المطلوب '}
+                      <span className="text-slate-400 font-bold text-xs">— {isEn ? 'price & session are set automatically' : 'السعر والجلسة بتحددان تلقائيًا'}</span>
+                    </h5>
+                    {multiSelectedTeeth.length > 1 && (
+                      <div className="mb-2 px-3 py-2 bg-sky-50 border border-sky-200 rounded-xl text-xs font-bold text-sky-800 flex items-center gap-2 flex-wrap">
+                        <span>{isEn ? `Applying to ${multiSelectedTeeth.length} selected teeth:` : `تطبيق على ${multiSelectedTeeth.length} أسنان محددة:`}</span>
+                        <span className="bg-sky-500/20 text-sky-900 border border-sky-300 px-2 py-0.5 rounded-full font-extrabold">
+                          {multiSelectedTeeth.map(n => `#${convertToFDI(n)}`).join(', ')}
+                        </span>
+                      </div>
+                    )}
                   {(() => {
                     const defaultOrthoPresets = [
                       { id: 'ortho-def-0', name: isEn ? 'Specific Teeth Orthodontics' : 'تقويم أسنان محددة', price: 4000, condition: 'ortho' as const, category: isEn ? 'Orthodontics & Cosmetic' : 'تقويم وتجميل الأسنان' },
@@ -2696,17 +2656,14 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
 
                     return (
                       <>
-                        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-slate-100">
-                          <span className={`text-xs font-black text-slate-500 shrink-0 ${isEn ? 'mr-1' : 'ml-1'}`}>
-                            📁 {isEn ? 'Categories:' : 'الأقسام:'}
-                          </span>
+                        <div className="flex items-center gap-1.5 overflow-x-auto pb-2.5 scrollbar-none">
                           <button
                             type="button"
                             onClick={() => setSelectedCategoryFilter('all')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+                            className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition shrink-0 cursor-pointer ${
                               selectedCategoryFilter === 'all'
-                                ? 'bg-emerald-600 text-white shadow-3xs'
-                                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-sm shadow-green-500/25'
+                                : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
                             }`}
                           >
                             {isEn ? 'All' : 'الكل'} ({allAvailableServices.length})
@@ -2718,10 +2675,10 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
                                 key={cat}
                                 type="button"
                                 onClick={() => setSelectedCategoryFilter(cat)}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+                                className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition shrink-0 cursor-pointer ${
                                   selectedCategoryFilter === cat
-                                    ? 'bg-emerald-600 text-white shadow-3xs'
-                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-sm shadow-green-500/25'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
                                 }`}
                               >
                                 {cat} ({count})
@@ -2731,7 +2688,7 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
                         </div>
 
                         {/* Services Grid Selection */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 max-h-[280px] overflow-y-auto p-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[320px] overflow-y-auto p-1">
                           {filteredServices.map((srv) => {
                             const isSelected = serviceInput === srv.name;
                             return (
@@ -2743,28 +2700,20 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
                                   setPriceInput(srv.price);
                                   setCondition(srv.condition);
                                 }}
-                                className={`p-3 rounded-2xl ${isEn ? 'text-left' : 'text-right'} transition border flex items-center justify-between gap-2.5 cursor-pointer ${
+                                className={`px-4 py-3 rounded-2xl ${isEn ? 'text-left' : 'text-right'} transition border flex items-center justify-between gap-3 cursor-pointer ${
                                   isSelected
-                                    ? 'bg-emerald-50 border-2 border-emerald-600 shadow-2xs'
+                                    ? 'bg-green-50 border-2 border-emerald-500 shadow-2xs'
                                     : 'bg-white border-slate-200/90 hover:border-emerald-400 hover:bg-slate-50 text-slate-800'
                                 }`}
                               >
                                 <span className={`font-black text-xs leading-snug ${isSelected ? 'text-emerald-950' : 'text-slate-800'}`}>
                                   {srv.name}
                                 </span>
-
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <span className={`font-mono font-black text-xs px-2.5 py-1 rounded-xl ${
-                                    isSelected ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                  }`}>
-                                    {srv.price.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
-                                  </span>
-                                  {isSelected && (
-                                    <span className="bg-emerald-600 text-white p-0.5 rounded-full shrink-0">
-                                      <Check className="h-3.5 w-3.5 stroke-[3]" />
-                                    </span>
-                                  )}
-                                </div>
+                                <span className={`font-mono font-black text-xs px-2.5 py-1 rounded-xl shrink-0 ${
+                                  isSelected ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                                }`}>
+                                  {srv.price.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
+                                </span>
                               </button>
                             );
                           })}
@@ -2773,101 +2722,9 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
                     );
                   })()}
 
-                  {/* Selected Procedure Box */}
-                  <div className="bg-slate-50 border border-slate-200/90 p-4 rounded-2xl space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
-                      <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                        <Receipt className="h-4 w-4 text-emerald-600" />
-                        {isEn ? 'Session & Selected Procedure Details:' : 'تفاصيل الجلسة والإجراء المحدد:'}
-                      </span>
-                      <span className="text-xs font-bold text-slate-500">
-                        {isEn ? 'Chart Condition:' : 'حالة الرسم البياني:'} <span className="text-emerald-700 font-black">{getConditionLabel(condition, isEn)}</span>
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                      <div className="sm:col-span-6">
-                        <label className="block text-[11px] font-extrabold text-slate-700 mb-1">{isEn ? 'Service / Procedure Name' : 'اسم الخدمة المنفذة'}</label>
-                        <input
-                          type="text"
-                          value={serviceInput}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setServiceInput(val);
-                            setCondition(autoDetectCondition(val));
-                          }}
-                          placeholder={isEn ? 'Select procedure above or enter custom service...' : 'اختر إجراء من الأعلى أو اكتب خدمة مخصصة...'}
-                          className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-3xs"
-                        />
-                      </div>
-                      <div className="sm:col-span-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="block text-[11px] font-extrabold text-slate-700">
-                            {multiSelectedTeeth.length > 1 ? (isEn ? 'Price (EGP)' : 'السعر (ج.م)') : (isEn ? 'Amount Required (EGP)' : 'المبلغ المطلوب (ج.م)')}
-                          </label>
-                          {multiSelectedTeeth.length > 1 && (
-                            <div className="flex items-center gap-1.5 text-[10px] text-slate-600 font-bold">
-                              <label className="flex items-center gap-0.5 cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name="multiPriceTypeRadio"
-                                  checked={multiPriceType === 'total'}
-                                  onChange={() => setMultiPriceType('total')}
-                                  className="accent-emerald-600"
-                                />
-                                <span>{isEn ? 'Total' : 'إجمالي'}</span>
-                              </label>
-                              <label className="flex items-center gap-0.5 cursor-pointer">
-                                <input
-                                  type="radio"
-                                  name="multiPriceTypeRadio"
-                                  checked={multiPriceType === 'per_tooth'}
-                                  onChange={() => setMultiPriceType('per_tooth')}
-                                  className="accent-emerald-600"
-                                />
-                                <span>{isEn ? 'Per Tooth' : 'لكل سن'}</span>
-                              </label>
-                            </div>
-                          )}
-                        </div>
-                        <input
-                          type="number"
-                          value={priceInput}
-                          onChange={(e) => setPriceInput(Number(e.target.value))}
-                          className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black font-mono text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-3xs"
-                        />
-                        {multiSelectedTeeth.length > 1 && (
-                          <div className="text-[10px] font-black text-emerald-700 mt-1 flex items-center justify-between">
-                            <span>{isEn ? 'Calculated Total:' : 'الإجمالي المحسوب:'}</span>
-                            <span className="font-mono text-xs">
-                              {((multiPriceType === 'per_tooth' ? priceInput * multiSelectedTeeth.length : priceInput) || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="sm:col-span-3">
-                        <label className="block text-[11px] font-extrabold text-slate-700 mb-1">{isEn ? 'Chart Condition' : 'حالة الرسم البياني'}</label>
-                        <select
-                          value={condition}
-                          onChange={(e) => setCondition(e.target.value as DentalTooth['condition'])}
-                          className="w-full px-2.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer shadow-3xs"
-                        >
-                          <option value="filled">{isEn ? 'Filling (Filled)' : 'حشو (Filled)'}</option>
-                          <option value="missing">{isEn ? 'Extracted / Missing' : 'خلع / مفقود (Missing)'}</option>
-                          <option value="crown">{isEn ? 'Crown' : 'تلبيسة / طربوش (Crown)'}</option>
-                          <option value="bridge">{isEn ? 'Fixed Bridge' : 'تركيبة / جسر ثابت (Fixed Bridge)'}</option>
-                          <option value="denture">{isEn ? 'Removable Denture' : 'تركيبة متحركة (Removable Denture)'}</option>
-                          <option value="implant">{isEn ? 'Implant' : 'زراعة (Implant)'}</option>
-                          <option value="healthy">{isEn ? 'Healthy / Cleaning' : 'تنظيف / سليم (Healthy)'}</option>
-                          <option value="decayed">{isEn ? 'Decayed' : 'تسوس (Decayed)'}</option>
-                          <option value="ortho">{isEn ? 'Orthodontics (Ortho)' : 'تقويم أسنان (Ortho)'}</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Quick Material Sub-Type Selector for Fillings and Crowns */}
-                    {condition === 'filled' && (
-                      <div className="p-3 bg-teal-50/80 border border-teal-200/80 rounded-xl space-y-1.5 animate-fade-in">
+                  {/* Quick Material Sub-Type Selector for Fillings and Crowns */}
+                  {condition === 'filled' && (
+                      <div className="mt-3 p-3 bg-teal-50/80 border border-teal-200/80 rounded-xl space-y-1.5 animate-fade-in">
                         <span className="text-[11px] font-black text-teal-950 block">
                           {isEn ? 'Select filling type & material for chart visualization:' : 'اختر نوع وتفاصيل الحشو للرسم والتوضيح:'}
                         </span>
@@ -2925,7 +2782,7 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
                     )}
 
                     {condition === 'crown' && (
-                      <div className="p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl space-y-1.5 animate-fade-in">
+                      <div className="mt-3 p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl space-y-1.5 animate-fade-in">
                         <span className="text-[11px] font-black text-amber-950 block">
                           {isEn ? 'Select crown type & material for chart visualization:' : 'اختر نوع ونمط التلبيسة للرسم والتوضيح:'}
                         </span>
@@ -2969,45 +2826,143 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
                         </div>
                       </div>
                     )}
+                  </div>
 
-
+                  {/* Step 2: Diagnostic notes */}
+                  <div>
+                    <h5 className="font-black text-slate-800 text-sm mb-2">
+                      {isEn ? '2. Diagnostic Notes ' : '٢. ملاحظات تشخيصية '}
+                      <span className="text-slate-400 font-bold text-xs">{isEn ? '(optional)' : '(اختياري)'}</span>
+                    </h5>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder={isEn ? 'Write diagnosis details, local anesthesia type, or follow-up notes...' : 'اكتب تفاصيل التشخيص، نوع البنج المستخدم، أو ملاحظات المتابعة القادمة...'}
+                      rows={3}
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-medium text-slate-800 shadow-2xs resize-none"
+                    />
                   </div>
                 </div>
 
-                {/* Bottom Actions Bar */}
-                <div className="bg-slate-50 p-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedTooth(null)}
-                      className="px-4 py-2.5 text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold transition cursor-pointer"
-                    >
-                      {isEn ? 'Cancel' : 'إلغاء'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveTooth}
-                      className="px-4 py-2.5 text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-3xs cursor-pointer"
-                      title={isEn ? 'Update tooth color and status in chart without adding a financial session' : 'تحديث لون وحالة الضرس في الرسم فقط دون إضافة جلسة مالية'}
-                    >
-                      <span>{isEn ? '🎨 Update Chart Only' : '🎨 تحديث الرسم فقط'}</span>
-                    </button>
+                {/* Side card: session details */}
+                <div className="w-full lg:w-80 shrink-0 bg-[#272E40] rounded-3xl p-5 space-y-4">
+                  <h6 className="font-black text-white text-sm">{isEn ? 'Session Details' : 'تفاصيل الجلسة'}</h6>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">{isEn ? 'Service performed' : 'الخدمة المنفذة'}</label>
+                    <input
+                      type="text"
+                      value={serviceInput}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setServiceInput(val);
+                        setCondition(autoDetectCondition(val));
+                      }}
+                      placeholder={isEn ? 'Select a procedure or type a custom service...' : 'اختر إجراء أو اكتب خدمة مخصصة...'}
+                      className="w-full px-3 py-2 bg-slate-800/60 border border-slate-600/70 rounded-xl text-xs font-bold text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
                   </div>
-
-                  <button
-                    type="button"
-                    disabled={isSavingSession || !serviceInput.trim()}
-                    onClick={handleSaveSessionAndTooth}
-                    className="px-6 py-2.5 text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl text-xs sm:text-sm font-extrabold transition flex items-center gap-2 shadow-xs cursor-pointer"
-                  >
-                    <Check className="h-4 w-4 stroke-[3]" />
-                    {isSavingSession 
-                      ? (isEn ? 'Saving...' : 'جاري الحفظ...') 
-                      : multiSelectedTeeth.length > 1 
-                        ? (isEn ? `Apply & Record Session (${multiSelectedTeeth.length} teeth)` : `تطبيق وتوثيق الجلسة (${multiSelectedTeeth.length} أسنان)`) 
-                        : (isEn ? 'Save to Sessions' : 'حفظ في الجلسات')}
-                  </button>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1">{isEn ? 'Chart status after save' : 'حالة الرسم بعد الحفظ'}</label>
+                    <select
+                      value={condition}
+                      onChange={(e) => setCondition(e.target.value as DentalTooth['condition'])}
+                      className="w-full px-2.5 py-2 bg-slate-800/60 border border-slate-600/70 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                    >
+                      <option value="filled">{isEn ? 'Filling (Filled)' : 'حشو (Filled)'}</option>
+                      <option value="missing">{isEn ? 'Extracted / Missing' : 'خلع / مفقود (Missing)'}</option>
+                      <option value="crown">{isEn ? 'Crown' : 'تلبيسة / طربوش (Crown)'}</option>
+                      <option value="bridge">{isEn ? 'Fixed Bridge' : 'تركيبة / جسر ثابت (Fixed Bridge)'}</option>
+                      <option value="denture">{isEn ? 'Removable Denture' : 'تركيبة متحركة (Removable Denture)'}</option>
+                      <option value="implant">{isEn ? 'Implant' : 'زراعة (Implant)'}</option>
+                      <option value="healthy">{isEn ? 'Healthy / Cleaning' : 'تنظيف / سليم (Healthy)'}</option>
+                      <option value="decayed">{isEn ? 'Decayed' : 'تسوس (Decayed)'}</option>
+                      <option value="ortho">{isEn ? 'Orthodontics (Ortho)' : 'تقويم أسنان (Ortho)'}</option>
+                    </select>
+                  </div>
+                  <div className="border-t border-dashed border-slate-600/80"></div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-[10px] font-bold text-slate-400">
+                        {multiSelectedTeeth.length > 1 ? (isEn ? 'Price (EGP)' : 'السعر (ج.م)') : (isEn ? 'Amount required' : 'المبلغ المطلوب')}
+                      </label>
+                      {multiSelectedTeeth.length > 1 && (
+                        <div className="flex items-center gap-2 text-[10px] text-slate-300 font-bold">
+                          <label className="flex items-center gap-0.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="multiPriceTypeRadio"
+                              checked={multiPriceType === 'total'}
+                              onChange={() => setMultiPriceType('total')}
+                              className="accent-emerald-500"
+                            />
+                            <span>{isEn ? 'Total' : 'إجمالي'}</span>
+                          </label>
+                          <label className="flex items-center gap-0.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="multiPriceTypeRadio"
+                              checked={multiPriceType === 'per_tooth'}
+                              onChange={() => setMultiPriceType('per_tooth')}
+                              className="accent-emerald-500"
+                            />
+                            <span>{isEn ? 'Per Tooth' : 'لكل سن'}</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                    <div className="relative rounded-2xl border-2 border-emerald-500/70 bg-slate-800/60 px-4 py-3 flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={priceInput}
+                        onChange={(e) => setPriceInput(Number(e.target.value))}
+                        className="bg-transparent flex-1 min-w-0 text-emerald-400 font-black text-xl font-mono focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <span className="text-emerald-400/80 text-xs font-bold shrink-0">{isEn ? 'EGP' : 'ج.م'}</span>
+                      <Edit2 className="h-3.5 w-3.5 text-emerald-500/70 shrink-0" />
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-bold mt-1.5">{isEn ? 'Tap the amount to edit it before saving' : 'اضغط على المبلغ لتعديله قبل الحفظ'}</p>
+                    {multiSelectedTeeth.length > 1 && (
+                      <div className="text-[10px] font-black text-emerald-400 mt-2 flex items-center justify-between">
+                        <span>{isEn ? 'Calculated Total:' : 'الإجمالي المحسوب:'}</span>
+                        <span className="font-mono text-xs">
+                          {((multiPriceType === 'per_tooth' ? priceInput * multiSelectedTeeth.length : priceInput) || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
+              </div>
+
+              {/* Bottom actions */}
+              <div className="flex flex-col sm:flex-row gap-2.5 pt-1">
+                <button
+                  type="button"
+                  disabled={isSavingSession || !serviceInput.trim()}
+                  onClick={handleSaveSessionAndTooth}
+                  className="flex-1 px-6 py-3.5 rounded-2xl text-white bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:opacity-50 text-sm font-extrabold transition flex items-center justify-center gap-2 shadow-lg shadow-green-500/25 cursor-pointer"
+                >
+                  <Check className="h-4 w-4 stroke-[3]" />
+                  {isSavingSession
+                    ? (isEn ? 'Saving...' : 'جاري الحفظ...')
+                    : multiSelectedTeeth.length > 1
+                      ? (isEn ? `Apply & Record Session (${multiSelectedTeeth.length} teeth)` : `تطبيق وتوثيق الجلسة (${multiSelectedTeeth.length} أسنان)`)
+                      : (isEn ? 'Save to Sessions' : 'حفظ في الجلسات')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveTooth}
+                  className="px-6 py-3.5 rounded-2xl bg-slate-200/80 hover:bg-slate-300/80 text-slate-700 text-sm font-bold transition cursor-pointer"
+                  title={isEn ? 'Update tooth color and status in chart without adding a financial session' : 'تحديث لون وحالة الضرس في الرسم فقط دون إضافة جلسة مالية'}
+                >
+                  {isEn ? 'Update Chart Only' : 'تحديث الرسم فقط'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTooth(null)}
+                  className="px-6 py-3.5 rounded-2xl bg-slate-200/80 hover:bg-slate-300/80 text-slate-700 text-sm font-bold transition cursor-pointer"
+                >
+                  {isEn ? 'Cancel' : 'إلغاء'}
+                </button>
               </div>
             </div>
           )}
