@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'motion/react';
 import { getPatientRecordsRef, getPatientXRaysRef, getPatientsRef, getPrescriptionsRef, getAppointmentsRef, OperationType, handleDbError, cleanDbData, db, storage, getDocsSmart as getDocs, getDocSmart as getDoc, ref, uploadBytes, getDownloadURL, collection, addDoc, updateDoc, setDoc, deleteDoc, doc, query, where, orderBy, limit, clearQueryCache } from '../dbClient';
-import { Patient, Clinic, PatientRecord, DentalTooth, Prescription, Appointment, CustomDentalService, PatientXRay } from '../types';
-import { FileText, Plus, Calendar, DollarSign, Image, Heart, Trash2, Shield, Eye, RefreshCw, Sparkles, Check, Printer, Receipt, CreditCard, Clock, AlertCircle, Send, ZoomIn, ZoomOut, RotateCw, Contrast, Download, X, Edit, Edit3, Camera, Save, Clipboard, MessageSquare } from 'lucide-react';
+import { Patient, Clinic, PatientRecord, DentalTooth, Prescription, Appointment, CustomDentalService, PatientXRay, DoctorNote } from '../types';
+import { FileText, Plus, Calendar, DollarSign, Image, Heart, Trash2, Shield, Eye, RefreshCw, Sparkles, Check, Printer, Receipt, CreditCard, Clock, AlertCircle, Send, ZoomIn, ZoomOut, RotateCw, Contrast, Download, X, Edit, Edit3, Camera, Save, Clipboard, MessageSquare, StickyNote, User } from 'lucide-react';
 const DentalChart = React.lazy(() => import('./DentalChart'));
 import { useDialogs } from './DialogContext';
 import { PrintPreviewModal } from './PrintPreviewModal';
@@ -26,7 +26,7 @@ interface PatientMedicalFileProps {
   isStaff?: boolean;
   preselectedPatientId?: string;
   onBackToPatients?: () => void;
-  initialTab?: 'visits' | 'prescriptions' | 'financials' | 'xrays' | null;
+  initialTab?: 'visits' | 'prescriptions' | 'financials' | 'xrays' | 'notes' | null;
   onNavigateToPrescriptions?: (patientId: string) => void;
   activeShift?: any;
   onRefreshAppointments?: (silent?: boolean | any, targetDate?: string, force?: boolean) => void;
@@ -139,9 +139,15 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
   // Prescriptions state
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [loadingPrescriptions, setLoadingPrescriptions] = useState(false);
-  const [rightColTab, setRightColTab] = useState<'visits' | 'prescriptions' | 'financials' | 'xrays' | null>(
+  const [rightColTab, setRightColTab] = useState<'visits' | 'prescriptions' | 'financials' | 'xrays' | 'notes' | null>(
     initialTab || null
   );
+
+  // Doctor Notes state
+  const [noteDraft, setNoteDraft] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
 
   // X-Rays State
   const [xrays, setXrays] = useState<PatientXRay[]>([]);
@@ -536,7 +542,9 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
           medicalHistory: data.medicalHistory || '',
           createdAt: data.createdAt || '',
           updatedAt: data.updatedAt || '',
-          toothChart: data.toothChart || {}
+          toothChart: data.toothChart || {},
+          loyaltyPoints: data.loyaltyPoints,
+          doctorNotes: Array.isArray(data.doctorNotes) ? data.doctorNotes : []
         });
       });
 
@@ -3042,6 +3050,98 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
     return undefined;
   })();
 
+  // ---- Doctor Notes handlers ----
+  const doctorNotes: DoctorNote[] = [...((activePatient as any)?.doctorNotes || [])].sort((a: DoctorNote, b: DoctorNote) =>
+    String(b.createdAt || '').localeCompare(String(a.createdAt || ''))
+  );
+
+  const getDoctorDisplayName = () => {
+    const raw = (clinic.doctorName || '').trim();
+    if (!raw) return isEn ? 'Doctor' : 'الطبيب';
+    if (/^(د\.|دكتور|Dr\.?)/.test(raw)) return raw;
+    return isEn ? `Dr. ${raw}` : `د. ${raw}`;
+  };
+
+  const persistDoctorNotes = async (nextNotes: DoctorNote[]) => {
+    if (!selectedPatientId) return;
+    setSavingNote(true);
+    try {
+      const pRef = doc(getPatientsRef(clinic.id), selectedPatientId);
+      await updateDoc(pRef, cleanDbData({ doctorNotes: nextNotes, updatedAt: new Date().toISOString() }));
+      setPatients((prev) => prev.map((p) => (p.id === selectedPatientId ? { ...p, doctorNotes: nextNotes, updatedAt: new Date().toISOString() } : p)));
+      clearQueryCache();
+    } catch (err) {
+      console.error('Error saving doctor notes:', err);
+      handleDbError(err, OperationType.UPDATE, `clinics/${clinic.id}/patients/${selectedPatientId}`);
+      dialogs.alert(isEn ? 'Failed to save the note. Please try again.' : 'فشل حفظ الملاحظة، حاول مرة أخرى', { severity: 'error' });
+      throw err;
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
+  const handleAddNote = async () => {
+    const text = noteDraft.trim();
+    if (!text) return;
+    if (!selectedPatientId || !activePatient) {
+      dialogs.alert(isEn ? 'Please select a patient first' : 'يرجى اختيار مريض أولاً', { severity: 'warning' });
+      return;
+    }
+    const newNote: DoctorNote = {
+      id: 'note_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 7),
+      text,
+      doctorName: getDoctorDisplayName(),
+      createdAt: new Date().toISOString()
+    };
+    try {
+      await persistDoctorNotes([newNote, ...doctorNotes]);
+      setNoteDraft('');
+    } catch (e) { /* already reported */ }
+  };
+
+  const handleStartEditNote = (note: DoctorNote) => {
+    setEditingNoteId(note.id);
+    setEditingNoteText(note.text);
+  };
+
+  const handleSaveEditNote = async () => {
+    if (!editingNoteId) return;
+    const text = editingNoteText.trim();
+    if (!text) return;
+    const next = doctorNotes.map((n) =>
+      n.id === editingNoteId ? { ...n, text, edited: true, updatedAt: new Date().toISOString() } : n
+    );
+    try {
+      await persistDoctorNotes(next);
+      setEditingNoteId(null);
+      setEditingNoteText('');
+    } catch (e) { /* already reported */ }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    const confirmed = await dialogs.confirm(
+      isEn ? 'Are you sure you want to delete this note?' : 'هل أنت متأكد من حذف هذه الملاحظة؟'
+    );
+    if (!confirmed) return;
+    try {
+      await persistDoctorNotes(doctorNotes.filter((n) => n.id !== noteId));
+    } catch (e) { /* already reported */ }
+  };
+
+  const formatNoteDate = (iso?: string) => {
+    if (!iso) return '';
+    try {
+      return new Intl.DateTimeFormat(isEn ? 'en-US' : 'ar-EG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso));
+    } catch (e) { return ''; }
+  };
+
+  const formatNoteTime = (iso?: string) => {
+    if (!iso) return '';
+    try {
+      return new Intl.DateTimeFormat(isEn ? 'en-US' : 'ar-EG', { hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
+    } catch (e) { return ''; }
+  };
+
   return (
     <div className="space-y-6">
       {/* Selector header */}
@@ -3233,6 +3333,25 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   type="button"
+                  onClick={() => {
+                    if (!selectedPatientId || !activePatient) {
+                      dialogs.alert(isEn ? 'Please select a patient first' : 'يرجى اختيار مريض أولاً', { severity: 'warning' });
+                      return;
+                    }
+                    setRightColTab(rightColTab === 'notes' ? null : 'notes');
+                  }}
+                  className={`flex-1 min-w-[80px] sm:min-w-[90px] py-2 px-2 flex items-center justify-center gap-1.5 text-xs font-bold rounded-xl transition-all duration-200 shrink-0 cursor-pointer ${
+                    rightColTab === 'notes'
+                      ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md shadow-green-500/25'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  }`}
+                >
+                  <StickyNote className={`h-3.5 w-3.5 shrink-0 ${rightColTab === 'notes' ? 'text-white' : 'text-green-400'}`} />
+                  <span>{isEn ? `Notes (${doctorNotes.length})` : `الملاحظات (${doctorNotes.length})`}</span>
+                </motion.button>
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
                   onClick={() => setRightColTab(rightColTab === 'visits' ? null : 'visits')}
                   className={`flex-1 min-w-[80px] sm:min-w-[90px] py-2 px-2 flex items-center justify-center gap-1.5 text-xs font-bold rounded-xl transition-all duration-200 shrink-0 cursor-pointer ${
                     rightColTab === 'visits'
@@ -3300,6 +3419,133 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
 
 
               {/* No panel displayed when rightColTab is null */}
+
+              {rightColTab === 'notes' && activePatient && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <h4 className="font-bold text-xs text-slate-600 flex items-center gap-1.5">
+                      <StickyNote className="h-4 w-4 text-green-600" />
+                      {isEn ? 'Doctor Notes' : 'ملاحظات الطبيب'}
+                    </h4>
+                    <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-100 rounded-full px-2 py-0.5">
+                      {isEn ? `${doctorNotes.length} notes` : `${doctorNotes.length} ملاحظات`}
+                    </span>
+                  </div>
+
+                  {/* Add note */}
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-3 space-y-2">
+                    <textarea
+                      value={noteDraft}
+                      onChange={(e) => setNoteDraft(e.target.value)}
+                      rows={3}
+                      placeholder={isEn ? 'Write a new note about this patient...' : 'اكتب ملاحظة جديدة عن المريض...'}
+                      className="w-full text-xs sm:text-sm rounded-lg border border-slate-200 bg-white p-2.5 focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-400 resize-y min-h-[70px]"
+                    />
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <p className="text-[10px] text-slate-400 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {isEn ? 'Notes are saved automatically with date, time and doctor name' : 'تُحفظ الملاحظة تلقائيًا بالتاريخ والوقت واسم الطبيب'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleAddNote}
+                        disabled={savingNote || !noteDraft.trim()}
+                        className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg px-4 py-2 transition-colors cursor-pointer"
+                      >
+                        {savingNote ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                        {isEn ? 'Save Note' : 'حفظ الملاحظة'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Notes list */}
+                  {doctorNotes.length === 0 ? (
+                    <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                      <StickyNote className="h-6 w-6 text-slate-300" />
+                      {isEn ? 'No notes yet for this patient' : 'لا توجد ملاحظات لهذا المريض بعد'}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {doctorNotes.map((note) => (
+                        <div key={note.id} className="rounded-xl border border-slate-200 border-r-4 border-r-green-500 bg-white p-3 shadow-sm">
+                          {editingNoteId === note.id ? (
+                            <div className="space-y-2">
+                              <textarea
+                                value={editingNoteText}
+                                onChange={(e) => setEditingNoteText(e.target.value)}
+                                rows={3}
+                                className="w-full text-xs sm:text-sm rounded-lg border border-blue-200 bg-blue-50/40 p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/40 resize-y min-h-[70px]"
+                              />
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={handleSaveEditNote}
+                                  disabled={savingNote || !editingNoteText.trim()}
+                                  className="inline-flex items-center gap-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[11px] font-bold rounded-lg px-3 py-1.5 transition-colors cursor-pointer"
+                                >
+                                  <Save className="h-3 w-3" />
+                                  {isEn ? 'Save Edit' : 'حفظ التعديل'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}
+                                  className="inline-flex items-center gap-1 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-[11px] font-bold rounded-lg px-3 py-1.5 transition-colors cursor-pointer"
+                                >
+                                  <X className="h-3 w-3" />
+                                  {isEn ? 'Cancel' : 'إلغاء'}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <p className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{note.text}</p>
+                              <div className="mt-2.5 flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEditNote(note)}
+                                    title={isEn ? 'Edit note' : 'تعديل الملاحظة'}
+                                    className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-blue-100 bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors cursor-pointer"
+                                  >
+                                    <Edit className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteNote(note.id)}
+                                    title={isEn ? 'Delete note' : 'حذف الملاحظة'}
+                                    className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-red-100 bg-red-50 text-red-500 hover:bg-red-100 transition-colors cursor-pointer"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                                <div className="flex items-center gap-2 text-[10px] text-slate-400 flex-wrap">
+                                  {note.edited && (
+                                    <span className="font-bold text-amber-600 bg-amber-50 border border-amber-100 rounded-full px-2 py-0.5">
+                                      {isEn ? 'Edited' : 'تم التعديل'}
+                                    </span>
+                                  )}
+                                  <span className="inline-flex items-center gap-1 font-bold text-green-700 bg-green-50 rounded-full px-2 py-0.5">
+                                    <User className="h-3 w-3" />
+                                    {note.doctorName}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {formatNoteTime(note.createdAt)}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1">
+                                    <Calendar className="h-3 w-3" />
+                                    {formatNoteDate(note.createdAt)}
+                                  </span>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {rightColTab === 'visits' && (
                 <div className="space-y-4">

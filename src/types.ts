@@ -180,6 +180,15 @@ export interface PatientQuestionnaire {
   filledAt?: string;
 }
 
+export interface DoctorNote {
+  id: string;
+  text: string;
+  doctorName: string;
+  createdAt: string;
+  updatedAt?: string;
+  edited?: boolean;
+}
+
 export interface Patient {
   id: string;
   name: string;
@@ -198,6 +207,7 @@ export interface Patient {
   updatedAt: string;
   toothChart?: { [toothNumber: number]: DentalTooth };
   loyaltyPoints?: number;
+  doctorNotes?: DoctorNote[];
 }
 
 export type ViewRole = 'doctor' | 'reception' | 'accounting' | 'admin' | 'owner' | 'Dentist' | 'Receptionist' | 'Administrator';
