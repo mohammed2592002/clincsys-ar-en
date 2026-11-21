@@ -6,8 +6,9 @@ import {
 import { useDialogs } from '../DialogContext';
 import { uploadFileToR2 } from '../../utils/r2Upload';
 import {
-  Globe, Save, Plus, Trash2, Image as ImageIcon, Upload, Loader2,
-  Type, Phone, LayoutGrid, ListOrdered, CreditCard, BarChart3, ExternalLink
+  Save, Plus, Trash2, Image as ImageIcon, Upload, Loader2,
+  Type, Phone, LayoutGrid, ListOrdered, CreditCard, BarChart3, ExternalLink,
+  Sparkles, Compass, Clock
 } from 'lucide-react';
 
 type EditLang = 'ar' | 'en';
@@ -23,25 +24,11 @@ interface WebsiteTabProps {
 const inputCls = 'w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 bg-white';
 const labelCls = 'block text-xs font-bold text-slate-500 mb-1.5';
 
-function Card({ icon, title, hint, children }: { icon: React.ReactNode; title: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-      <h3 className="text-base font-bold text-slate-800 flex items-center gap-2 mb-1">
-        <span className="text-emerald-600">{icon}</span>
-        {title}
-      </h3>
-      {hint && <p className="text-[11px] text-slate-400 font-semibold mb-4">{hint}</p>}
-      {!hint && <div className="mb-4"></div>}
-      {children}
-    </div>
-  );
-}
-
-function Field({ label, value, onChange, placeholder, dir }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; dir?: string }) {
+function Field({ label, value, onChange, placeholder, dir, inputClassName }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; dir?: string; inputClassName?: string }) {
   return (
     <div>
       <label className={labelCls}>{label}</label>
-      <input className={inputCls} value={value || ''} placeholder={placeholder} dir={dir} onChange={e => onChange(e.target.value)} />
+      <input className={`${inputCls} ${inputClassName || ''}`} value={value || ''} placeholder={placeholder} dir={dir} onChange={e => onChange(e.target.value)} />
     </div>
   );
 }
@@ -98,10 +85,50 @@ function ImageField({ label, value, onChange, uploading, setUploading }: {
   );
 }
 
+type SectionKey = 'identity' | 'hero' | 'images' | 'contact' | 'headerSections' | 'features' | 'stats' | 'steps' | 'plans';
+
+interface SectionMeta {
+  key: SectionKey;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  hint?: string;
+  // Shared (language-independent) content — editable in Arabic mode only.
+  sharedOnly?: boolean;
+}
+
+const SECTIONS: SectionMeta[] = [
+  { key: 'identity', label: 'الهوية واللوجو', icon: Type, hint: 'اسم البراند ولوجو الموقع — بيظهروا في الهيدر والفوتر.' },
+  { key: 'hero', label: 'القسم الرئيسي (الهيرو)', icon: Sparkles, hint: 'محتوى أول ما يشوفه الزائر في الصفحة الرئيسية — التعديلات تظهر فوراً بعد الحفظ.' },
+  { key: 'images', label: 'صور الصفحة', icon: ImageIcon, hint: 'صور حقيقية من النظام بتظهر في الصفحة التعريفية — ارفع أي صورة جديدة أو حط رابط مباشر.', sharedOnly: true },
+  { key: 'contact', label: 'أرقام وروابط التواصل', icon: Phone, hint: 'رقم الواتساب هو اللي بيفتح لما الزائر يدوس على زر التجربة المجانية أو أزرار الخطط.', sharedOnly: true },
+  { key: 'headerSections', label: 'الهيدر والأقسام والفوتر', icon: Compass, hint: 'روابط الهيدر وعناوين الأقسام ونص الـ CTA وسطور الفوتر.' },
+  { key: 'features', label: 'بطاقات المميزات', icon: LayoutGrid, hint: 'أضف أو احذف أو عدل أي ميزة. الأيقونة تتختار من القايمة.' },
+  { key: 'stats', label: 'شريط الإحصائيات', icon: BarChart3, hint: 'الشريط الملون اللي تحت الهيرو (4 خانات).' },
+  { key: 'steps', label: 'خطوات البداية (3)', icon: ListOrdered, hint: 'الخطوات الثلاثة اللي بتشرح للدكتور إزاي يبدأ.' },
+  { key: 'plans', label: 'خطط الأسعار', icon: CreditCard, hint: 'أضف أو احذف أو عدل أي خطة. السعر وشارة «الأكثر اختياراً» مشتركين بين اللغتين.' },
+];
+
+const arTime = (d: Date) => new Intl.DateTimeFormat('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' }).format(d);
+
+function formatLastSaved(iso?: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dayDiff = Math.round((startOfDay(now) - startOfDay(d)) / 86400000);
+  if (dayDiff === 0) return `اليوم ${arTime(d)}`;
+  if (dayDiff === 1) return `أمس ${arTime(d)}`;
+  const date = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { day: 'numeric', month: 'long' }).format(d);
+  return `${date} ${arTime(d)}`;
+}
+
 export default function WebsiteTab({ content, setContent, onSave, isSaving, isLoading }: WebsiteTabProps) {
   const dialogs = useDialogs();
   const [editLang, setEditLang] = useState<EditLang>('ar');
+  const [activeSection, setActiveSection] = useState<SectionKey>('hero');
   const [uploading, setUploading] = useState(false);
+  const [justSavedAt, setJustSavedAt] = useState<string | null>(null);
   const en = editLang === 'en';
   const dir = en ? 'ltr' : 'rtl';
 
@@ -141,7 +168,13 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
       return;
     }
     await onSave();
+    setJustSavedAt(new Date().toISOString());
   };
+
+  const visibleSections = SECTIONS.filter(s => !(en && s.sharedOnly));
+  const active: SectionMeta = visibleSections.find(s => s.key === activeSection)
+    || SECTIONS.find(s => s.key === 'hero')!;
+  const lastSaved = formatLastSaved(justSavedAt || content.updatedAt);
 
   if (isLoading) {
     return (
@@ -152,286 +185,334 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
     );
   }
 
-  return (
-    <div className="space-y-6" dir="rtl">
-      {/* Header */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <Globe className="h-6 w-6 text-emerald-600" />
-            محتوى الموقع التعريفي (الصفحة الرئيسية)
-          </h2>
-          <p className="text-xs text-slate-400 font-semibold mt-1">
-            كل نص وصورة ورقم تواصل وخطة أسعار في الصفحة التعريفية يتعدل من هنا — بدون أي تعديل في الكود.
-          </p>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <a href="/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-2.5 hover:bg-blue-100">
-            <ExternalLink className="h-4 w-4" />
-            معاينة الموقع
-          </a>
-          <div className="flex bg-slate-100 rounded-xl p-1 text-xs font-bold">
-            <button onClick={() => setEditLang('ar')} className={`px-4 py-2 rounded-lg transition-colors ${!en ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}>العربية</button>
-            <button onClick={() => setEditLang('en')} className={`px-4 py-2 rounded-lg transition-colors ${en ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}>English</button>
+  const renderSection = (key: SectionKey): React.ReactNode => {
+    switch (key) {
+      case 'identity':
+        return (
+          <div className="grid md:grid-cols-2 gap-4">
+            <Field label={en ? 'Brand name (EN)' : 'اسم البراند'} value={textOf('brandName')} onChange={v => setText('brandName', v)} placeholder={ph('brandName')} dir="ltr" />
+            <ImageField label="لوجو الموقع (اتركه فارغاً للوجو الافتراضي)" value={content.logoUrl} onChange={v => setShared('logoUrl', v)} uploading={uploading} setUploading={setUploading} />
           </div>
-          <button
-            onClick={handleSafeSave}
-            disabled={isSaving}
-            className="flex items-center gap-2 bg-emerald-600 text-white rounded-xl px-5 py-2.5 text-sm font-bold hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
-          >
-            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            حفظ التعديلات
-          </button>
-        </div>
-      </div>
+        );
 
-      {en && (
-        <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-2xl px-4 py-3 text-xs font-bold">
-          أنت بتعدل النسخة الإنجليزية. أي حقل تسيبه فاضي هيظهر فيه النص العربي تلقائياً.
-        </div>
-      )}
-
-      {/* Identity */}
-      <Card icon={<Type className="h-5 w-5" />} title="الهوية واللوجو">
-        <div className="grid md:grid-cols-2 gap-4">
-          <Field label={en ? 'Brand name (EN)' : 'اسم البراند'} value={textOf('brandName')} onChange={v => setText('brandName', v)} placeholder={ph('brandName')} dir="ltr" />
-          <ImageField label="لوجو الموقع (اتركه فارغاً للوجو الافتراضي)" value={content.logoUrl} onChange={v => setShared('logoUrl', v)} uploading={uploading} setUploading={setUploading} />
-        </div>
-      </Card>
-
-      {/* Hero texts */}
-      <Card icon={<LayoutGrid className="h-5 w-5" />} title={en ? 'Hero section (EN)' : 'القسم الرئيسي (الهيرو)'}>
-        <div className="grid md:grid-cols-2 gap-4">
-          <Field label="الشارة الصغيرة فوق العنوان" value={textOf('heroBadge')} onChange={v => setText('heroBadge', v)} placeholder={ph('heroBadge')} dir={dir} />
-          <div className="grid grid-cols-2 gap-3">
+      case 'hero':
+        return (
+          <div className="grid md:grid-cols-2 gap-4">
+            <Field label="الشارة الصغيرة فوق العنوان" value={textOf('heroBadge')} onChange={v => setText('heroBadge', v)} placeholder={ph('heroBadge')} dir={dir} />
             <Field label="العنوان - السطر الأول" value={textOf('heroTitleA')} onChange={v => setText('heroTitleA', v)} placeholder={ph('heroTitleA')} dir={dir} />
-            <Field label="العنوان - السطر الملوّن" value={textOf('heroTitleB')} onChange={v => setText('heroTitleB', v)} placeholder={ph('heroTitleB')} dir={dir} />
+            <Field label="العنوان - السطر الملوّن" value={textOf('heroTitleB')} onChange={v => setText('heroTitleB', v)} placeholder={ph('heroTitleB')} dir={dir} inputClassName="!text-emerald-600" />
+            <Field label="زر التجربة المجانية" value={textOf('trialButtonLabel')} onChange={v => setText('trialButtonLabel', v)} placeholder={ph('trialButtonLabel')} dir={dir} />
+            <div className="md:col-span-2">
+              <Area label="الوصف تحت العنوان" value={textOf('heroSubtitle')} onChange={v => setText('heroSubtitle', v)} placeholder={ph('heroSubtitle')} dir={dir} rows={2} />
+            </div>
+            <div className="md:col-span-2 grid md:grid-cols-4 gap-3">
+              <Field label="زر الأسعار" value={textOf('pricingButtonLabel')} onChange={v => setText('pricingButtonLabel', v)} placeholder={ph('pricingButtonLabel')} dir={dir} />
+              <Field label="نقطة الثقة 1" value={textOf('heroPoint1')} onChange={v => setText('heroPoint1', v)} placeholder={ph('heroPoint1')} dir={dir} />
+              <Field label="نقطة الثقة 2" value={textOf('heroPoint2')} onChange={v => setText('heroPoint2', v)} placeholder={ph('heroPoint2')} dir={dir} />
+              <Field label="نقطة الثقة 3" value={textOf('heroPoint3')} onChange={v => setText('heroPoint3', v)} placeholder={ph('heroPoint3')} dir={dir} />
+            </div>
+            <div className="md:col-span-2">
+              <Area label="رسالة الواتساب الجاهزة (تتبعت مع زر التجربة)" value={textOf('trialWhatsappPrefill')} onChange={v => setText('trialWhatsappPrefill', v)} placeholder={ph('trialWhatsappPrefill')} dir={dir} />
+            </div>
           </div>
-          <div className="md:col-span-2">
-            <Area label="الوصف تحت العنوان" value={textOf('heroSubtitle')} onChange={v => setText('heroSubtitle', v)} placeholder={ph('heroSubtitle')} dir={dir} rows={3} />
-          </div>
-          <Field label="زر التجربة المجانية" value={textOf('trialButtonLabel')} onChange={v => setText('trialButtonLabel', v)} placeholder={ph('trialButtonLabel')} dir={dir} />
-          <Field label="زر الأسعار" value={textOf('pricingButtonLabel')} onChange={v => setText('pricingButtonLabel', v)} placeholder={ph('pricingButtonLabel')} dir={dir} />
-          <Field label="نقطة الثقة 1" value={textOf('heroPoint1')} onChange={v => setText('heroPoint1', v)} placeholder={ph('heroPoint1')} dir={dir} />
-          <Field label="نقطة الثقة 2" value={textOf('heroPoint2')} onChange={v => setText('heroPoint2', v)} placeholder={ph('heroPoint2')} dir={dir} />
-          <Field label="نقطة الثقة 3" value={textOf('heroPoint3')} onChange={v => setText('heroPoint3', v)} placeholder={ph('heroPoint3')} dir={dir} />
-          <Area label="رسالة الواتساب الجاهزة (تتبعت مع زر التجربة)" value={textOf('trialWhatsappPrefill')} onChange={v => setText('trialWhatsappPrefill', v)} placeholder={ph('trialWhatsappPrefill')} dir={dir} />
-        </div>
-      </Card>
+        );
 
-      {/* Images */}
-      {!en && (
-        <Card icon={<ImageIcon className="h-5 w-5" />} title="صور الصفحة" hint="صور حقيقية من النظام بتظهر في الصفحة التعريفية — ارفع أي صورة جديدة أو حط رابط مباشر.">
-          <div className="grid md:grid-cols-3 gap-4">
+      case 'images':
+        return (
+          <div className="grid md:grid-cols-2 gap-4">
             <ImageField label="الصورة الرئيسية (بجانب العنوان)" value={content.heroImageUrl} onChange={v => setShared('heroImageUrl', v)} uploading={uploading} setUploading={setUploading} />
             <ImageField label="صورة مخطط الأسنان" value={content.chartImageUrl} onChange={v => setShared('chartImageUrl', v)} uploading={uploading} setUploading={setUploading} />
             <ImageField label="صورة الحسابات" value={content.financeImageUrl} onChange={v => setShared('financeImageUrl', v)} uploading={uploading} setUploading={setUploading} />
           </div>
-        </Card>
-      )}
+        );
 
-      {/* Contact */}
-      {!en && (
-        <Card icon={<Phone className="h-5 w-5" />} title="أرقام وروابط التواصل" hint="رقم الواتساب هو اللي بيفتح لما الزائر يدوس على زر التجربة المجانية أو أزرار الخطط.">
-          <div className="grid md:grid-cols-3 gap-4">
+      case 'contact':
+        return (
+          <div className="grid md:grid-cols-2 gap-4">
             <Field label="رقم الواتساب (بكود الدولة، بدون +)" value={content.whatsappNumber} onChange={v => setShared('whatsappNumber', v)} placeholder="2010XXXXXXXX" dir="ltr" />
             <Field label="رابط مجتمع واتساب (اختياري)" value={content.whatsappCommunityUrl} onChange={v => setShared('whatsappCommunityUrl', v)} placeholder="https://chat.whatsapp.com/..." dir="ltr" />
             <Field label="رابط صفحة فيسبوك (اختياري)" value={content.facebookUrl} onChange={v => setShared('facebookUrl', v)} placeholder="https://facebook.com/..." dir="ltr" />
           </div>
-        </Card>
-      )}
+        );
 
-      {/* Nav / sections titles / CTA / footer */}
-      <Card icon={<Type className="h-5 w-5" />} title={en ? 'Nav, section titles, CTA & footer (EN)' : 'الهيدر وعناوين الأقسام والفوتر'}>
-        <div className="grid md:grid-cols-3 gap-4">
-          <Field label="رابط: المميزات" value={textOf('navFeatures')} onChange={v => setText('navFeatures', v)} placeholder={ph('navFeatures')} dir={dir} />
-          <Field label="رابط: إزاي بيشتغل" value={textOf('navHow')} onChange={v => setText('navHow', v)} placeholder={ph('navHow')} dir={dir} />
-          <Field label="رابط: الأسعار" value={textOf('navPricing')} onChange={v => setText('navPricing', v)} placeholder={ph('navPricing')} dir={dir} />
-          <Field label="رابط: تواصل معنا" value={textOf('navContact')} onChange={v => setText('navContact', v)} placeholder={ph('navContact')} dir={dir} />
-          <Field label="زر تسجيل الدخول" value={textOf('loginLabel')} onChange={v => setText('loginLabel', v)} placeholder={ph('loginLabel')} dir={dir} />
-          <div></div>
-          <Field label="عنوان صغير: المميزات" value={textOf('featuresKicker')} onChange={v => setText('featuresKicker', v)} placeholder={ph('featuresKicker')} dir={dir} />
-          <Field label="عنوان: المميزات" value={textOf('featuresTitle')} onChange={v => setText('featuresTitle', v)} placeholder={ph('featuresTitle')} dir={dir} />
-          <Area label="وصف: المميزات" value={textOf('featuresSubtitle')} onChange={v => setText('featuresSubtitle', v)} placeholder={ph('featuresSubtitle')} dir={dir} />
-          <Field label="عنوان صغير: الخطوات" value={textOf('stepsKicker')} onChange={v => setText('stepsKicker', v)} placeholder={ph('stepsKicker')} dir={dir} />
-          <Field label="عنوان: الخطوات" value={textOf('stepsTitle')} onChange={v => setText('stepsTitle', v)} placeholder={ph('stepsTitle')} dir={dir} />
-          <div></div>
-          <Field label="عنوان صغير: الأسعار" value={textOf('pricingKicker')} onChange={v => setText('pricingKicker', v)} placeholder={ph('pricingKicker')} dir={dir} />
-          <Field label="عنوان: الأسعار" value={textOf('pricingTitle')} onChange={v => setText('pricingTitle', v)} placeholder={ph('pricingTitle')} dir={dir} />
-          <Area label="وصف: الأسعار" value={textOf('pricingSubtitle')} onChange={v => setText('pricingSubtitle', v)} placeholder={ph('pricingSubtitle')} dir={dir} />
-          <Field label="عنوان الـ CTA الكبير" value={textOf('ctaTitle')} onChange={v => setText('ctaTitle', v)} placeholder={ph('ctaTitle')} dir={dir} />
-          <Area label="وصف الـ CTA" value={textOf('ctaSubtitle')} onChange={v => setText('ctaSubtitle', v)} placeholder={ph('ctaSubtitle')} dir={dir} />
-          <div></div>
-          <Field label="زر CTA: التجربة" value={textOf('ctaTrialLabel')} onChange={v => setText('ctaTrialLabel', v)} placeholder={ph('ctaTrialLabel')} dir={dir} />
-          <Field label="زر CTA: تسجيل الدخول" value={textOf('ctaLoginLabel')} onChange={v => setText('ctaLoginLabel', v)} placeholder={ph('ctaLoginLabel')} dir={dir} />
-          <div></div>
-          <Field label="فوتر: رابط مجتمع واتساب" value={textOf('footerCommunityLabel')} onChange={v => setText('footerCommunityLabel', v)} placeholder={ph('footerCommunityLabel')} dir={dir} />
-          <Field label="فوتر: رابط فيسبوك" value={textOf('footerFacebookLabel')} onChange={v => setText('footerFacebookLabel', v)} placeholder={ph('footerFacebookLabel')} dir={dir} />
-          <Field label="فوتر: الأسئلة الشائعة" value={textOf('footerFaqLabel')} onChange={v => setText('footerFaqLabel', v)} placeholder={ph('footerFaqLabel')} dir={dir} />
-          <div className="md:col-span-3">
-            <Area label="سطر الحقوق في الفوتر" value={textOf('footerCopyright')} onChange={v => setText('footerCopyright', v)} placeholder={ph('footerCopyright')} dir={dir} />
+      case 'headerSections':
+        return (
+          <div className="grid md:grid-cols-2 gap-4">
+            <Field label="رابط: المميزات" value={textOf('navFeatures')} onChange={v => setText('navFeatures', v)} placeholder={ph('navFeatures')} dir={dir} />
+            <Field label="رابط: إزاي بيشتغل" value={textOf('navHow')} onChange={v => setText('navHow', v)} placeholder={ph('navHow')} dir={dir} />
+            <Field label="رابط: الأسعار" value={textOf('navPricing')} onChange={v => setText('navPricing', v)} placeholder={ph('navPricing')} dir={dir} />
+            <Field label="رابط: تواصل معنا" value={textOf('navContact')} onChange={v => setText('navContact', v)} placeholder={ph('navContact')} dir={dir} />
+            <Field label="زر تسجيل الدخول" value={textOf('loginLabel')} onChange={v => setText('loginLabel', v)} placeholder={ph('loginLabel')} dir={dir} />
+            <div className="hidden md:block"></div>
+            <Field label="عنوان صغير: المميزات" value={textOf('featuresKicker')} onChange={v => setText('featuresKicker', v)} placeholder={ph('featuresKicker')} dir={dir} />
+            <Field label="عنوان: المميزات" value={textOf('featuresTitle')} onChange={v => setText('featuresTitle', v)} placeholder={ph('featuresTitle')} dir={dir} />
+            <div className="md:col-span-2">
+              <Area label="وصف: المميزات" value={textOf('featuresSubtitle')} onChange={v => setText('featuresSubtitle', v)} placeholder={ph('featuresSubtitle')} dir={dir} />
+            </div>
+            <Field label="عنوان صغير: الخطوات" value={textOf('stepsKicker')} onChange={v => setText('stepsKicker', v)} placeholder={ph('stepsKicker')} dir={dir} />
+            <Field label="عنوان: الخطوات" value={textOf('stepsTitle')} onChange={v => setText('stepsTitle', v)} placeholder={ph('stepsTitle')} dir={dir} />
+            <Field label="عنوان صغير: الأسعار" value={textOf('pricingKicker')} onChange={v => setText('pricingKicker', v)} placeholder={ph('pricingKicker')} dir={dir} />
+            <Field label="عنوان: الأسعار" value={textOf('pricingTitle')} onChange={v => setText('pricingTitle', v)} placeholder={ph('pricingTitle')} dir={dir} />
+            <div className="md:col-span-2">
+              <Area label="وصف: الأسعار" value={textOf('pricingSubtitle')} onChange={v => setText('pricingSubtitle', v)} placeholder={ph('pricingSubtitle')} dir={dir} />
+            </div>
+            <Field label="عنوان الـ CTA الكبير" value={textOf('ctaTitle')} onChange={v => setText('ctaTitle', v)} placeholder={ph('ctaTitle')} dir={dir} />
+            <Field label="زر CTA: التجربة" value={textOf('ctaTrialLabel')} onChange={v => setText('ctaTrialLabel', v)} placeholder={ph('ctaTrialLabel')} dir={dir} />
+            <div className="md:col-span-2">
+              <Area label="وصف الـ CTA" value={textOf('ctaSubtitle')} onChange={v => setText('ctaSubtitle', v)} placeholder={ph('ctaSubtitle')} dir={dir} />
+            </div>
+            <Field label="زر CTA: تسجيل الدخول" value={textOf('ctaLoginLabel')} onChange={v => setText('ctaLoginLabel', v)} placeholder={ph('ctaLoginLabel')} dir={dir} />
+            <div className="hidden md:block"></div>
+            <Field label="فوتر: رابط مجتمع واتساب" value={textOf('footerCommunityLabel')} onChange={v => setText('footerCommunityLabel', v)} placeholder={ph('footerCommunityLabel')} dir={dir} />
+            <Field label="فوتر: رابط فيسبوك" value={textOf('footerFacebookLabel')} onChange={v => setText('footerFacebookLabel', v)} placeholder={ph('footerFacebookLabel')} dir={dir} />
+            <Field label="فوتر: الأسئلة الشائعة" value={textOf('footerFaqLabel')} onChange={v => setText('footerFaqLabel', v)} placeholder={ph('footerFaqLabel')} dir={dir} />
+            <div className="md:col-span-2">
+              <Area label="سطر الحقوق في الفوتر" value={textOf('footerCopyright')} onChange={v => setText('footerCopyright', v)} placeholder={ph('footerCopyright')} dir={dir} />
+            </div>
+          </div>
+        );
+
+      case 'features':
+        return (
+          <div className="space-y-3">
+            {content.features.map((f: LandingFeature) => (
+              <div key={f.id} className="grid md:grid-cols-[140px_1fr_2fr_auto] gap-3 items-end border border-slate-100 rounded-xl p-3 bg-slate-50/50">
+                {!en ? (
+                  <div>
+                    <label className={labelCls}>الأيقونة</label>
+                    <select
+                      className={inputCls}
+                      value={f.icon}
+                      onChange={e => setContent(prev => ({ ...prev, features: prev.features.map(x => x.id === f.id ? { ...x, icon: e.target.value } : x) }))}
+                    >
+                      {LANDING_ICON_OPTIONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
+                    </select>
+                  </div>
+                ) : <div></div>}
+                <Field label="العنوان" value={itemText(f, 'title')} onChange={v => setListText('features', f.id, 'title', v)} placeholder={en ? `العربي: ${f.ar.title}` : undefined} dir={dir} />
+                <Area label="الوصف" value={itemText(f, 'desc')} onChange={v => setListText('features', f.id, 'desc', v)} placeholder={en ? `العربي: ${f.ar.desc}` : undefined} dir={dir} />
+                {!en && (
+                  <button
+                    onClick={() => setContent(prev => ({ ...prev, features: prev.features.filter(x => x.id !== f.id) }))}
+                    className="text-red-500 hover:bg-red-50 rounded-lg p-2.5"
+                    title="حذف الميزة"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+            {!en && (
+              <button
+                onClick={() => setContent(prev => ({
+                  ...prev,
+                  features: [...prev.features, { id: 'f_' + Date.now(), icon: 'check', ar: { title: 'ميزة جديدة', desc: '' }, en: { title: '', desc: '' } }]
+                }))}
+                className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 text-xs font-bold hover:bg-emerald-100"
+              >
+                <Plus className="h-4 w-4" />
+                إضافة ميزة جديدة
+              </button>
+            )}
+          </div>
+        );
+
+      case 'stats':
+        return (
+          <div className="grid md:grid-cols-2 gap-3">
+            {content.stats.map(s => (
+              <div key={s.id} className="grid grid-cols-[1fr_2fr] gap-3 border border-slate-100 rounded-xl p-3 bg-slate-50/50">
+                <Field label="القيمة" value={itemText(s, 'value')} onChange={v => setListText('stats', s.id, 'value', v)} placeholder={en ? `العربي: ${s.ar.value}` : undefined} dir={dir} />
+                <Area label="الوصف" value={itemText(s, 'label')} onChange={v => setListText('stats', s.id, 'label', v)} placeholder={en ? `العربي: ${s.ar.label}` : undefined} dir={dir} />
+              </div>
+            ))}
+          </div>
+        );
+
+      case 'steps':
+        return (
+          <div className="grid md:grid-cols-3 gap-3">
+            {content.steps.map((s, i) => (
+              <div key={s.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 space-y-3">
+                <div className="text-xs font-black text-slate-400">الخطوة {i + 1}</div>
+                <Field label="العنوان" value={itemText(s, 'title')} onChange={v => setListText('steps', s.id, 'title', v)} placeholder={en ? `العربي: ${s.ar.title}` : undefined} dir={dir} />
+                <Area label="الوصف" value={itemText(s, 'desc')} onChange={v => setListText('steps', s.id, 'desc', v)} placeholder={en ? `العربي: ${s.ar.desc}` : undefined} dir={dir} />
+              </div>
+            ))}
+          </div>
+        );
+
+      case 'plans':
+        return (
+          <div className="space-y-4">
+            {content.plans.map((p: LandingPlan) => (
+              <div key={p.id} className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50">
+                <div className="grid md:grid-cols-4 gap-3 mb-3">
+                  <Field label="اسم الخطة" value={itemText(p, 'name')} onChange={v => setListText('plans', p.id, 'name', v)} placeholder={en ? `العربي: ${p.ar.name}` : undefined} dir={dir} />
+                  <Area label="وصف قصير" value={itemText(p, 'desc')} onChange={v => setListText('plans', p.id, 'desc', v)} placeholder={en ? `العربي: ${p.ar.desc}` : undefined} dir={dir} />
+                  {!en ? (
+                    <Field label="السعر (رقم)" value={p.price} onChange={v => setContent(prev => ({ ...prev, plans: prev.plans.map(x => x.id === p.id ? { ...x, price: v } : x) }))} dir="ltr" />
+                  ) : <div></div>}
+                  <Field label="مدة السعر (مثال: ج.م / شهرياً)" value={itemText(p, 'period')} onChange={v => setListText('plans', p.id, 'period', v)} placeholder={en ? `العربي: ${p.ar.period}` : undefined} dir={dir} />
+                </div>
+                <div className="grid md:grid-cols-[1fr_220px] gap-3">
+                  <Area
+                    label="المميزات (سطر لكل ميزة)"
+                    value={(() => {
+                      const feats = en ? (p.en?.features ?? []) : p.ar.features;
+                      return Array.isArray(feats) ? feats.join('\n') : '';
+                    })()}
+                    // Keep unfinished lines/spaces while typing; trimming here eats Enter and Space.
+                    onChange={v => setListText('plans', p.id, 'features', v === '' ? [] : v.split('\n'))}
+                    rows={4}
+                    placeholder={en ? 'اتركها فارغة لاستخدام القائمة العربية' : 'ميزة في كل سطر'}
+                    dir={dir}
+                  />
+                  <div className="space-y-3">
+                    <Field label="نص الزر" value={itemText(p, 'buttonLabel')} onChange={v => setListText('plans', p.id, 'buttonLabel', v)} placeholder={en ? `العربي: ${p.ar.buttonLabel}` : undefined} dir={dir} />
+                    {!en && (
+                      <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={p.popular}
+                          onChange={e => setContent(prev => ({ ...prev, plans: prev.plans.map(x => x.id === p.id ? { ...x, popular: e.target.checked } : x) }))}
+                          className="w-4 h-4 accent-emerald-600"
+                        />
+                        خطة مميزة «الأكثر اختياراً»
+                      </label>
+                    )}
+                    {!en && (
+                      <button
+                        onClick={() => {
+                          if (content.plans.length <= 1) {
+                            dialogs.alert('لازم تفضل خطة واحدة على الأقل في الصفحة.', { severity: 'warning' });
+                            return;
+                          }
+                          setContent(prev => ({ ...prev, plans: prev.plans.filter(x => x.id !== p.id) }));
+                        }}
+                        className="flex items-center gap-1.5 text-red-500 text-xs font-bold hover:bg-red-50 rounded-lg px-2.5 py-2"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        حذف الخطة
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!en && (
+              <button
+                onClick={() => setContent(prev => ({
+                  ...prev,
+                  plans: [...prev.plans, {
+                    id: 'p_' + Date.now(),
+                    price: '0',
+                    popular: false,
+                    ar: { name: 'خطة جديدة', desc: '', period: 'ج.م / شهرياً', features: [], buttonLabel: 'ابدأ التجربة المجانية' },
+                    en: { name: '', desc: '', period: '', features: [], buttonLabel: '' }
+                  }]
+                }))}
+                className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 text-xs font-bold hover:bg-emerald-100"
+              >
+                <Plus className="h-4 w-4" />
+                إضافة خطة جديدة
+              </button>
+            )}
+          </div>
+        );
+    }
+  };
+
+  const ActiveIcon = active.icon;
+
+  return (
+    <div className="space-y-6" dir="rtl">
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        {/* Sections sidebar (right in RTL) */}
+        <aside className="w-full lg:w-72 shrink-0 lg:sticky lg:top-4 space-y-3">
+          {/* Language toggle */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setEditLang('ar')}
+              className={`rounded-xl px-4 py-2.5 text-sm font-bold border transition-colors ${!en ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-slate-700'}`}
+            >
+              العربية
+            </button>
+            <button
+              onClick={() => setEditLang('en')}
+              className={`rounded-xl px-4 py-2.5 text-sm font-bold border transition-colors ${en ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm' : 'bg-white border-slate-200 text-slate-500 hover:border-emerald-300 hover:text-slate-700'}`}
+            >
+              English
+            </button>
+          </div>
+
+          {en && (
+            <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-2xl px-4 py-3 text-xs font-bold">
+              أنت بتعدل النسخة الإنجليزية. أي حقل تسيبه فاضي هيظهر فيه النص العربي تلقائياً.
+            </div>
+          )}
+
+          {/* Section list */}
+          <nav className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm grid grid-cols-2 lg:grid-cols-1 gap-2">
+            {visibleSections.map(s => {
+              const Icon = s.icon;
+              const isActive = s.key === active.key;
+              return (
+                <button
+                  key={s.key}
+                  onClick={() => setActiveSection(s.key)}
+                  className={`flex items-center justify-between gap-2 rounded-xl border px-3.5 py-3 text-xs font-bold transition-colors ${isActive ? 'bg-emerald-50 border-emerald-300 text-emerald-700' : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-200 hover:text-slate-800'}`}
+                >
+                  <span>{s.label}</span>
+                  <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-emerald-600' : 'text-slate-400'}`} />
+                </button>
+              );
+            })}
+          </nav>
+
+          <a
+            href="/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-2.5 hover:bg-blue-100"
+          >
+            <ExternalLink className="h-4 w-4" />
+            معاينة الموقع
+          </a>
+        </aside>
+
+        {/* Active section card */}
+        <div className="flex-1 min-w-0 w-full">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2 mb-1">
+              <span className="text-emerald-600"><ActiveIcon className="h-5 w-5" /></span>
+              {active.label}
+            </h3>
+            {active.hint && <p className="text-[11px] text-slate-400 font-semibold mb-4">{active.hint}</p>}
+            {!active.hint && <div className="mb-4"></div>}
+            {renderSection(active.key)}
           </div>
         </div>
-      </Card>
+      </div>
 
-      {/* Features */}
-      <Card icon={<LayoutGrid className="h-5 w-5" />} title={en ? 'Feature cards (EN)' : 'بطاقات المميزات'} hint={en ? undefined : 'أضف أو احذف أو عدل أي ميزة. الأيقونة تتختار من القايمة.'}>
-        <div className="space-y-3">
-          {content.features.map((f: LandingFeature) => (
-            <div key={f.id} className="grid md:grid-cols-[140px_1fr_2fr_auto] gap-3 items-end border border-slate-100 rounded-xl p-3 bg-slate-50/50">
-              {!en ? (
-                <div>
-                  <label className={labelCls}>الأيقونة</label>
-                  <select
-                    className={inputCls}
-                    value={f.icon}
-                    onChange={e => setContent(prev => ({ ...prev, features: prev.features.map(x => x.id === f.id ? { ...x, icon: e.target.value } : x) }))}
-                  >
-                    {LANDING_ICON_OPTIONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
-                  </select>
-                </div>
-              ) : <div></div>}
-              <Field label="العنوان" value={itemText(f, 'title')} onChange={v => setListText('features', f.id, 'title', v)} placeholder={en ? `العربي: ${f.ar.title}` : undefined} dir={dir} />
-              <Area label="الوصف" value={itemText(f, 'desc')} onChange={v => setListText('features', f.id, 'desc', v)} placeholder={en ? `العربي: ${f.ar.desc}` : undefined} dir={dir} />
-              {!en && (
-                <button
-                  onClick={() => setContent(prev => ({ ...prev, features: prev.features.filter(x => x.id !== f.id) }))}
-                  className="text-red-500 hover:bg-red-50 rounded-lg p-2.5"
-                  title="حذف الميزة"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          ))}
-          {!en && (
-            <button
-              onClick={() => setContent(prev => ({
-                ...prev,
-                features: [...prev.features, { id: 'f_' + Date.now(), icon: 'check', ar: { title: 'ميزة جديدة', desc: '' }, en: { title: '', desc: '' } }]
-              }))}
-              className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 text-xs font-bold hover:bg-emerald-100"
-            >
-              <Plus className="h-4 w-4" />
-              إضافة ميزة جديدة
-            </button>
-          )}
+      {/* Sticky save bar */}
+      <div className="sticky bottom-4 z-20">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-lg px-5 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <button
+            onClick={handleSafeSave}
+            disabled={isSaving}
+            className="flex items-center gap-2 bg-emerald-600 text-white rounded-xl px-6 py-3 text-sm font-bold hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
+          >
+            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            حفظ محتوى الموقع
+          </button>
+          <p className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5" />
+            {lastSaved
+              ? `آخر حفظ: ${lastSaved} — التعديلات تظهر فوراً على الصفحة الرئيسية`
+              : 'التعديلات تظهر فوراً على الصفحة الرئيسية بعد الحفظ'}
+          </p>
         </div>
-      </Card>
-
-      {/* Stats */}
-      <Card icon={<BarChart3 className="h-5 w-5" />} title={en ? 'Stats strip (EN)' : 'شريط الإحصائيات'} hint={en ? undefined : 'الشريط الملون اللي تحت الهيرو (4 خانات).'}>
-        <div className="grid md:grid-cols-2 gap-3">
-          {content.stats.map(s => (
-            <div key={s.id} className="grid grid-cols-[1fr_2fr] gap-3 border border-slate-100 rounded-xl p-3 bg-slate-50/50">
-              <Field label="القيمة" value={itemText(s, 'value')} onChange={v => setListText('stats', s.id, 'value', v)} placeholder={en ? `العربي: ${s.ar.value}` : undefined} dir={dir} />
-              <Area label="الوصف" value={itemText(s, 'label')} onChange={v => setListText('stats', s.id, 'label', v)} placeholder={en ? `العربي: ${s.ar.label}` : undefined} dir={dir} />
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {/* Steps */}
-      <Card icon={<ListOrdered className="h-5 w-5" />} title={en ? 'Steps (EN)' : 'خطوات البداية (3)'}>
-        <div className="grid md:grid-cols-3 gap-3">
-          {content.steps.map((s, i) => (
-            <div key={s.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50/50 space-y-3">
-              <div className="text-xs font-black text-slate-400">الخطوة {i + 1}</div>
-              <Field label="العنوان" value={itemText(s, 'title')} onChange={v => setListText('steps', s.id, 'title', v)} placeholder={en ? `العربي: ${s.ar.title}` : undefined} dir={dir} />
-              <Area label="الوصف" value={itemText(s, 'desc')} onChange={v => setListText('steps', s.id, 'desc', v)} placeholder={en ? `العربي: ${s.ar.desc}` : undefined} dir={dir} />
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {/* Plans */}
-      <Card icon={<CreditCard className="h-5 w-5" />} title={en ? 'Pricing plans (EN)' : 'خطط الأسعار'} hint={en ? 'Prices and the popular badge are shared between languages; here you edit the English copy.' : 'أضف أو احذف أو عدل أي خطة. السعر وشارة «الأكثر اختياراً» مشتركين بين اللغتين.'}>
-        <div className="space-y-4">
-          {content.plans.map((p: LandingPlan) => (
-            <div key={p.id} className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50">
-              <div className="grid md:grid-cols-4 gap-3 mb-3">
-                <Field label="اسم الخطة" value={itemText(p, 'name')} onChange={v => setListText('plans', p.id, 'name', v)} placeholder={en ? `العربي: ${p.ar.name}` : undefined} dir={dir} />
-                <Area label="وصف قصير" value={itemText(p, 'desc')} onChange={v => setListText('plans', p.id, 'desc', v)} placeholder={en ? `العربي: ${p.ar.desc}` : undefined} dir={dir} />
-                {!en ? (
-                  <Field label="السعر (رقم)" value={p.price} onChange={v => setContent(prev => ({ ...prev, plans: prev.plans.map(x => x.id === p.id ? { ...x, price: v } : x) }))} dir="ltr" />
-                ) : <div></div>}
-                <Field label="مدة السعر (مثال: ج.م / شهرياً)" value={itemText(p, 'period')} onChange={v => setListText('plans', p.id, 'period', v)} placeholder={en ? `العربي: ${p.ar.period}` : undefined} dir={dir} />
-              </div>
-              <div className="grid md:grid-cols-[1fr_220px] gap-3">
-                <Area
-                  label="المميزات (سطر لكل ميزة)"
-                  value={(() => {
-                    const feats = en ? (p.en?.features ?? []) : p.ar.features;
-                    return Array.isArray(feats) ? feats.join('\n') : '';
-                  })()}
-                  // Keep unfinished lines/spaces while typing; trimming here eats Enter and Space.
-                  onChange={v => setListText('plans', p.id, 'features', v === '' ? [] : v.split('\n'))}
-                  rows={4}
-                  placeholder={en ? 'اتركها فارغة لاستخدام القائمة العربية' : 'ميزة في كل سطر'}
-                  dir={dir}
-                />
-                <div className="space-y-3">
-                  <Field label="نص الزر" value={itemText(p, 'buttonLabel')} onChange={v => setListText('plans', p.id, 'buttonLabel', v)} placeholder={en ? `العربي: ${p.ar.buttonLabel}` : undefined} dir={dir} />
-                  {!en && (
-                    <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={p.popular}
-                        onChange={e => setContent(prev => ({ ...prev, plans: prev.plans.map(x => x.id === p.id ? { ...x, popular: e.target.checked } : x) }))}
-                        className="w-4 h-4 accent-emerald-600"
-                      />
-                      خطة مميزة «الأكثر اختياراً»
-                    </label>
-                  )}
-                  {!en && (
-                    <button
-                      onClick={() => {
-                        if (content.plans.length <= 1) {
-                          dialogs.alert('لازم تفضل خطة واحدة على الأقل في الصفحة.', { severity: 'warning' });
-                          return;
-                        }
-                        setContent(prev => ({ ...prev, plans: prev.plans.filter(x => x.id !== p.id) }));
-                      }}
-                      className="flex items-center gap-1.5 text-red-500 text-xs font-bold hover:bg-red-50 rounded-lg px-2.5 py-2"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      حذف الخطة
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-          {!en && (
-            <button
-              onClick={() => setContent(prev => ({
-                ...prev,
-                plans: [...prev.plans, {
-                  id: 'p_' + Date.now(),
-                  price: '0',
-                  popular: false,
-                  ar: { name: 'خطة جديدة', desc: '', period: 'ج.م / شهرياً', features: [], buttonLabel: 'ابدأ التجربة المجانية' },
-                  en: { name: '', desc: '', period: '', features: [], buttonLabel: '' }
-                }]
-              }))}
-              className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 text-xs font-bold hover:bg-emerald-100"
-            >
-              <Plus className="h-4 w-4" />
-              إضافة خطة جديدة
-            </button>
-          )}
-        </div>
-      </Card>
-
-      <div className="flex justify-end pb-4">
-        <button
-          onClick={handleSafeSave}
-          disabled={isSaving}
-          className="flex items-center gap-2 bg-emerald-600 text-white rounded-xl px-7 py-3 text-sm font-bold hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
-        >
-          {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          حفظ التعديلات
-        </button>
       </div>
     </div>
   );
