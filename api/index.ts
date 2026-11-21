@@ -289,6 +289,11 @@ function sanitizeUserRecord(item: any): any {
   return u;
 }
 
+// Query-constraint field names are interpolated into SQL; only plain identifiers are safe
+function isSafeFieldName(field: any): boolean {
+  return typeof field === 'string' && /^[a-zA-Z0-9_]+$/.test(field);
+}
+
 // ---- Write-time secret protection for the clinics table ----
 // Hashes any new plaintext password/PIN, and preserves existing stored secrets
 // when the client (which can no longer read them) writes a record without them.
@@ -2328,6 +2333,9 @@ app.post('/api/db', async (req, res) => {
       if (Array.isArray(constraints)) {
         for (const c of constraints) {
           if (c.type === 'orderBy') {
+            if (!isSafeFieldName(c.field)) {
+              return res.status(400).send('Invalid orderBy field');
+            }
             orderByField = c.field;
             orderByDirection = c.direction === 'desc' ? 'desc' : 'asc';
           } else if (c.type === 'startAfter') {
@@ -2404,6 +2412,9 @@ app.post('/api/db', async (req, res) => {
         for (const c of constraints) {
           if (c.type === 'where') {
             const field = c.field;
+            if (!isSafeFieldName(field)) {
+              return res.status(400).send('Invalid where field');
+            }
             const op = c.op;
             const value = c.value;
             
@@ -2430,6 +2441,9 @@ app.post('/api/db', async (req, res) => {
               args.push(value);
             }
           } else if (c.type === 'orderBy') {
+            if (!isSafeFieldName(c.field)) {
+              return res.status(400).send('Invalid orderBy field');
+            }
             const columns = tableSchemas[tableName] || [];
             const isColumn = columns.some(col => col.name.toLowerCase() === c.field.toLowerCase());
             const orderCol = isColumn ? c.field : `json_extract(data, '$.${c.field}')`;
@@ -2466,6 +2480,7 @@ app.post('/api/db', async (req, res) => {
       // Never leak credentials to clients
       if (tableName === 'clinics') items = items.map((it: any) => sanitizeClinicRecord(it));
       if (tableName === 'users') items = items.map((it: any) => sanitizeUserRecord(it));
+      if (tableName === 'system_settings') items = items.filter((it: any) => it && it.id !== 'auth_secret');
       return res.json(items);
     }
     
