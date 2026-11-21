@@ -405,6 +405,12 @@ async function migrateClinicSecrets(clinicRowId: string, clinic: any): Promise<v
 
 // ---- Per-request authorization for the generic /api/db router ----
 // Returns null when allowed, otherwise an HTTP status code to send.
+// The auth secret document can be named through several request fields
+// (id, path, data.id). Every one of them must be checked, not just one.
+function touchesAuthSecret(...candidates: any[]): boolean {
+  return candidates.some(c => String(c ?? '').trim() === 'auth_secret');
+}
+
 function authorizeDbAction(auth: AuthInfo | null, action: string, tableName: string, clinicId: string | null, docId: string | null): number | null {
   if (!auth) return 401;
 
@@ -420,6 +426,14 @@ function authorizeDbAction(auth: AuthInfo | null, action: string, tableName: str
   }
 
   if (auth.type === 'admin') return null;
+
+  // system_settings (landing page content, plans, support info, auth secret) is
+  // global: clinic users may only read a single document, from any path shape,
+  // and can never write, list or delete it. A clinic-scoped path such as
+  // clinics/<id>/system_settings must not bypass this.
+  if (tableName === 'system_settings') {
+    return action === 'getDoc' ? null : 403;
+  }
 
   // Global tables without clinic scope: authenticated read-only for clinic users
   const GLOBAL_TABLES = ['system_settings', 'announcements', 'files'];
@@ -2360,6 +2374,9 @@ app.post('/api/db', async (req, res) => {
   // ---- Authentication & per-clinic authorization ----
   const auth = await getRequestAuth(req);
   const requestedDocId = id || docId;
+  if (tableName === 'system_settings' && touchesAuthSecret(id, docId, data?.id, data?.docId)) {
+    return res.status(403).json({ error: 'forbidden', message: 'غير مصرح لك بالوصول إلى هذه البيانات' });
+  }
   // Public exceptions (read-only, logged out): the login screen reads support contact info, and the public landing page reads its editable content
   const isPublicSupportRead = action === 'getDoc' && tableName === 'system_settings' && String(requestedDocId || '') === 'support';
   const isPublicLandingRead = action === 'getDoc' && tableName === 'system_settings' && String(requestedDocId || '') === 'landing_page';
@@ -2889,6 +2906,10 @@ app.post('/api/db/batch', async (req, res) => {
       continue;
     }
 
+    if (tableName === 'system_settings' && touchesAuthSecret(docId, parsedDocId, data?.id, data?.docId)) {
+      errors.push({ itemId, error: 'forbidden' });
+      continue;
+    }
     const itemAuthError = authorizeDbAction(auth, action, tableName, clinicId, (docId || parsedDocId || data?.id) ? String(docId || parsedDocId || data?.id) : null);
     if (itemAuthError) {
       errors.push({ itemId, error: itemAuthError === 401 ? 'authentication_required' : 'forbidden' });
@@ -3208,6 +3229,30 @@ if (!fs.existsSync(uploadsFolder)) {
 // Local uploads are served through the authenticated /api/files endpoint only.
 // (Direct static serving of /uploads was removed so patient files are never public.)
 
+// ---- Upload validation: images and PDFs only, checked by content, size-capped ----
+const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
+const UPLOAD_TYPES: Record<string, { mime: string; ok: (b: Buffer) => boolean }> = {
+  '.png':  { mime: 'image/png',  ok: b => b.length > 8 && b.slice(0, 8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])) },
+  '.jpg':  { mime: 'image/jpeg', ok: b => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  '.jpeg': { mime: 'image/jpeg', ok: b => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  '.gif':  { mime: 'image/gif',  ok: b => b.length > 6 && ['GIF87a', 'GIF89a'].includes(b.slice(0, 6).toString('latin1')) },
+  '.webp': { mime: 'image/webp', ok: b => b.length > 12 && b.slice(0, 4).toString('latin1') === 'RIFF' && b.slice(8, 12).toString('latin1') === 'WEBP' },
+  '.bmp':  { mime: 'image/bmp',  ok: b => b.length > 2 && b.slice(0, 2).toString('latin1') === 'BM' },
+  '.heic': { mime: 'image/heic', ok: b => b.length > 12 && b.slice(4, 8).toString('latin1') === 'ftyp' },
+  '.heif': { mime: 'image/heif', ok: b => b.length > 12 && b.slice(4, 8).toString('latin1') === 'ftyp' },
+  '.avif': { mime: 'image/avif', ok: b => b.length > 12 && b.slice(4, 8).toString('latin1') === 'ftyp' },
+  '.pdf':  { mime: 'application/pdf', ok: b => b.length > 5 && b.slice(0, 5).toString('latin1') === '%PDF-' },
+};
+// Returns the trusted mime type, or null when the file is not an allowed type.
+function validateUploadedFile(name: string, data: Buffer | undefined, size: number): { mime: string } | { error: string } {
+  if (!data || !size) return { error: 'empty_file' };
+  if (size > MAX_UPLOAD_BYTES) return { error: 'file_too_large' };
+  const rule = UPLOAD_TYPES[path.extname(String(name || '')).toLowerCase()];
+  if (!rule) return { error: 'file_type_not_allowed' };
+  if (!rule.ok(data)) return { error: 'file_content_does_not_match_type' };
+  return { mime: rule.mime };
+}
+
 // Resolve which clinic an upload belongs to. Non-admin callers can only upload
 // into their own clinic: a mismatched requested clinicId is rejected instead of
 // trusted, and the stored ownership always comes from the authenticated token.
@@ -3250,7 +3295,9 @@ app.post('/api/get-upload-url', async (req, res) => {
     const { fileName, fileType, folder, category, clinicId } = req.body || {};
     const owner = resolveUploadClinicId(auth, clinicId);
     if ('errorStatus' in owner) return res.status(owner.errorStatus).json({ error: 'forbidden' });
-    const contentType = fileType || 'application/octet-stream';
+    const presignRule = UPLOAD_TYPES[path.extname(String(fileName || '')).toLowerCase()];
+    if (!presignRule) return res.status(400).json({ error: 'file_type_not_allowed' });
+    const contentType = presignRule.mime;
     const fileKey = buildR2FileKey(owner.clinicId, category, folder, fileName);
     const { client, bucketName, publicUrlBase } = getR2ClientConfig();
 
@@ -3280,7 +3327,9 @@ app.get('/api/get-upload-url', async (req, res) => {
   if (!auth) return res.status(401).json({ error: 'authentication_required' });
   try {
     const fileName = req.query.fileName as string;
-    const fileType = (req.query.fileType as string) || 'application/octet-stream';
+    const getRule = UPLOAD_TYPES[path.extname(String(fileName || '')).toLowerCase()];
+    if (!getRule) return res.status(400).json({ error: 'file_type_not_allowed' });
+    const fileType = getRule.mime;
     const folder = req.query.folder as string;
     const category = req.query.category as string;
     const clinicId = req.query.clinicId as string;
@@ -3328,6 +3377,13 @@ app.post('/api/upload', async (req, res) => {
   const owner = resolveUploadClinicId(auth, requestedClinicId);
   if ('errorStatus' in owner) return res.status(owner.errorStatus).json({ error: 'forbidden', message: 'لا يمكن الرفع لعيادة أخرى' });
   const ownerClinicId = owner.clinicId;
+
+  const checked = validateUploadedFile(originalName, uploadedFile.data, Number(uploadedFile.size || 0));
+  if ('error' in checked) {
+    return res.status(checked.error === 'file_too_large' ? 413 : 400).json({ error: checked.error, message: 'نوع الملف أو حجمه غير مسموح (صور أو PDF حتى 15 ميجا)' });
+  }
+  // The client-claimed mimetype is never trusted; use the one derived from the verified extension.
+  uploadedFile.mimetype = checked.mime;
 
   const fileKeyName = buildR2FileKey(ownerClinicId, category, folder, originalName);
   const cleanFileName = path.basename(fileKeyName);
@@ -3487,7 +3543,13 @@ app.get('/api/files', async (req, res) => {
         // ignore DB read error, proceed with stream serving
       }
       
-      const safeMimeType = (mimeType && typeof mimeType === 'string' && mimeType.trim()) ? mimeType : 'application/octet-stream';
+      // Serve only allowlisted types inline; anything else (including legacy
+      // html/svg uploads) is forced to download and sandboxed.
+      const servedRule = UPLOAD_TYPES[path.extname(fileName).toLowerCase()];
+      const safeMimeType = servedRule ? servedRule.mime : 'application/octet-stream';
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+      if (!servedRule) res.setHeader('Content-Disposition', 'attachment');
       res.setHeader('Content-Type', safeMimeType);
       res.setHeader('Cache-Control', 'private, no-store');
       res.setHeader('Vary', 'Authorization');
@@ -3509,7 +3571,11 @@ app.get('/api/files', async (req, res) => {
     const { mimeType: rawMime, data } = result.rows[0] as any;
     const fileBuffer = Buffer.from(data, 'base64');
     
-    const safeMimeType = (rawMime && typeof rawMime === 'string' && rawMime.trim()) ? rawMime : 'application/octet-stream';
+    const dbRule = UPLOAD_TYPES[path.extname(String(filePath)).toLowerCase()];
+    const safeMimeType = dbRule ? dbRule.mime : (/^image\/(png|jpe?g|gif|webp|bmp|heic|heif|avif)$/i.test(String(rawMime || '')) ? String(rawMime) : 'application/octet-stream');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+    if (safeMimeType === 'application/octet-stream') res.setHeader('Content-Disposition', 'attachment');
     res.setHeader('Content-Type', safeMimeType);
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Vary', 'Authorization');

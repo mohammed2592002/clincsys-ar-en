@@ -748,6 +748,15 @@ export const DEFAULT_LANDING_CONTENT: LandingSiteContent = {
 
 // Merge a stored document over the defaults so old saved content keeps working
 // as new fields are added later.
+// Only http(s) links and same-site paths may come from editable content;
+// javascript:, data: and similar schemes are dropped.
+export function safeLandingUrl(u: any): string {
+  const v = String(u ?? '').trim();
+  if (!v) return '';
+  if (v.startsWith('/') && !v.startsWith('//')) return v;
+  return /^https?:\/\//i.test(v) ? v : '';
+}
+
 export function mergeLandingContent(stored: any): LandingSiteContent {
   const base = JSON.parse(JSON.stringify(DEFAULT_LANDING_CONTENT)) as LandingSiteContent;
   if (!stored || typeof stored !== 'object') return base;
@@ -765,6 +774,9 @@ export function mergeLandingContent(stored: any): LandingSiteContent {
       };
     });
   };
+  for (const k of ['logoUrl', 'heroImageUrl', 'chartImageUrl', 'financeImageUrl', 'whatsappCommunityUrl', 'facebookUrl']) {
+    if (k in out) out[k] = safeLandingUrl(out[k]);
+  }
   out.features = mergeList(base.features, stored.features);
   out.stats = mergeList(base.stats, stored.stats);
   out.steps = mergeList(base.steps, stored.steps);
