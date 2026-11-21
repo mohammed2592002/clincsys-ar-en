@@ -45,7 +45,7 @@ export default function TechSupportTab({
     const newPhone: SupportContact = {
       id: 'sup_' + Date.now(),
       title: 'رقم دعم فني جديد',
-      phone: '01000000000',
+      phone: '',
       availableHours: 'من 9 ص حتى 10 م'
     };
     setSupportSettings(prev => ({
@@ -74,7 +74,7 @@ export default function TechSupportTab({
       id: 'soc_' + Date.now(),
       platform: 'facebook',
       title: 'صفحة جديدة',
-      url: 'https://facebook.com/'
+      url: ''
     };
     setSupportSettings(prev => ({
       ...prev,

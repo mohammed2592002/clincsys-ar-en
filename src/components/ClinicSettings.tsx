@@ -1,3 +1,4 @@
+import {configuredSocialLinks} from '../utils/supportLinks';
 import OfflineCommands from './OfflineCommands';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -601,7 +602,7 @@ export default function ClinicSettings({
   const [supportSettings, setSupportSettings] = useState<SupportSettings>(DEFAULT_SUPPORT_SETTINGS);
   const [loadingSupportSettings, setLoadingSupportSettings] = useState(false);
   const [copiedClinicId, setCopiedClinicId] = useState(false);
-  const [trialPhoneInput, setTrialPhoneInput] = useState<string>('01012345678');
+  const [trialPhoneInput, setTrialPhoneInput] = useState<string>('');
   const [savingTrialPhone, setSavingTrialPhone] = useState(false);
 
   useEffect(() => {
@@ -612,12 +613,12 @@ export default function ClinicSettings({
         const snap = await getDocSmart(docRef);
         if (snap && snap.exists() && snap.data()) {
           const d = snap.data();
-          const trialP = d.trialPhoneNumber || DEFAULT_SUPPORT_SETTINGS.trialPhoneNumber || '01012345678';
+          const trialP = d.trialPhoneNumber || DEFAULT_SUPPORT_SETTINGS.trialPhoneNumber || '';
           setTrialPhoneInput(trialP);
           setSupportSettings({
             trialPhoneNumber: trialP,
             phoneNumbers: Array.isArray(d.phoneNumbers) ? d.phoneNumbers : DEFAULT_SUPPORT_SETTINGS.phoneNumbers,
-            socialLinks: Array.isArray(d.socialLinks) ? d.socialLinks : DEFAULT_SUPPORT_SETTINGS.socialLinks,
+            socialLinks: configuredSocialLinks(Array.isArray(d.socialLinks) ? d.socialLinks : []),
             workingHoursNotice: d.workingHoursNotice || DEFAULT_SUPPORT_SETTINGS.workingHoursNotice
           });
         }
@@ -628,7 +629,10 @@ export default function ClinicSettings({
       }
     }
     loadSupportData();
-  }, []);
+    const refresh = () => { loadSupportData(); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [settingsSubTab]);
 
   const handleSaveTrialPhone = async () => {
     const clean = formatEgyptianPhoneInput(trialPhoneInput);

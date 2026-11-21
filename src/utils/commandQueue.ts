@@ -1,3 +1,4 @@
+import {stableJson} from './documentComparison';
 // Durable commands are written before any optimistic UI update.
 export interface DurableCommand {
   id: string;
@@ -100,7 +101,12 @@ export function commandFingerprint(clinicId: string, body: any) {
       delete copy.data.updatedAt;
     }
   }
-  return JSON.stringify({ clinicId, ...copy });
+  if (copy.data) delete copy.data.updatedAt;
+  if (copy.base) delete copy.base.updatedAt;
+  // Two tabs can observe different local snapshots for the same pending edit.
+  // Identical non-financial intent must retain the first command and its base.
+  if (copy.optimistic && copy.action === "write") delete copy.base;
+  return stableJson({ clinicId, ...copy });
 }
 export async function enqueueCommand(
   command: DurableCommand,
@@ -116,7 +122,9 @@ export async function enqueueCommand(
         (c: DurableCommand) =>
           c.status !== "resolved" &&
           c.owner === command.owner &&
-          c.fingerprint === command.fingerprint,
+          (c.fingerprint === command.fingerprint ||
+            (c.body.optimistic && command.body.optimistic &&
+              commandFingerprint(c.clinicId, c.body) === command.fingerprint)),
       );
       if (existing) chosen = existing;
       else {

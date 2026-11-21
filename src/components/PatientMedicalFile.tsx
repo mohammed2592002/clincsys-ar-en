@@ -1,3 +1,4 @@
+import {resolveMediaPreview} from '../utils/mediaPreview';
 import { financeCommand } from '../dbClient';
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -304,6 +305,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
         setActiveXrayViewer({
           ...activeXrayViewer,
           imageUrl: updatedImageUrl,
+          displayImageUrl: await resolveMediaPreview(updatedImageUrl).catch(() => updatedImageUrl),
           diagnosis: updatedDiagnosis,
           isOfflinePending
         });
@@ -653,6 +655,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
           date: data.date || '',
           time: data.time || '',
           imageUrl: finalImageUrl,
+          displayImageUrl: await resolveMediaPreview(finalImageUrl).catch(() => finalImageUrl),
           diagnosis: data.diagnosis || '',
           createdAt: data.createdAt || '',
           originalSize: data.originalSize,
@@ -684,6 +687,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
             patientId: patientId,
             date: r.date || '',
             imageUrl: visitXrayUrl,
+            displayImageUrl: await resolveMediaPreview(visitXrayUrl).catch(() => visitXrayUrl),
             diagnosis: r.notes ? `من كشف زيارة: ${r.treatment} (${r.notes})` : `من كشف زيارة: ${r.treatment}`,
             createdAt: r.date,
             isOfflinePending: isVisitPending
@@ -817,7 +821,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
       if (isOfflinePending) {
         dialogs.alert('تم حفظ صورة الأشعة محلياً في وضع الأوفلاين بنجاح ⚡ وسيتم رفعها تلقائياً إلى Cloudflare R2 وحفظ الرابط فور توفر الإنترنت.', { severity: 'success' });
       } else {
-        dialogs.alert('تم رفع صورة الأشعة وحفظها على Cloudflare R2 بنجاح!', { severity: 'success' });
+        dialogs.alert('تم رفع صورة الأشعة وحفظها على السيرفر بنجاح!', { severity: 'success' });
       }
 
       await fetchPatientXRays(selectedPatientId);
@@ -3875,7 +3879,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                               >
                                 {xray.imageUrl && xray.imageUrl.trim() !== '' ? (
                                   <img
-                                    src={xray.imageUrl}
+                                    src={xray.displayImageUrl || xray.imageUrl}
                                     alt={isEn ? 'Patient X-Ray' : 'أشعة مريض'}
                                     className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                                     onError={async (e) => {
@@ -4008,7 +4012,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                     <div className="relative overflow-hidden max-h-full max-w-full p-4 flex items-center justify-center w-full h-full">
                       {activeXrayViewer.imageUrl && activeXrayViewer.imageUrl.trim() !== '' ? (
                         <img
-                          src={activeXrayViewer.imageUrl}
+                          src={activeXrayViewer.displayImageUrl || activeXrayViewer.imageUrl}
                           alt={isEn ? 'Enlarged Patient X-Ray' : 'أشعة مريض مكبرة'}
                           onMouseDown={handleMouseDownXray}
                           onMouseMove={handleMouseMoveXray}
@@ -4106,7 +4110,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                         </button>
 
                         <a
-                          href={activeXrayViewer.imageUrl}
+                          href={activeXrayViewer.displayImageUrl || activeXrayViewer.imageUrl}
                           download={`xray_${activeXrayViewer.patientId}_${activeXrayViewer.date}.jpg`}
                           className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer"
                         >
@@ -4282,7 +4286,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
               <label className="block text-xs font-bold text-slate-300">{isEn ? 'X-Ray Image:' : 'صورة الأشعة:'}</label>
               <div className="relative rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 h-48 flex items-center justify-center group">
                 <img
-                  src={editXrayPreview || editingXray.imageUrl}
+                  src={editXrayPreview || editingXray.displayImageUrl || editingXray.imageUrl}
                   alt={isEn ? 'X-Ray Image' : 'صورة الأشعة'}
                   className="w-full h-full object-contain"
                 />

@@ -3426,7 +3426,8 @@ app.get('/api/files', async (req, res) => {
       
       const safeMimeType = (mimeType && typeof mimeType === 'string' && mimeType.trim()) ? mimeType : 'application/octet-stream';
       res.setHeader('Content-Type', safeMimeType);
-      res.setHeader('Cache-Control', 'public, max-age=31536000');
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('Vary', 'Authorization');
       
       const stream = fs.createReadStream(fullPath);
       return stream.pipe(res);
@@ -3447,7 +3448,8 @@ app.get('/api/files', async (req, res) => {
     
     const safeMimeType = (rawMime && typeof rawMime === 'string' && rawMime.trim()) ? rawMime : 'application/octet-stream';
     res.setHeader('Content-Type', safeMimeType);
-    res.setHeader('Cache-Control', 'public, max-age=31536000');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Vary', 'Authorization');
     res.send(fileBuffer);
   } catch (err: any) {
     console.error('File retrieval physical storage error:', err);

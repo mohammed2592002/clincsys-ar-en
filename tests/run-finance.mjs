@@ -57,7 +57,7 @@ for (const k of [
   "DB_NAME",
 ])
   delete env[k];
-const server = spawn(process.execPath, [resolve("dist-server/server.cjs")], {
+const server = spawn(process.execPath, [resolve(process.env.TEST_SERVER_BUNDLE || "dist-server/server.cjs")], {
   cwd: dir,
   env,
   stdio: ["ignore", "pipe", "pipe"],
@@ -84,12 +84,12 @@ try {
   );
   const code = await new Promise((r) => test.on("exit", r));
   if (code !== 0) throw Error("Finance regression failed. " + log);
-  if (process.env.TEST_OFFLINE === "1") {
+  if (process.env.TEST_OFFLINE === "1" || process.env.TEST_LIVE_BUGS === "1") {
     const bundle = join(dir, "offline-client.js");
     const build = spawn(
       resolve("node_modules/.bin/esbuild"),
       [
-        "src/dbClient.ts",
+        process.env.TEST_CLIENT_ENTRY || (process.env.TEST_LIVE_BUGS ? "tests/live-bugs-client.ts" : "src/dbClient.ts"),
         "--bundle",
         "--platform=browser",
         "--format=iife",
@@ -102,7 +102,7 @@ try {
       throw Error("Offline client build failed");
     const testOffline = spawn(
       process.execPath,
-      [resolve("tests/offline.integration.cjs")],
+      [resolve(process.env.TEST_LIVE_BUGS ? "tests/live-bugs.integration.cjs" : "tests/offline.integration.cjs")],
       { env: { ...env, OFFLINE_TEST_BUNDLE: bundle }, stdio: "inherit" },
     );
     if ((await new Promise((r) => testOffline.on("exit", r))) !== 0)

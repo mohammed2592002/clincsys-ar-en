@@ -1,3 +1,4 @@
+import {configuredSocialLinks} from '../utils/supportLinks';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
@@ -58,7 +59,7 @@ export default function LoginScreen({
 }: LoginScreenProps) {
   const { t, i18n } = useTranslation();
   const isEn = i18n.language?.startsWith('en');
-  const [trialPhone, setTrialPhone] = useState<string>('01012345678');
+  const [trialPhone, setTrialPhone] = useState<string>('');
   const [socialLinks, setSocialLinks] = useState<SocialContact[]>([]);
 
   useEffect(() => {
@@ -73,7 +74,7 @@ export default function LoginScreen({
             setTrialPhone(d.phoneNumbers[0].phone);
           }
           if (Array.isArray(d.socialLinks)) {
-            setSocialLinks(d.socialLinks.filter((s: SocialContact) => s.url && s.url.trim()));
+            setSocialLinks(configuredSocialLinks(d.socialLinks));
           }
         }
       } catch (err) {
@@ -84,7 +85,8 @@ export default function LoginScreen({
   }, []);
 
   const handleRequestTrial = () => {
-    let targetPhone = trialPhone || '01012345678';
+    const targetPhone = trialPhone;
+    if (!targetPhone) return;
     let cleanPhone = targetPhone.replace(/[^0-9]/g, '');
     if (cleanPhone.startsWith('01')) {
       cleanPhone = '2' + cleanPhone;
@@ -268,6 +270,8 @@ export default function LoginScreen({
               <button
                 type="button"
                 onClick={handleRequestTrial}
+                disabled={!trialPhone}
+                title={!trialPhone ? (isEn ? 'Trial contact has not been configured by the administrator' : 'لم يضبط المسؤول رقم التواصل للنسخة التجريبية') : undefined}
                 className="w-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold py-3.5 px-4 rounded-xl transition-all text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-500/20 active:scale-[0.99] group"
               >
                 <MessageCircle className="h-4 w-4 text-emerald-100 group-hover:scale-110 transition-transform fill-white/20" />

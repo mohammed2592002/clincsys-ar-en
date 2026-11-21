@@ -1,3 +1,4 @@
+import {sameValue, SERVER_METADATA} from '../src/utils/documentComparison';
 import { commandMessage } from "../src/utils/commandMessages";
 import crypto from "node:crypto";
 export class FinanceError extends Error {
@@ -578,6 +579,8 @@ export function createFinanceService(deps: any) {
         if (action === "collect" && payMethod === "نقاط الولاء")
           fail("استخدم السداد بالنقاط للتحقق من المحفظة", 400);
         let points = 0;
+        let earnedPoints = 0;
+        let reversedPoints = 0;
         const patient = app.patientId
           ? await get("patients", app.patientId, cid)
           : null;
@@ -604,6 +607,25 @@ export function createFinanceService(deps: any) {
           payMethod = method(original.paymentMethod);
           if (payMethod === "نقاط الولاء")
             fail("استرداد نقاط قديمة يحتاج تسوية معتمدة، لا يخرج نقدًا");
+          // Use the award recorded at collection, never today's loyalty settings.
+          // Older receipts can recover their award from the idempotent request result.
+          const award = Number(original.loyaltyPointsEarned ??
+            s.requests[original.requestId]?.result?.pointsChanged ?? 0);
+          const originalAmount = original.amountCents ?? cents(original.amount);
+          const alreadyReversed = s.receipts
+            .filter((r: any) => r.originalReceiptId === original.id)
+            .reduce((n: number, r: any) => n + Number(r.loyaltyPointsReversed || 0), 0);
+          const totalReversal = Math.floor(Math.max(0, award) * (refunded + amount) / originalAmount);
+          reversedPoints = Math.max(0, totalReversal - alreadyReversed);
+          if (patient && reversedPoints > 0) {
+            // A negative wallet is a points debt if the award was already spent.
+            // Clamping to zero would allow payment/refund cycles to mint rewards.
+            await put("patients", patient.id, cid, {
+              loyaltyPoints: Number(patient.loyaltyPoints || 0) - reversedPoints,
+              updatedAt: now,
+            });
+          }
+          points = -reversedPoints;
         } else {
           if (amount > b.remaining) fail("المبلغ أكبر من المستحق الحالي");
           if (action === "discount") newPrice -= amount;
@@ -638,6 +660,7 @@ export function createFinanceService(deps: any) {
                 ? 20
                 : Math.max(0, Number(who.clinic.loyaltyEarnPoints) || 0);
           points = Math.floor(amount / 100 / threshold) * earn;
+          earnedPoints = points;
           if (points > 0)
             await put("patients", patient.id, cid, {
               loyaltyPoints: Number(patient.loyaltyPoints || 0) + points,
@@ -670,6 +693,8 @@ export function createFinanceService(deps: any) {
             actorRole: who.role,
             requestId: key,
             originalReceiptId: body.receiptId || null,
+            loyaltyPointsEarned: earnedPoints,
+            loyaltyPointsReversed: reversedPoints,
             notes: String(body.reason || ""),
             type: action === "refund" ? "refund" : "installment",
           };
@@ -722,9 +747,9 @@ export function createFinanceService(deps: any) {
           const fields = Object.entries(body.base)
             .filter(
               ([field, value]) =>
-                !["_fieldEdits", "_syncStatus"].includes(field) &&
-                JSON.stringify(old[field] ?? null) !==
-                  JSON.stringify(value ?? null),
+                !SERVER_METADATA.has(field) &&
+                !sameValue(old[field], value) &&
+                !sameValue(old[field], data[field]),
             )
             .map(([field]) => ({
               key: field,
@@ -992,7 +1017,7 @@ export function createFinanceService(deps: any) {
         for (const k of Object.keys(data))
           if (
             k !== "updatedAt" &&
-            JSON.stringify(old?.[k] ?? null) !== JSON.stringify(data[k] ?? null)
+            !sameValue(old?.[k], data[k])
           )
             fieldEdits[k] = {
               name: who.name,

@@ -1,3 +1,4 @@
+import {normalizeSupportUrl, configuredSocialLinks} from '../utils/supportLinks';
 import React, { useState, useEffect } from 'react';
 import { db, doc, collection, getDocsSmart as getDocs, getDocSmart, setDoc , authHeaders } from '../dbClient';
 import { Clinic, SupportSettings, DEFAULT_SUPPORT_SETTINGS } from '../types';
@@ -326,7 +327,7 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
       if (snap && snap.exists() && snap.data()) {
         const d = snap.data();
         setSupportSettings({
-          trialPhoneNumber: d.trialPhoneNumber || DEFAULT_SUPPORT_SETTINGS.trialPhoneNumber || '01012345678',
+          trialPhoneNumber: d.trialPhoneNumber || DEFAULT_SUPPORT_SETTINGS.trialPhoneNumber || '',
           superAdminHeaderBg: d.superAdminHeaderBg || DEFAULT_SUPPORT_SETTINGS.superAdminHeaderBg || '#0f172a',
           superAdminHeaderTextColor: d.superAdminHeaderTextColor || DEFAULT_SUPPORT_SETTINGS.superAdminHeaderTextColor || '#ffffff',
           phoneNumbers: Array.isArray(d.phoneNumbers) ? d.phoneNumbers : DEFAULT_SUPPORT_SETTINGS.phoneNumbers,
@@ -362,11 +363,17 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
       return;
     }
 
+    const invalidLink = supportSettings.socialLinks.find(link => link.url.trim() && !normalizeSupportUrl(link));
+    if (invalidLink) {
+      dialogs.alert('رابط التواصل غير صالح. استخدم رابط http أو https كامل، أو اسم تليجرام يبدأ بـ @.', {severity:'warning'});
+      return;
+    }
     setIsSavingSupport(true);
     try {
       const docRef = doc(db, 'system_settings', 'support');
       await setDoc(docRef, {
         ...supportSettings,
+        socialLinks: configuredSocialLinks(supportSettings.socialLinks),
         updatedAt: new Date().toISOString()
       });
       dialogs.alert('تم حفظ وتحديث إعدادات الدعم الفني وهوية المنظومة بنجاح!', { severity: 'success' });

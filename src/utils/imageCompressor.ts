@@ -32,8 +32,19 @@ export function compressImage(
     const objectUrl = URL.createObjectURL(file);
     const img = new Image();
 
+    let retriedWithBytes = false;
     img.onerror = () => {
       URL.revokeObjectURL(objectUrl);
+      // Some embedded browsers cannot decode a blob URL from a selected file.
+      // Read the actual bytes as a data URL before rejecting a valid PNG/JPEG.
+      if (!retriedWithBytes) {
+        retriedWithBytes = true;
+        const reader = new FileReader();
+        reader.onload = () => { img.src = String(reader.result); };
+        reader.onerror = () => reject(new Error('تعذر قراءة بيانات الصورة'));
+        reader.readAsDataURL(file);
+        return;
+      }
       reject(new Error('فشل معالجة صيغة الصورة'));
     };
 
@@ -42,6 +53,7 @@ export function compressImage(
       URL.revokeObjectURL(objectUrl);
 
       let { width, height } = img;
+      if (!width || !height) { reject(new Error('أبعاد الصورة غير صالحة')); return; }
 
       // حساب الأبعاد الجديدة مع الحفاظ على النسبة والتناسب
       if (width > maxWidth || height > maxHeight) {
@@ -102,9 +114,10 @@ export function compressImage(
           }
 
           // تسمية الملف بالامتداد الجديد (.webp أو .jpg)
-          const extension = outputType === 'image/webp' ? '.webp' : '.jpg';
+          const actualType = blob.type || outputType;
+          const extension = actualType === 'image/webp' ? '.webp' : actualType === 'image/png' ? '.png' : '.jpg';
           const newFileName = file.name ? file.name.replace(/\.[^/.]+$/, '') + extension : `image_${Date.now()}${extension}`;
-          const compressedFile = new File([blob], newFileName, { type: outputType });
+          const compressedFile = new File([blob], newFileName, { type: actualType });
           const preview = base64DataUrl || URL.createObjectURL(blob);
 
           resolve({

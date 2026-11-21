@@ -1,3 +1,4 @@
+import {sameValue, SERVER_METADATA} from './utils/documentComparison';
 import {commandMessage} from './utils/commandMessages';
 import {listCommands,saveCommand,removeCommand,enqueueCommand,settleConflict,commandOwner,commandFingerprint, type DurableCommand} from './utils/commandQueue';
 import {
@@ -491,6 +492,7 @@ export async function getDocs(q: any, forceRefresh = false): Promise<any> {
       exists: () => true
     }));
     return {
+      fromCache: true,
       empty: docSnaps.length === 0,
       docs: docSnaps,
       forEach(callback: any) {
@@ -622,7 +624,13 @@ export async function getDoc(docRef: MockDocumentReference, forceRefresh = false
 const commandError=(message:string)=>new Error(commandMessage(message,(safeStorage.getItem('i18nextLng')||'ar').startsWith('en')));
 // The queue persists commands, never a replacement paid-balance snapshot.
 let commandFlush:Promise<void>|null=null;
-async function sendDurable(command:DurableCommand){
+const activeSends = new Map<string, Promise<any>>();
+function sendDurable(command:DurableCommand):Promise<any>{
+ const existing=activeSends.get(command.id);if(existing)return existing;
+ const work=sendDurableOnce(command).finally(()=>activeSends.delete(command.id));
+ activeSends.set(command.id,work);return work;
+}
+async function sendDurableOnce(command:DurableCommand){
  if(command.owner!==commandOwner(getAuthToken()))throw commandError('الطلب يخص حسابًا آخر');
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
  try{
@@ -650,11 +658,11 @@ export async function reconcileFinancialConflict(id:string,reason:string){const 
 export async function reviewDurableCommand(id:string){const c=(await getPendingCommands()).find(c=>c.id===id);if(!c||c.status!=='conflict'||!c.localPath||!c.localId||c.financial)throw commandError('هذه الحركة تحتاج مراجعة مالية مع المدير، دون تعديل تلقائي');const response=await fetch('/api/db',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({action:'getDoc',path:c.localPath,id:c.localId})});if(!response.ok)throw commandError('تعذر تحميل النسخة الحالية من السيرفر');return {command:c,current:await response.json()};}
 export async function resolveDurableCommand(id:string,choice:'server'|'local',reviewedCurrent:any){
  const {command,current}=await reviewDurableCommand(id);if(!current)throw commandError('السجل غير موجود على السيرفر، يلزم مراجعة المدير');
- if(JSON.stringify(current)!==JSON.stringify(reviewedCurrent))throw commandError('تغيرت نسخة السيرفر بعد عرضها، أعد المراجعة');
+ if(!sameValue(current,reviewedCurrent))throw commandError('تغيرت نسخة السيرفر بعد عرضها، أعد المراجعة');
  let replacement:DurableCommand|undefined;
  if(choice==='local'){
   if(command.body.create||command.body.action!=='write')throw commandError('لا يمكن استبدال سجل بهذه الحركة');
-  const base:any={};for(const k of Object.keys(command.body.data||{}))base[k]=current[k]??null;
+  const base:any={};for(const k of Object.keys(command.body.data||{}))if(!SERVER_METADATA.has(k))base[k]=current[k]??null;
   const body={...command.body,base};replacement={...command,id:crypto.randomUUID(),body,fingerprint:commandFingerprint(command.clinicId,body),status:'pending',error:undefined,createdAt:new Date().toISOString()};
  }
  if(command.owner!==commandOwner(getAuthToken()))throw commandError('تغير الحساب، أعد فتح التنبيهات');
@@ -673,13 +681,13 @@ export async function financeCommand(clinicId:string,body:any):Promise<any>{
  if(command?.status==='conflict')throw commandError('طلب محفوظ للمراجعة: '+command.error);
  if(!command){const shifts=await getLocalDocsForPath('clinics/'+clinicId+'/shifts');const activeShifts=shifts.filter(s=>s.status==='open');if((['collect','points','refund','discount'].includes(body.action)||body.table==='expenses'||(body.table==='lab_orders'&&Number(body.data?.paidAmount)>0)))body={...body,expectedShiftId:activeShifts.length===1?activeShifts[0].id:(!navigator.onLine?'unverified':undefined)};command={id:crypto.randomUUID(),owner,clinicId,body:{...body,clientOccurredAt:new Date().toISOString(),queuedBy:owner},fingerprint,createdAt:new Date().toISOString(),status:'pending',financial:!body.optimistic,localPath:body.localPath,localId:body.id};const clinic=await getLocalDoc('clinics',clinicId);let identity:any={};try{identity=JSON.parse(atob(getAuthToken().split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));}catch{}command.actorName=identity.staffName||clinic?.doctorName||clinic?.name||(owner.startsWith('manager:')?'مدير العيادة':'حساب العيادة');command.actorRole=identity.staffRole||(owner.startsWith('manager:')?'المدير':'موظف');const entity=body.localPath&&body.id?await getLocalDoc(body.localPath,body.id):body.appointmentId?await getLocalDoc('clinics/'+clinicId+'/appointments',body.appointmentId):null;const patientId=body.data?.patientId||entity?.patientId;const patient=patientId?await getLocalDoc('clinics/'+clinicId+'/patients',patientId):null;command.entityName=body.data?.patientName||body.data?.name||entity?.patientName||entity?.name||patient?.name||body.data?.title||entity?.title;command=await enqueueCommand(command);}
  if(body.optimistic&&body.localPath&&command.localId){const old=await getLocalDoc(body.localPath,command.localId);await saveLocalDoc(body.localPath,command.localId,{...old,...body.data,id:command.localId,_syncStatus:'pending'});notifyLocalSync(body.localPath,'pending',command.localId);}
- if(navigator.onLine){try{const earlier=(await listCommands()).filter(c=>c.owner===owner&&(c.sequence&&command.sequence?c.sequence<command.sequence:c.createdAt<command.createdAt));for(const c of earlier){if(c.status==='conflict'){if(commandsDependOn(command,c))throw commandError('طلب مرتبط يحتاج مراجعة');continue;}await sendDurable(c);}return await sendDurable(command);}catch(e:any){if(command.status==='conflict')throw e;}}
+ if(navigator.onLine){try{const earlier=(await listCommands()).filter(c=>c.owner===owner&&(c.sequence&&command.sequence?c.sequence<command.sequence:c.createdAt<command.createdAt));for(const c of earlier){if(c.status==='conflict'){if(commandsDependOn(command,c))throw commandError('طلب مرتبط يحتاج مراجعة');continue;}try{await sendDurable(c);}catch(e){if((c as DurableCommand).status==='conflict'&&!commandsDependOn(command,c))continue;throw e;}}return await sendDurable(command);}catch(e:any){if(command.status==='conflict')throw e;}}
  if(body.optimistic){return {id:command.localId,pending:true,_syncStatus:'pending'};}
  throw commandError('محفوظ على الجهاز كطلب غير مؤكد. ستتم المزامنة عند رجوع الاتصال، لا تسجله مرة ثانية.');
 }
 const clinicSettingsKeys=new Set(['name','nameAr','nameEn','logoUrl','doctorName','doctorNameEn','doctorPhone','additionalPhones','doctorSpecialtyAr','doctorSpecialtyEn','clinicHours','address','prescriptionStyle','prescriptionLayout','customPrescriptionPadConfig','consultationPrice','bookingSystemMode','questionnaireQuestions','customDentalServices','dentalServiceCategories','paymentMethods','dentalChartStyleSettings','autoBackupEnabled','autoBackupFormat','loyaltyProgramEnabled','loyaltyEarnEgpThreshold','loyaltyEarnPoints','loyaltyRedeemPointsThreshold','loyaltyRedeemDiscountEgp','loyaltyMinRedeemPoints','updatedAt']);
 async function clinicSettingsWrite(path:string,id:string,data:any){
- if(Object.keys(data||{}).every(k=>clinicSettingsKeys.has(k))){const old=await getLocalDoc(path,id),base:any={};if(old)for(const k of Object.keys(data))base[k]=old[k]??null;return financeCommand(id,{action:'write',table:'clinics',id,data,base:old?base:undefined,optimistic:true,localPath:path});}
+ if(Object.keys(data||{}).every(k=>clinicSettingsKeys.has(k))){const old=await getLocalDoc(path,id),base:any={};if(old)for(const k of Object.keys(data))if(!SERVER_METADATA.has(k))base[k]=old[k]??null;return financeCommand(id,{action:'write',table:'clinics',id,data,base:old?base:undefined,optimistic:true,localPath:path});}
  // Credentials, staff access and subscription changes require a live server. Never persist them in the command queue.
  if(!navigator.onLine)throw commandError('تغيير بيانات الدخول والصلاحيات أو الاشتراك يحتاج اتصال بالسيرفر');
  const response=await fetch('/api/db',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({action:'updateDoc',path,id,data})});if(!response.ok)throw commandError('لم يؤكد السيرفر تعديل الإعدادات');
@@ -692,7 +700,7 @@ async function confirmedWrite(action:string,path:string,id:string,data?:any,opti
  const financial=action==='deleteDoc'||['expenses','shifts','billing','closings'].includes(table)||(table==='lab_orders'&&Number(data?.paidAmount||0)!==Number(old?.paidAmount||0))||(table==='appointments'&&(data?.status==='cancelled'||(data?.price!==undefined&&old?.price!==undefined&&Number(data.price)!==Number(old.price))));
  const patch={...data};delete patch._syncStatus;delete patch._fieldEdits;
  if(table==='appointments'&&old){for(const k of ['paidAmount','remainingAmount','invoiceStatus','payments'])delete patch[k];}
- const base:any={};if(old)for(const k of Object.keys(patch))base[k]=old[k]===undefined?null:old[k];
+ const base:any={};if(old)for(const k of Object.keys(patch))if(!SERVER_METADATA.has(k))base[k]=old[k]===undefined?null:old[k];
  const pendingMoneyAmount=table==='lab_orders'?Math.max(0,Number(data?.paidAmount||0)-Number(old?.paidAmount||0)):table==='expenses'?Number(data?.amount||0):0;
  return financeCommand(parts[1],{pendingMoneyAmount,action:action==='deleteDoc'?'delete':'write',table,id,data:patch,options,base:old?base:undefined,create:action==='addDoc',optimistic:!financial,localPath:path});
 }
@@ -746,6 +754,20 @@ export async function setDoc(docRef: MockDocumentReference, data: any, options?:
   const { collectionPath } = normalizeDocPath(path, id);
   if(path==='clinics'||path==='clinics/'+id)return clinicSettingsWrite(path,id,data);
   if (protectedPath(path)) return confirmedWrite('setDoc',path,id,data,options);
+
+  if (collectionPath === 'system_settings') {
+    // Global settings must be confirmed before the admin sees a success message.
+    if (!navigator.onLine) throw commandError('يلزم الاتصال لحفظ إعدادات النظام');
+    const response = await fetchWithRetry('/api/db', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action:'setDoc', path, id, data, options})
+    });
+    if (!response.ok) throw commandError('لم يؤكد السيرفر حفظ إعدادات النظام');
+    const saved = await response.json();
+    await saveLocalDoc(path, id, {...data, ...saved, id});
+    notifyLocalSync(path, 'set', id);
+    return {id};
+  }
 
   let finalData = { ...data, id };
   if (options?.merge) {
@@ -1292,6 +1314,7 @@ export async function getDocsSmart(q: any, forceRefresh = false) {
 }
 
 export async function getDocSmart(docRef: any, forceRefresh = false) {
+  if (docRef?.path && normalizeDocPath(docRef.path, docRef.id).collectionPath === "system_settings" && docRef?.id === "support") forceRefresh = true;
   if (forceRefresh) {
     clearQueryCache();
   } else {

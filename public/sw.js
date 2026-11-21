@@ -1,4 +1,4 @@
-const CACHE_NAME = 'crowndent-cache-v3';
+const CACHE_NAME = 'crowndent-cache-v4';
 const OFFLINE_URL = '/';
 
 // List of critical static assets to cache immediately on install
@@ -40,7 +40,7 @@ function isFirebaseOrApi(url) {
     url.hostname.includes('securetoken.googleapis.com') ||
     url.hostname.includes('analytics.coredentsys.cloud') ||
     url.pathname.startsWith('/__/auth/') ||
-    url.pathname.startsWith('/api/sync/') ||
+    url.pathname.startsWith('/api/') ||
     url.hostname.includes('ws') || // Dev server HMR
     url.hostname.includes('chrome-extension')
   );

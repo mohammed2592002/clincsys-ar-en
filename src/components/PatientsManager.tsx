@@ -168,16 +168,26 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
   };
 
   const PAGE_SIZE = 5;
+  const patientLoadVersion = useRef(0);
 
   const fetchPatients = async () => {
+    const version = ++patientLoadVersion.current;
     setLoading(true);
+    setHasLoadedAllForSearch(false);
     setError(null);
     try {
       const ref = getPatientsRef(clinic.id);
       const q = query(ref, orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
       let snap;
       try {
-        snap = await getDocs(q);
+        // The full collection drives analytics. A page is only for the table.
+        const [pageSnap, fullSnap] = await Promise.all([
+          getDocs(q), getDocs(query(ref, orderBy('createdAt', 'desc')), true)
+        ]);
+        if (version !== patientLoadVersion.current) return;
+        snap = pageSnap;
+        setAllPatients(fullSnap.docs.map(mapPatientDocData));
+        setHasLoadedAllForSearch(!fullSnap.fromCache);
       } catch (err: any) {
         handleDbError(err, OperationType.LIST, `clinics/${clinic.id}/patients`);
       }
@@ -195,14 +205,11 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
         setLastDoc(null);
         setHasMore(false);
       }
-
-      setAllPatients([]);
-      setHasLoadedAllForSearch(false);
     } catch (err: any) {
       console.error(err);
       setError('حدث خطأ أثناء تحميل سجلات المرضى: ' + (err.message || err.toString()));
     } finally {
-      setLoading(false);
+      if (version === patientLoadVersion.current) setLoading(false);
     }
   };
 
@@ -305,7 +312,7 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
       });
       
       setAllPatients(list);
-      setHasLoadedAllForSearch(true);
+      setHasLoadedAllForSearch(!snap.fromCache);
     } catch (err: any) {
       console.error(err);
       setError('حدث خطأ أثناء تحميل البيانات للبحث والتحليل: ' + (err.message || err.toString()));
@@ -320,7 +327,7 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
     const handleSync = (e: Event) => {
       const customEvent = e as CustomEvent;
       const { table } = customEvent.detail || {};
-      if (table === 'patients' && !isAdding && !editingPatient) {
+      if ((!table || table === 'patients') && !isAdding && !editingPatient) {
         setHasLoadedAllForSearch(false);
         fetchPatients();
       }
@@ -329,13 +336,6 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
     window.addEventListener('clinic-sync', handleSync);
     return () => window.removeEventListener('clinic-sync', handleSync);
   }, [clinic.id, isAdding, editingPatient]);
-
-  // Always load all patients when opening Analytics tab
-  useEffect(() => {
-    if (activeTab === 'analytics') {
-      fetchAllPatientsForSearch(true);
-    }
-  }, [activeTab]);
 
   const resetForm = () => {
     setName('');
@@ -697,7 +697,7 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
     ? filteredPatients.slice(0, visibleCount)
     : filteredPatients;
 
-  // Header stats chips (total + new this month) — based on loaded records
+  // Header stats use the full collection, independently of the table page.
   const patientStats = useMemo(() => {
     const source = allPatients.length > 0 ? allPatients : patients;
     const now = new Date();
@@ -711,9 +711,9 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
     return {
       total: source.length,
       newThisMonth,
-      complete: allPatients.length > 0 || !hasMore
+      complete: hasLoadedAllForSearch
     };
-  }, [allPatients, patients, hasMore]);
+  }, [allPatients, patients, hasMore, hasLoadedAllForSearch]);
 
   // Health-status badges derived from the medical questionnaire flags
   const getHealthBadges = (p: Patient): { key: string; label: string }[] => {
@@ -735,7 +735,7 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
 
   // --- Marketing & Geographic Analytics Computation ---
   const analyticsData = useMemo(() => {
-    const list = allPatients.length > 0 ? allPatients : patients;
+    const list = allPatients;
     const total = list.length;
     
     let maleCount = 0;
@@ -1498,7 +1498,12 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
       )}
 
       {/* Content for TAB 2: Marketing & Geographic Analytics Dashboard */}
-      {activeTab === 'analytics' && (
+      {activeTab === 'analytics' && !hasLoadedAllForSearch && (
+        <p role="status" className="p-4 text-slate-600">{loading || searching
+          ? (isEn ? 'Loading all patients for analysis...' : 'جاري تحميل كل المرضى للتحليل...')
+          : (isEn ? 'Full analytics need a connection. Cached pages are not clinic totals.' : 'التحليل الكامل يحتاج اتصال. الصفحات المحفوظة ليست إجمالي العيادة.')}</p>
+      )}
+      {activeTab === 'analytics' && hasLoadedAllForSearch && (
         <div className="space-y-6 animate-fade-in">
           {/* Top KPI Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

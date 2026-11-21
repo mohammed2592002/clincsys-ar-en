@@ -1,5 +1,6 @@
 import { commandMessage } from "../utils/commandMessages";
 import React, { useEffect, useState } from "react";
+import {useDialogs} from "./DialogContext";
 import {
   getPendingCommands,
   flushDurableCommands,
@@ -24,6 +25,7 @@ export default function OfflineCommands({
   shiftId?: string;
   showEmpty?: boolean;
 }) {
+  const dialogs = useDialogs();
   const [commands, setCommands] = useState<DurableCommand[]>([]);
   const [financialReview, setFinancialReview] = useState<any>(null);
   const [reviewReason, setReviewReason] = useState("");
@@ -292,7 +294,11 @@ export default function OfflineCommands({
         : isEn
           ? "Apply your displayed changes against this server version? A newer server change will still stop the request."
           : "تطبيق تعديلك المعروض على النسخة دي؟ لو السيرفر اتغير تاني الطلب هيتوقف للمراجعة.";
-    if (!window.confirm(text)) return;
+    if (!(await dialogs.confirm(text, {
+      title: isEn ? 'Confirm review' : 'تأكيد المراجعة',
+      confirmText: isEn ? 'Confirm' : 'نعم، متأكد',
+      cancelText: isEn ? 'Cancel' : 'إلغاء',
+    }))) return;
     await resolveDurableCommand(review.command.id, choice, review.current);
     setReview(null);
   };
@@ -400,8 +406,8 @@ export default function OfflineCommands({
                 {c.body.amount ?? c.body.data?.amount ?? ""}{" "}
                 {c.conflict?.fields?.length
                   ? isEn
-                    ? "The same detail was edited on another device. Compare both values before choosing."
-                    : "نفس البيانات اتعدلت من جهاز آخر. قارن القيمتين قبل الاختيار."
+                    ? "This detail differs from the saved version. Compare both values before choosing."
+                    : "البيانات مختلفة عن النسخة المحفوظة. قارن القيمتين قبل الاختيار."
                   : commandMessage(c.error || "", isEn)}
               </p>
               {c.status === "conflict" && conflictDetails(c)}
@@ -502,11 +508,12 @@ export default function OfflineCommands({
             onClick={() =>
               run(async () => {
                 if (
-                  !window.confirm(
+                  !(await dialogs.confirm(
                     isEn
                       ? "Finish this financial review without adding money?"
                       : "تأكيد إنهاء المراجعة بدون إضافة مبلغ؟",
-                  )
+                    {title: isEn ? 'Confirm review' : 'تأكيد المراجعة', confirmText: isEn ? 'Confirm' : 'نعم، متأكد', cancelText: isEn ? 'Cancel' : 'إلغاء'},
+                  ))
                 )
                   return;
                 await reconcileFinancialConflict(

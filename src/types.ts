@@ -314,6 +314,7 @@ export interface DentalTooth {
 }
 
 export interface PatientXRay {
+  displayImageUrl?: string; // Authenticated display bytes, never persisted as the canonical file URL.
   id: string;
   patientId: string;
   date: string;
@@ -528,44 +529,10 @@ export interface SupportSettings {
 }
 
 export const DEFAULT_SUPPORT_SETTINGS: SupportSettings = {
-  trialPhoneNumber: '01012345678',
+  trialPhoneNumber: '',
   superAdminHeaderBg: '#0f172a',
   superAdminHeaderTextColor: '#ffffff',
-  phoneNumbers: [
-    {
-      id: 'sup_1',
-      title: 'الدعم الفني الرئيسي والتقني',
-      phone: '01012345678',
-      availableHours: 'طوال أيام الأسبوع من 9:00 ص حتى 10:00 م'
-    },
-    {
-      id: 'sup_2',
-      title: 'إدارة المبيعات والاشتراكات',
-      phone: '01098765432',
-      availableHours: 'من السبت إلى الخميس من 10:00 ص حتى 8:00 م'
-    }
-  ],
-  socialLinks: [
-    {
-      id: 'soc_1',
-      platform: 'whatsapp_group',
-      title: 'مجتمع أطباء الأسنان على واتساب',
-      url: 'https://chat.whatsapp.com/'
-    },
-    {
-      id: 'soc_2',
-      platform: 'facebook',
-      title: 'الصفحة الرسمية للبرنامج على فيسبوك',
-      url: 'https://facebook.com/'
-    },
-    {
-      id: 'soc_3',
-      platform: 'telegram',
-      title: 'قناة التحديثات والأخبار على تليجرام',
-      url: 'https://t.me/'
-    }
-  ],
-  workingHoursNotice: 'مواعيد عمل فريق الدعم الفني يومياً من الساعة 9:00 صباحاً وحتى 10:00 مساءً عدا الجمعة.'
+  phoneNumbers: [],
+  socialLinks: [],
+  workingHoursNotice: ''
 };
-
-

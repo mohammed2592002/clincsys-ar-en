@@ -12,7 +12,8 @@
     "test": "npm run lint && npm run test:finance",
     "test:finance": "npm run build && node tests/run-finance.mjs",
     "test:offline": "npm run build && TEST_OFFLINE=1 node tests/run-finance.mjs",
-    "test:finance:ui": "npm run build && TEST_UI=1 node tests/run-finance.mjs"
+    "test:finance:ui": "npm run build && TEST_UI=1 node tests/run-finance.mjs",
+    "test:live-bugs": "npm run build && TEST_LIVE_BUGS=1 node tests/run-finance.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1108.0",

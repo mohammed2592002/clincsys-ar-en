@@ -681,6 +681,8 @@ const base = process.env.TEST_BASE || "http://localhost:3100";
         .find((b) => b.textContent.includes("تطبيق تعديلي المعروض"))
         ?.click(),
     );
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'نعم، متأكد'));
+    await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'نعم، متأكد')?.click());
     await page.waitForFunction(() =>
       document.body.innerText.includes("لا توجد طلبات معلقة"),
     );
@@ -753,6 +755,8 @@ const base = process.env.TEST_BASE || "http://localhost:3100";
         .find((b) => b.textContent.includes("الاحتفاظ بنسخة السيرفر"))
         ?.click(),
     );
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'نعم، متأكد'));
+    await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'نعم، متأكد')?.click());
     await page.waitForFunction(() =>
       document.body.innerText.includes("لا توجد طلبات معلقة"),
     );
@@ -824,6 +828,8 @@ const base = process.env.TEST_BASE || "http://localhost:3100";
         )
         ?.click(),
     );
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Confirm'));
+    await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Confirm')?.click());
     await page.waitForFunction(() =>
       document.body.innerText.includes("No pending requests"),
     );
