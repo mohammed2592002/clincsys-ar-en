@@ -14,6 +14,7 @@ import { getEgyptTodayStr, checkSubscriptionBlocked, normalizeDateStr } from '..
 import { ToothBadge } from './ToothBadge';
 import { safeStorage } from '../utils/storage';
 import { formatEgyptianPhoneInput, isValidEgyptianPhone, getEgyptianPhoneError } from '../utils/phoneUtils';
+import { getPaymentCollectionDate } from '../utils/paymentDateUtils';
 import { isAppointmentTimeConflict } from '../utils/appointmentUtils';
 
 
@@ -1398,7 +1399,7 @@ export default function InteractiveCalendar({
 
       if (paymentsList && paymentsList.length > 0) {
         paymentsList.forEach(pay => {
-          const payDate = normalizeDateStr(pay.date || (pay.createdAt ? pay.createdAt.split('T')[0] : '') || app.date);
+          const payDate = getPaymentCollectionDate(pay, app.date);
           if (payDate === normSelDate) {
             const normApp = normalizePaymentMethod(pay.paymentMethod || 'كاش');
             let matched = activeMethodsList.find(m => normalizePaymentMethod(m) === normApp);
