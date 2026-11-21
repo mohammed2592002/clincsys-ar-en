@@ -21,7 +21,7 @@ export default function PatientSearchSelect({
   required = false
 }: PatientSearchSelectProps) {
   const { i18n } = useTranslation();
-  const isEn = i18n.language === 'en';
+  const isEn = i18n.language?.startsWith('en');
   const defaultPlaceholder = isEn ? 'Search patient by name or phone...' : 'ابحث باسم المريض أو رقم الهاتف...';
   const actualPlaceholder = placeholder || defaultPlaceholder;
   const [searchQuery, setSearchQuery] = useState('');

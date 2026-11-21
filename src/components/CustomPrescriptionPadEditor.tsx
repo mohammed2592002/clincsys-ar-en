@@ -45,7 +45,7 @@ export const CustomPrescriptionPadEditor: React.FC<CustomPrescriptionPadEditorPr
   clinicId
 }) => {
   const { i18n } = useTranslation();
-  const isEn = i18n.language === 'en';
+  const isEn = i18n.language?.startsWith('en');
   const [selectedElement, setSelectedElement] = useState<ElementKey>('patientName');
   const [isDragging, setIsDragging] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);

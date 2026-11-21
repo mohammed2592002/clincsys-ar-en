@@ -26,7 +26,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   hint
 }) => {
   const { i18n } = useTranslation();
-  const isEn = i18n.language === 'en';
+  const isEn = i18n.language?.startsWith('en');
   const defaultPlaceholder = isEn ? 'Select or search...' : 'اختر من القائمة أو ابحث...';
   const displayPlaceholder = placeholder || defaultPlaceholder;
   const [isOpen, setIsOpen] = useState(false);
