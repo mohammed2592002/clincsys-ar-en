@@ -714,7 +714,9 @@ export default function InteractiveCalendar({
           paymentMethod: data.paymentMethod || undefined,
           toothNumber: data.toothNumber !== undefined ? Number(data.toothNumber) : undefined,
           procedures: data.procedures || [],
-          payments: data.payments || []
+          payments: data.payments || [],
+          bookingType: data.bookingType || undefined,
+          turnNumber: data.turnNumber !== undefined ? Number(data.turnNumber) : undefined
         });
       });
       // Sort appointments by date and time
@@ -2415,7 +2417,7 @@ export default function InteractiveCalendar({
                       <div className="flex items-start gap-3 min-w-0">
                         <div className="flex flex-col items-center shrink-0 w-10">
                           <span className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shadow-sm ${
-                            app.status === 'completed' ? 'bg-emerald-500 text-white' : app.status === 'cancelled' ? 'bg-slate-300 text-white' : 'bg-[#272E40] text-white'
+                            app.status === 'completed' ? 'bg-emerald-500 text-white' : app.status === 'waiting' ? 'bg-amber-500 text-white' : app.status === 'cancelled' ? 'bg-slate-300 text-white' : 'bg-[#272E40] text-white'
                           }`}>
                             {app.status === 'completed' ? '✓' : (displayTurn || '—')}
                           </span>
@@ -2429,11 +2431,11 @@ export default function InteractiveCalendar({
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <h4 className={`text-base font-black truncate ${app.status === 'cancelled' ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                            <h4 className={`text-base font-black sm:truncate ${app.status === 'cancelled' ? 'line-through text-slate-400' : 'text-slate-800'}`}>
                               {app.patientName}
                             </h4>
                             {app.status !== 'cancelled' && (
-                              <div className="flex items-center gap-1 shrink-0 flex-wrap">
+                              <div className="hidden sm:flex items-center gap-1 shrink-0 flex-wrap">
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); handleOpenEditPatientModal(app); }}
@@ -2472,10 +2474,55 @@ export default function InteractiveCalendar({
                               </div>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-400 mt-0.5 font-medium truncate">
+                          <p className="text-[11px] text-slate-400 mt-0.5 font-medium sm:truncate">
                             {appPhone}{appAge ? ` • ${isEn ? 'Age' : 'عمر'} ${appAge}${isEn ? '' : ' سنة'}` : ''}
                           </p>
-                          <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                          {/* Mobile-only row: turn chip + patient actions (name takes full width) */}
+                          {app.status !== 'cancelled' && (
+                            <div className="flex sm:hidden items-center gap-1.5 flex-wrap mt-1.5">
+                              {isTurnCard && displayTurn && (
+                                <span className="text-[10px] font-black bg-slate-100 text-slate-600 border border-slate-200 px-2 py-1 rounded-lg">
+                                  {isEn ? 'Turn' : 'الدور'} {displayTurn}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleOpenEditPatientModal(app); }}
+                                className="p-1 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition cursor-pointer"
+                                title={isEn ? 'Edit Patient Data' : 'تعديل بيانات المريض'}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setFinancialModalPatient({
+                                    id: app.patientId,
+                                    name: app.patientName,
+                                    phone: app.patientPhone
+                                  });
+                                }}
+                                className="text-[10px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg transition cursor-pointer flex items-center gap-1"
+                                title={isEn ? 'Patient Financials & Accounts' : 'المالية والحسابات التابعة للمريض'}
+                              >
+                                <Coins className="h-3 w-3" />
+                                {isEn ? 'Financials' : 'الماليات'}
+                              </button>
+                              {onOpenMedicalFile && app.patientId && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); onOpenMedicalFile(app.patientId); }}
+                                  className="text-[10px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg transition cursor-pointer flex items-center gap-1"
+                                  title={isEn ? 'Patient Medical File' : 'الملف الطبي للمريض'}
+                                >
+                                  <FileText className="h-3 w-3" />
+                                  {isEn ? 'File' : 'الملف'}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          <div className="hidden sm:flex items-center gap-1.5 flex-wrap mt-1.5">
                             {app.status === 'scheduled' && (
                               <span className="text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200/70 px-2 py-0.5 rounded-lg">
                                 {isEn ? 'Unconfirmed' : 'غير مؤكد'}

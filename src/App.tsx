@@ -357,7 +357,9 @@ export default function App() {
           toothNumber: data.toothNumber !== undefined ? Number(data.toothNumber) : undefined,
           procedures: data.procedures || [],
           shiftId: data.shiftId || undefined,
-          payments: data.payments || []
+          payments: data.payments || [],
+          bookingType: data.bookingType || undefined,
+          turnNumber: data.turnNumber !== undefined ? Number(data.turnNumber) : undefined
         });
       });
       
