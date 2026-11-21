@@ -2360,9 +2360,10 @@ app.post('/api/db', async (req, res) => {
   // ---- Authentication & per-clinic authorization ----
   const auth = await getRequestAuth(req);
   const requestedDocId = id || docId;
-  // Public exception: the login screen reads support contact info before login
+  // Public exceptions (read-only, logged out): the login screen reads support contact info, and the public landing page reads its editable content
   const isPublicSupportRead = action === 'getDoc' && tableName === 'system_settings' && String(requestedDocId || '') === 'support';
-  if (!isPublicSupportRead) {
+  const isPublicLandingRead = action === 'getDoc' && tableName === 'system_settings' && String(requestedDocId || '') === 'landing_page';
+  if (!isPublicSupportRead && !isPublicLandingRead) {
     const authError = authorizeDbAction(auth, action, tableName, clinicId, requestedDocId ? String(requestedDocId) : null);
     if (authError === 401) {
       return res.status(401).json({ error: 'authentication_required', message: 'يلزم تسجيل الدخول للوصول إلى البيانات' });

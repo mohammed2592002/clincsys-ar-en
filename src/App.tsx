@@ -98,6 +98,7 @@ const PrescriptionGenerator = lazyWithRetry(() => import('./components/Prescript
 const ClinicFinancials = lazyWithRetry(() => import('./components/ClinicFinancials'));
 const LabTrackingView = lazyWithRetry(() => import('./components/LabTrackingView'));
 const SuperAdminDashboard = lazyWithRetry(() => import('./components/SuperAdminDashboard'));
+const LandingPage = lazyWithRetry(() => import('./components/LandingPage'));
 const ClinicSettings = lazyWithRetry(() => import('./components/ClinicSettings'));
 import DailyBackupReminderBanner from './components/DailyBackupReminderBanner';
 import DatabaseNoticeModal from './components/DatabaseNoticeModal';
@@ -258,6 +259,18 @@ export default function App() {
 
   // Login Form States
   const [loginRole, setLoginRole] = useState<'manager' | 'staff'>('manager');
+  // Public site routing (logged out): '/' (and any non-/login path) shows the landing page; '/login' shows the login screen.
+  const [publicPath, setPublicPath] = useState<string>(() => window.location.pathname);
+  useEffect(() => {
+    const onPop = () => setPublicPath(window.location.pathname);
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  const showPublicLogin = () => {
+    if (window.location.pathname !== '/login') window.history.pushState({}, '', '/login');
+    setPublicPath('/login');
+  };
+
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -1016,7 +1029,21 @@ export default function App() {
     );
   }
 
-  // 1. Logged Out (Show Login screen)
+  // 1. Logged Out: landing page on every path except /login, then the login screen
+  if (session.type === 'logged_out' && publicPath !== '/login') {
+    return (
+      <>
+        <Suspense fallback={
+          <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center font-sans" dir="rtl">
+            <div className="w-10 h-10 rounded-full border-3 border-slate-200 border-t-emerald-600 animate-spin mb-4"></div>
+            <p className="text-sm font-bold text-slate-700">جاري تحميل الموقع...</p>
+          </div>
+        }>
+          <LandingPage onLogin={showPublicLogin} />
+        </Suspense>
+      </>
+    );
+  }
   if (session.type === 'logged_out') {
     return (
       <>

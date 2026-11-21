@@ -1,7 +1,7 @@
 import {normalizeSupportUrl, configuredSocialLinks} from '../utils/supportLinks';
 import React, { useState, useEffect } from 'react';
 import { db, doc, collection, getDocsSmart as getDocs, getDocSmart, setDoc , authHeaders } from '../dbClient';
-import { Clinic, SupportSettings, DEFAULT_SUPPORT_SETTINGS } from '../types';
+import { Clinic, SupportSettings, DEFAULT_SUPPORT_SETTINGS, LandingSiteContent, DEFAULT_LANDING_CONTENT, mergeLandingContent } from '../types';
 import { useDialogs } from './DialogContext';
 import AdminRenewals from './AdminRenewals';
 import ClinicsTab from './superadmin/ClinicsTab';
@@ -9,6 +9,7 @@ import IncomeStatsTab from './superadmin/IncomeStatsTab';
 import SystemBackupTab from './superadmin/SystemBackupTab';
 import AdminSecurityTab from './superadmin/AdminSecurityTab';
 import TechSupportTab from './superadmin/TechSupportTab';
+import WebsiteTab from './superadmin/WebsiteTab';
 import { 
   LogOut, 
   Building2, 
@@ -28,6 +29,7 @@ import {
   Activity,
   ShieldCheck,
   Palette,
+  Globe,
   Eye,
   Trash2,
   SlidersHorizontal,
@@ -92,7 +94,7 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
 
   // Active Tab
   const [adminActiveTab, setAdminActiveTab] = useState<
-    'clinics' | 'renewals' | 'income_stats' | 'system_backup' | 'admin_security' | 'tech_support'
+    'clinics' | 'renewals' | 'income_stats' | 'system_backup' | 'admin_security' | 'tech_support' | 'website'
   >('clinics');
 
   // Clinics List
@@ -178,6 +180,11 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
   const [supportSettings, setSupportSettings] = useState<SupportSettings>(DEFAULT_SUPPORT_SETTINGS);
   const [isSavingSupport, setIsSavingSupport] = useState(false);
   const [isLoadingSupport, setIsLoadingSupport] = useState(false);
+
+  // Landing Website Content State
+  const [landingContent, setLandingContent] = useState<LandingSiteContent>(DEFAULT_LANDING_CONTENT);
+  const [isSavingLanding, setIsSavingLanding] = useState(false);
+  const [isLoadingLanding, setIsLoadingLanding] = useState(false);
 
   // Fetch Clinics
   const fetchClinics = async () => {
@@ -385,6 +392,42 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
     }
   };
 
+  // Load Landing Website Content
+  const loadLandingData = async () => {
+    setIsLoadingLanding(true);
+    try {
+      const snap = await getDocSmart(doc(db, 'system_settings', 'landing_page'), true);
+      if (snap && snap.exists() && snap.data()) {
+        setLandingContent(mergeLandingContent(snap.data()));
+      } else {
+        setLandingContent(mergeLandingContent(null));
+      }
+    } catch (err) {
+      console.warn('Error loading landing page content:', err);
+      setLandingContent(mergeLandingContent(null));
+    } finally {
+      setIsLoadingLanding(false);
+    }
+  };
+
+  // Save Landing Website Content
+  const handleSaveLanding = async () => {
+    setIsSavingLanding(true);
+    try {
+      const docRef = doc(db, 'system_settings', 'landing_page');
+      await setDoc(docRef, {
+        ...landingContent,
+        updatedAt: new Date().toISOString()
+      });
+      dialogs.alert('تم حفظ محتوى الموقع التعريفي بنجاح! التعديلات ظاهرة على الصفحة الرئيسية فوراً.', { severity: 'success' });
+    } catch (err: any) {
+      console.error('Error saving landing page content:', err);
+      dialogs.alert('حدث خطأ أثناء حفظ محتوى الموقع: ' + err.toString(), { severity: 'error' });
+    } finally {
+      setIsSavingLanding(false);
+    }
+  };
+
   // Save Broadcast
   const handleSaveBroadcast = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -451,6 +494,7 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
     fetchClinics();
     fetchAnalyticsAndBroadcast();
     loadSupportData();
+    loadLandingData();
 
     const interval = setInterval(() => {
       fetchClinics();
@@ -767,6 +811,22 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
             >
               <Headphones className="h-4 w-4" />
               الدعم الفني والهوية
+            </button>
+
+            <button
+              onClick={() => setAdminActiveTab('website')}
+              className={`px-4 py-2 rounded-xl transition cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+                adminActiveTab === 'website'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'hover:bg-white/10'
+              }`}
+              style={{
+                color: adminActiveTab === 'website' ? '#ffffff' : headerTextColor,
+                opacity: adminActiveTab === 'website' ? 1 : 0.82
+              }}
+            >
+              <Globe className="h-4 w-4" />
+              الموقع التعريفي
             </button>
           </div>
         </div>
@@ -1157,6 +1217,16 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
             onSave={handleSaveSupportSettings}
             isSaving={isSavingSupport}
             isLoading={isLoadingSupport}
+          />
+        )}
+
+        {adminActiveTab === 'website' && (
+          <WebsiteTab
+            content={landingContent}
+            setContent={setLandingContent}
+            onSave={handleSaveLanding}
+            isSaving={isSavingLanding}
+            isLoading={isLoadingLanding}
           />
         )}
       </main>

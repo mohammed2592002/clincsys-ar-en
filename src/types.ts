@@ -536,3 +536,238 @@ export const DEFAULT_SUPPORT_SETTINGS: SupportSettings = {
   socialLinks: [],
   workingHoursNotice: ''
 };
+
+// ==================== LANDING PAGE (PUBLIC WEBSITE) CONTENT ====================
+// Everything the public marketing site shows is stored in one
+// system_settings/landing_page document so the super admin can change any
+// word, image, contact link or pricing plan without touching the code.
+
+export interface LandingTexts {
+  brandName: string;
+  navFeatures: string;
+  navHow: string;
+  navPricing: string;
+  navContact: string;
+  loginLabel: string;
+  heroBadge: string;
+  heroTitleA: string;
+  heroTitleB: string;
+  heroSubtitle: string;
+  trialButtonLabel: string;
+  pricingButtonLabel: string;
+  heroPoint1: string;
+  heroPoint2: string;
+  heroPoint3: string;
+  featuresKicker: string;
+  featuresTitle: string;
+  featuresSubtitle: string;
+  stepsKicker: string;
+  stepsTitle: string;
+  pricingKicker: string;
+  pricingTitle: string;
+  pricingSubtitle: string;
+  ctaTitle: string;
+  ctaSubtitle: string;
+  ctaTrialLabel: string;
+  ctaLoginLabel: string;
+  footerCommunityLabel: string;
+  footerFacebookLabel: string;
+  footerFaqLabel: string;
+  footerCopyright: string;
+  trialWhatsappPrefill: string;
+}
+
+export interface LandingFeature {
+  id: string;
+  icon: string; // key from LANDING_ICON_OPTIONS
+  ar: { title: string; desc: string };
+  en?: { title?: string; desc?: string };
+}
+
+export interface LandingStat {
+  id: string;
+  ar: { value: string; label: string };
+  en?: { value?: string; label?: string };
+}
+
+export interface LandingStep {
+  id: string;
+  ar: { title: string; desc: string };
+  en?: { title?: string; desc?: string };
+}
+
+export interface LandingPlan {
+  id: string;
+  price: string;
+  popular: boolean;
+  ar: { name: string; desc: string; period: string; features: string[]; buttonLabel: string };
+  en?: { name?: string; desc?: string; period?: string; features?: string[]; buttonLabel?: string };
+}
+
+export interface LandingSiteContent {
+  ar: LandingTexts;
+  en?: Partial<LandingTexts>;
+  logoUrl: string;
+  heroImageUrl: string;
+  chartImageUrl: string;
+  financeImageUrl: string;
+  whatsappNumber: string;
+  whatsappCommunityUrl: string;
+  facebookUrl: string;
+  features: LandingFeature[];
+  stats: LandingStat[];
+  steps: LandingStep[];
+  plans: LandingPlan[];
+  updatedAt?: string;
+}
+
+export const LANDING_ICON_OPTIONS = [
+  'calendar', 'tooth', 'image', 'chat', 'pill', 'wallet', 'offline', 'buildings',
+  'lock', 'globe', 'phone', 'star', 'users', 'clock', 'check'
+] as const;
+
+export const DEFAULT_LANDING_TEXTS_AR: LandingTexts = {
+  brandName: 'CoreDentSys',
+  navFeatures: 'المميزات',
+  navHow: 'إزاي بيشتغل',
+  navPricing: 'الأسعار',
+  navContact: 'تواصل معنا',
+  loginLabel: 'تسجيل الدخول',
+  heroBadge: 'يشتغل حتى لو النت قطع — أوفلاين بالكامل',
+  heroTitleA: 'إدارة عيادتك كلها',
+  heroTitleB: 'من مكان واحد',
+  heroSubtitle: 'CoreDentSys نظام متكامل لعيادات الأسنان: حجوزات بالدور أو بالوقت، ملفات مرضى كاملة، مخطط أسنان تفاعلي، أشعة، روشتات، وحسابات وتقفيل يومي — بالعربي والإنجليزي، ومن أي جهاز.',
+  trialButtonLabel: 'ابدأ تجربتك المجانية — 7 أيام',
+  pricingButtonLabel: 'شوف الأسعار',
+  heroPoint1: 'بدون تحميل برامج',
+  heroPoint2: 'بيانات كل عيادة منفصلة ومشفّرة',
+  heroPoint3: 'دعم مباشر على واتساب',
+  featuresKicker: 'المميزات',
+  featuresTitle: 'كل اللي عيادتك محتاجاه',
+  featuresSubtitle: 'من أول ما المريض يدخل لحد ما يدفع ويتابع، النظام مغطي كل خطوة في يومك.',
+  stepsKicker: 'إزاي تبدأ',
+  stepsTitle: 'تلات خطوات وتشتغل',
+  pricingKicker: 'الأسعار',
+  pricingTitle: 'باقة على مقاس عيادتك',
+  pricingSubtitle: 'ابدأ بتجربة مجانية 7 أيام، وبعدها اختار الباقة اللي تناسبك. مفيش عقود ولا التزام.',
+  ctaTitle: 'جاهز تنظّم عيادتك؟',
+  ctaSubtitle: 'جرّب CoreDentSys مجاناً 7 أيام — ولو عندك حساب بالفعل، سجّل دخولك من هنا.',
+  ctaTrialLabel: 'اطلب التجربة المجانية',
+  ctaLoginLabel: 'تسجيل الدخول',
+  footerCommunityLabel: 'مجتمع أطباء الأسنان على واتساب',
+  footerFacebookLabel: 'الصفحة الرسمية على فيسبوك',
+  footerFaqLabel: 'الأسئلة الشائعة',
+  footerCopyright: 'نظام مشفّر وآمن • CoreDentSys © 2026 — كل الحقوق محفوظة',
+  trialWhatsappPrefill: 'أهلاً، حابب أجرب CoreDentSys لعيادتي — التجربة المجانية 7 أيام'
+};
+
+export const DEFAULT_LANDING_TEXTS_EN: LandingTexts = {
+  brandName: 'CoreDentSys',
+  navFeatures: 'Features',
+  navHow: 'How it works',
+  navPricing: 'Pricing',
+  navContact: 'Contact us',
+  loginLabel: 'Log in',
+  heroBadge: 'Works fully offline — even with no internet',
+  heroTitleA: 'Run your entire clinic',
+  heroTitleB: 'from one place',
+  heroSubtitle: 'CoreDentSys is a complete system for dental clinics: queue or time-based booking, full patient files, an interactive dental chart, x-rays, prescriptions, and daily closing — in Arabic and English, on any device.',
+  trialButtonLabel: 'Start your free 7-day trial',
+  pricingButtonLabel: 'See pricing',
+  heroPoint1: 'No software to install',
+  heroPoint2: 'Every clinic\u2019s data is separate & encrypted',
+  heroPoint3: 'Direct WhatsApp support',
+  featuresKicker: 'Features',
+  featuresTitle: 'Everything your clinic needs',
+  featuresSubtitle: 'From the moment a patient walks in until they pay and follow up, the system covers every step of your day.',
+  stepsKicker: 'Getting started',
+  stepsTitle: 'Three steps and you\u2019re running',
+  pricingKicker: 'Pricing',
+  pricingTitle: 'A plan that fits your clinic',
+  pricingSubtitle: 'Start with a free 7-day trial, then pick the plan that suits you. No contracts, no commitment.',
+  ctaTitle: 'Ready to organize your clinic?',
+  ctaSubtitle: 'Try CoreDentSys free for 7 days — or log in if you already have an account.',
+  ctaTrialLabel: 'Request the free trial',
+  ctaLoginLabel: 'Log in',
+  footerCommunityLabel: 'Dentists community on WhatsApp',
+  footerFacebookLabel: 'Official Facebook page',
+  footerFaqLabel: 'FAQ',
+  footerCopyright: 'Encrypted & secured system • CoreDentSys © 2026 — All rights reserved',
+  trialWhatsappPrefill: 'Hello, I would like to try CoreDentSys for my clinic — the free 7-day trial'
+};
+
+export const DEFAULT_LANDING_CONTENT: LandingSiteContent = {
+  ar: DEFAULT_LANDING_TEXTS_AR,
+  en: DEFAULT_LANDING_TEXTS_EN,
+  logoUrl: '',
+  heroImageUrl: '/landing/appointments.jpg',
+  chartImageUrl: '/landing/chart.jpg',
+  financeImageUrl: '/landing/finance.jpg',
+  whatsappNumber: '201067727684',
+  whatsappCommunityUrl: '',
+  facebookUrl: '',
+  features: [
+    { id: 'f1', icon: 'calendar', ar: { title: 'حجوزات بالدور أو بالوقت', desc: 'نظام أدوار ذكي أو مواعيد مظبوطة بالساعة — حسب طريقة شغل عيادتك.' }, en: { title: 'Queue or timed booking', desc: 'A smart queue system or precise time slots — whatever fits your clinic.' } },
+    { id: 'f2', icon: 'tooth', ar: { title: 'مخطط أسنان تفاعلي', desc: 'Chart كامل لكل سن بكل أنظمة الترقيم، إجراءات وأسعار لكل سن على حدة.' }, en: { title: 'Interactive dental chart', desc: 'A full chart for every tooth in all numbering systems, with per-tooth procedures and prices.' } },
+    { id: 'f3', icon: 'image', ar: { title: 'رفع الأشعة والملفات', desc: 'ارفع أشعة المريض وصوره في ملفه وارجع لها في أي زيارة.' }, en: { title: 'X-ray & file uploads', desc: 'Upload patient x-rays and photos to their file and revisit them any time.' } },
+    { id: 'f4', icon: 'chat', ar: { title: 'تذكير واتساب', desc: 'فكر مرضاك بمواعيدهم برسالة واتساب جاهزة بضغطة واحدة.' }, en: { title: 'WhatsApp reminders', desc: 'Remind patients about appointments with a ready WhatsApp message in one tap.' } },
+    { id: 'f5', icon: 'pill', ar: { title: 'روشتات في ثواني', desc: 'مكتبة أدوية جاهزة وروشتة بتتطبع أو تتبعت على طول.' }, en: { title: 'Prescriptions in seconds', desc: 'A ready drug library and prescriptions that print or send instantly.' } },
+    { id: 'f6', icon: 'wallet', ar: { title: 'حسابات وتقفيل يومي', desc: 'إيرادات ومصاريف وأقساط متأخرة وتقارير — وتقفيل اليوم بضغطة.' }, en: { title: 'Finance & daily closing', desc: 'Revenue, expenses, late installments and reports — close the day in one tap.' } },
+    { id: 'f7', icon: 'offline', ar: { title: 'يعمل أوفلاين', desc: 'النت قطع؟ كمّل شغل عادي، وأول ما يرجع النظام بيزامن كل حاجة.' }, en: { title: 'Works offline', desc: 'Internet down? Keep working — everything syncs when it comes back.' } },
+    { id: 'f8', icon: 'buildings', ar: { title: 'عيادات وفروع متعددة', desc: 'كل عيادة بحسابها وداتا منفصلة، وإدارة كاملة من حساب المشرف.' }, en: { title: 'Multi-clinic & branches', desc: 'Each clinic has its own account and separate data, managed from one super admin account.' } }
+  ],
+  stats: [
+    { id: 's1', ar: { value: '100%', label: 'يشتغل حتى لو النت قطع' }, en: { value: '100%', label: 'Works even when the internet drops' } },
+    { id: 's2', ar: { value: 'عربي + English', label: 'واجهة كاملة باللغتين RTL' }, en: { value: 'Arabic + English', label: 'Full RTL & LTR interface' } },
+    { id: 's3', ar: { value: 'مشفّرة', label: 'بيانات كل عيادة منفصلة وآمنة' }, en: { value: 'Encrypted', label: 'Every clinic\u2019s data is separate & safe' } },
+    { id: 's4', ar: { value: 'أي جهاز', label: 'موبايل وتابليت وكمبيوتر' }, en: { value: 'Any device', label: 'Phone, tablet and computer' } }
+  ],
+  steps: [
+    { id: 'st1', ar: { title: 'اطلب تجربتك المجانية', desc: 'كلّمنا على واتساب وهنجهزلك حساب تجريبي لعيادتك في دقايق — 7 أيام مجاناً.' }, en: { title: 'Request your free trial', desc: 'Message us on WhatsApp and we\u2019ll set up a trial account for your clinic in minutes — free for 7 days.' } },
+    { id: 'st2', ar: { title: 'سجّل مرضاك ومواعيدك', desc: 'واجهة عربية بسيطة، الموظفة هتعرف تشتغل عليها من أول يوم من غير تدريب.' }, en: { title: 'Add patients & appointments', desc: 'A simple interface your receptionist will use from day one, no training needed.' } },
+    { id: 'st3', ar: { title: 'تابع عيادتك من أي مكان', desc: 'من الموبايل أو الكمبيوتر: مواعيد النهاردة، إيراد اليوم، وتقاريرك — كلها قدامك.' }, en: { title: 'Follow your clinic anywhere', desc: 'From phone or computer: today\u2019s appointments, daily revenue and reports — all in front of you.' } }
+  ],
+  plans: [
+    {
+      id: 'p1', price: '199', popular: false,
+      ar: { name: 'الأساسية', desc: 'للعيادة الصغيرة اللي بتبدأ تنظّم شغلها', period: 'ج.م / شهرياً', features: ['حجوزات وملفات مرضى كاملة', 'مخطط الأسنان التفاعلي', 'روشتات وتذكير واتساب', 'مستخدم واحد + مساعد'], buttonLabel: 'ابدأ التجربة المجانية' },
+      en: { name: 'Basic', desc: 'For a small clinic getting organized', period: 'EGP / month', features: ['Full booking & patient files', 'Interactive dental chart', 'Prescriptions & WhatsApp reminders', 'One user + assistant'], buttonLabel: 'Start the free trial' }
+    },
+    {
+      id: 'p2', price: '349', popular: true,
+      ar: { name: 'الاحترافية', desc: 'للعيادة الشغالة اللي محتاجة كل الأدوات', period: 'ج.م / شهرياً', features: ['كل مميزات الباقة الأساسية', 'رفع الأشعة والملفات بدون حدود', 'حسابات وتقفيل يومي وتقارير', 'يعمل أوفلاين بالكامل', 'مخازن، معامل، ونقاط ولاء'], buttonLabel: 'ابدأ التجربة المجانية' },
+      en: { name: 'Professional', desc: 'For a busy clinic that needs every tool', period: 'EGP / month', features: ['Everything in Basic', 'Unlimited x-ray & file uploads', 'Finance, daily closing & reports', 'Fully offline capable', 'Inventory, labs & loyalty points'], buttonLabel: 'Start the free trial' }
+    },
+    {
+      id: 'p3', price: '599', popular: false,
+      ar: { name: 'المجموعات والفروع', desc: 'لسلاسل العيادات وأكتر من فرع', period: 'ج.م / شهرياً', features: ['كل مميزات الباقة الاحترافية', 'فروع متعددة بحساب مشرف واحد', 'شيفتات ومتابعة موظفين', 'دعم أولوية وتدريب للفريق'], buttonLabel: 'كلمنا على واتساب' },
+      en: { name: 'Groups & branches', desc: 'For clinic chains and multiple branches', period: 'EGP / month', features: ['Everything in Professional', 'Multiple branches under one admin', 'Shifts & staff tracking', 'Priority support & team training'], buttonLabel: 'Message us on WhatsApp' }
+    }
+  ]
+};
+
+// Merge a stored document over the defaults so old saved content keeps working
+// as new fields are added later.
+export function mergeLandingContent(stored: any): LandingSiteContent {
+  const base = JSON.parse(JSON.stringify(DEFAULT_LANDING_CONTENT)) as LandingSiteContent;
+  if (!stored || typeof stored !== 'object') return base;
+  const out: any = { ...base, ...stored };
+  out.ar = { ...base.ar, ...(stored.ar || {}) };
+  out.en = { ...base.en, ...(stored.en || {}) };
+  const mergeList = (defList: any[], savedList: any[]) => {
+    if (!Array.isArray(savedList)) return defList;
+    return savedList.map((item: any, i: number) => {
+      const def = defList.find((d: any) => d.id === item?.id) || defList[i] || {};
+      return {
+        ...def, ...item,
+        ar: { ...(def.ar || {}), ...(item?.ar || {}) },
+        en: { ...(def.en || {}), ...(item?.en || {}) }
+      };
+    });
+  };
+  out.features = mergeList(base.features, stored.features);
+  out.stats = mergeList(base.stats, stored.stats);
+  out.steps = mergeList(base.steps, stored.steps);
+  out.plans = mergeList(base.plans, stored.plans);
+  return out as LandingSiteContent;
+}
