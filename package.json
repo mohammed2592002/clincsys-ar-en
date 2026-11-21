@@ -9,7 +9,10 @@
     "start": "node dist-server/server.cjs",
     "clean": "rm -rf dist dist-server server.js",
     "lint": "tsc --noEmit",
-    "test": "echo \"[Test Suite] Running structural type assertions... Success: 14/14 tests passed!\" && exit 0"
+    "test": "npm run lint && npm run test:finance",
+    "test:finance": "npm run build && node tests/run-finance.mjs",
+    "test:offline": "npm run build && TEST_OFFLINE=1 node tests/run-finance.mjs",
+    "test:finance:ui": "npm run build && TEST_UI=1 node tests/run-finance.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1108.0",
@@ -48,6 +51,7 @@
     "@types/ws": "^8.18.1",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "puppeteer-core": "^25.18.1",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",

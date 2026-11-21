@@ -1,3 +1,4 @@
+import OfflineCommands from './OfflineCommands';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
@@ -223,7 +224,7 @@ export default function ClinicSettings({
     return safeStorage.getItem(`auto_backup_last_date_${clinicId}`) || 'لم تتم بعد اليوم';
   });
 
-  const [settingsSubTab, setSettingsSubTab] = useState<'profile' | 'services_prices' | 'questionnaire' | 'staff' | 'backup' | 'subscription' | 'payment_methods' | 'tech_support' | 'loyalty_program'>('profile');
+  const [settingsSubTab, setSettingsSubTab] = useState<'profile' | 'services_prices' | 'questionnaire' | 'staff' | 'backup' | 'subscription' | 'payment_methods' | 'tech_support' | 'loyalty_program' | 'alerts'>('profile');
   const [profileSubSection, setProfileSubSection] = useState<'identity' | 'doctor' | 'contact' | 'style' | 'booking'>('identity');
 
   // Loyalty Program State & Redemptions Log
@@ -1985,6 +1986,7 @@ export default function ClinicSettings({
             { id: 'services_prices', icon: Tag, ar: 'قائمة الأسعار والخدمات', en: 'Prices & Services List', subAr: 'خدمات العيادة وأسعارها وأقسامها', subEn: 'Clinic services, prices & categories' },
             { id: 'questionnaire', icon: ClipboardList, ar: 'استبيان المرضى', en: 'Patient Questionnaire', subAr: 'أسئلة الاستقبال الطبية الأولية', subEn: 'Initial medical intake questions' },
             { id: 'staff', icon: Users, ar: 'شؤون الموظفين', en: 'Staff Management', subAr: 'صلاحيات دخول السكرتارية', subEn: 'Reception access permissions' },
+            { id: 'alerts', icon: Activity, ar: 'تنبيهات', en: 'Alerts', subAr: 'الطلبات المعلقة والتعارضات والمزامنة', subEn: 'Pending requests, conflicts & sync' },
             { id: 'backup', icon: Database, ar: 'النسخ الاحتياطي', en: 'Backup', subAr: 'تنزيل واستعادة بيانات العيادة', subEn: 'Download & restore clinic data' },
             { id: 'subscription', icon: Receipt, ar: 'تفاصيل الاشتراك', en: 'Subscription Details', subAr: 'حالة الاشتراك وتاريخ انتهائه', subEn: 'Subscription status & expiry date' },
             { id: 'payment_methods', icon: CreditCard, ar: 'طرق الدفع بالعيادة', en: 'Payment Methods', subAr: 'قنوات الدفع المعتمدة', subEn: 'Accepted payment channels' },
@@ -2045,6 +2047,7 @@ export default function ClinicSettings({
         )}
 
         {/* 1. CLINIC BRANDING TAB */}
+        {settingsSubTab === 'alerts' && <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4"><h2 className="text-xl font-black text-[#272E40]">{isEn?'Alerts':'تنبيهات'}</h2><OfflineCommands isEn={isEn} showEmpty/></div>}
         {settingsSubTab === 'profile' && (
           <div className="space-y-6 animate-fade-in">
             

@@ -1,3 +1,4 @@
+import OfflineCommands from './components/OfflineCommands';
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
@@ -363,198 +364,10 @@ export default function App() {
         });
       });
       
-      // Automatically find and merge any multiple non-cancelled appointments for the same patient on the same day.
-      // This enforces that each patient has exactly one non-cancelled appointment card per day.
-      const patientGroups: Record<string, Appointment[]> = {};
-      list.forEach((app) => {
-        if (app.patientId && app.status !== 'cancelled') {
-          const groupKey = `${app.patientId}_${app.date}`;
-          if (!patientGroups[groupKey]) {
-            patientGroups[groupKey] = [];
-          }
-          patientGroups[groupKey].push(app);
-        }
-      });
-
+      // Reads must never merge, cancel or rewrite historical appointments.
+      // Each existing appointment and its financial history remains independent.
       const mergedList: Appointment[] = [...list];
 
-      for (const groupKey of Object.keys(patientGroups)) {
-        const group = patientGroups[groupKey];
-        if (group.length > 1) {
-          console.log(`[Deduplication] Found ${group.length} duplicate appointments for group ${groupKey}. Merging...`);
-          
-          // Sort to prioritize keeping the primary one (completed/installment/paid, or having procedures, or earlier time)
-          group.sort((a, b) => {
-            const statusOrder = { completed: 3, installment: 2, paid: 1, waiting: 0, scheduled: -1 } as any;
-            const aOrder = statusOrder[a.status] !== undefined ? statusOrder[a.status] : -2;
-            const bOrder = statusOrder[b.status] !== undefined ? statusOrder[b.status] : -2;
-            if (bOrder !== aOrder) return bOrder - aOrder;
-            
-            const aProcs = a.procedures?.length || 0;
-            const bProcs = b.procedures?.length || 0;
-            if (bProcs !== aProcs) return bProcs - aProcs;
-            
-            return a.time.localeCompare(b.time); // prefer earlier time
-          });
-
-          const primary = { ...group[0] };
-          const duplicates = group.slice(1);
-
-          // Accumulate from duplicates into primary
-          let combinedTreatment = primary.treatmentType || '';
-          let combinedPrice = Number(primary.price) || 0;
-          let combinedPaid = Number(primary.paidAmount) || 0;
-          let combinedNotes = primary.notes || '';
-          const combinedProcedures = primary.procedures ? [...primary.procedures] : [];
-          const combinedPayments = primary.payments ? [...primary.payments] : [];
-
-          // If primary has paidAmount > 0 but payments array is empty, reconstruct its initial payment
-          if (combinedPayments.length === 0 && combinedPaid > 0) {
-            combinedPayments.push({
-              id: 'pay_init_' + primary.id,
-              amount: combinedPaid,
-              paymentMethod: primary.paymentMethod || 'كاش',
-              date: primary.date || getEgyptTodayStr(),
-              createdAt: new Date().toISOString(),
-              notes: 'الدفعة الأولى',
-              type: 'initial'
-            });
-          }
-
-          // If primary didn't have procedures but had a treatmentType, build initial procedure
-          if (combinedProcedures.length === 0 && combinedTreatment) {
-            combinedProcedures.push({
-              name: combinedTreatment,
-              price: combinedPrice,
-              tooth: primary.toothNumber || null
-            });
-          }
-
-          for (const dup of duplicates) {
-            // Merge treatmentType
-            if (dup.treatmentType) {
-              if (combinedTreatment) {
-                if (!combinedTreatment.includes(dup.treatmentType)) {
-                  combinedTreatment = `${combinedTreatment} + ${dup.treatmentType}`;
-                }
-              } else {
-                combinedTreatment = dup.treatmentType;
-              }
-            }
-
-            // Merge price and paid amount
-            combinedPrice += Number(dup.price) || 0;
-            combinedPaid += Number(dup.paidAmount) || 0;
-
-            // Merge notes
-            if (dup.notes) {
-              combinedNotes = combinedNotes ? `${combinedNotes}\n${dup.notes}` : dup.notes;
-            }
-
-            // Merge procedures list
-            const dupProcs = dup.procedures && dup.procedures.length > 0
-              ? dup.procedures
-              : dup.treatmentType ? [{ name: dup.treatmentType, price: Number(dup.price) || 0, tooth: dup.toothNumber || null }] : [];
-
-            for (const p of dupProcs) {
-              const isDup = combinedProcedures.some(cp => cp.name === p.name && cp.price === p.price && cp.tooth === (p.tooth || null));
-              if (!isDup) {
-                combinedProcedures.push({
-                  name: p.name,
-                  price: Number(p.price) || 0,
-                  tooth: p.tooth || null
-                });
-              }
-            }
-
-            // Merge payments list
-            if (dup.payments && dup.payments.length > 0) {
-              for (const pay of dup.payments) {
-                const isDup = combinedPayments.some(cp => cp.id === pay.id);
-                if (!isDup) {
-                  combinedPayments.push(pay);
-                }
-              }
-            } else if (Number(dup.paidAmount) > 0) {
-              combinedPayments.push({
-                id: 'pay_dup_' + dup.id,
-                amount: Number(dup.paidAmount),
-                paymentMethod: dup.paymentMethod || 'كاش',
-                date: dup.date || getEgyptTodayStr(),
-                createdAt: new Date().toISOString(),
-                notes: 'دفعة من موعد مدمج',
-                type: 'initial'
-              });
-            }
-
-            // Delete duplicate appointment from DB
-            try {
-              const dupRef = doc(db, 'clinics', currentClinicId, 'appointments', dup.id);
-              await deleteDoc(dupRef);
-              console.log(`[Deduplication] Deleted duplicate appointment ID: ${dup.id}`);
-            } catch (err) {
-              console.error(`[Deduplication] Failed to delete duplicate app ${dup.id}:`, err);
-            }
-
-            // Update patient records that pointed to duplicate appointment ID to point to primary ID
-            try {
-              const recordsRef = collection(db, 'clinics', currentClinicId, 'patients', primary.patientId, 'records');
-              const rSnap = await getDocs(query(recordsRef, where('appointmentId', '==', dup.id)));
-              for (const rDoc of rSnap.docs) {
-                const rRef = doc(db, 'clinics', currentClinicId, 'patients', primary.patientId, 'records', rDoc.id);
-                await updateDoc(rRef, { appointmentId: primary.id });
-                console.log(`[Deduplication] Updated record ${rDoc.id} to link to primary appointment ${primary.id}`);
-              }
-            } catch (err) {
-              console.error(`[Deduplication] Failed to link duplicate app records:`, err);
-            }
-          }
-
-          // Recalculate remainingAmount and status
-          const combinedRem = Math.max(0, combinedPrice - combinedPaid);
-          let invStatus = primary.invoiceStatus;
-          if (combinedPrice > 0) {
-            if (combinedRem <= 0 && combinedPaid >= combinedPrice) invStatus = 'paid';
-            else if (combinedPaid > 0) invStatus = 'installment';
-            else invStatus = 'pending_payment';
-          }
-
-          const updatedPrimaryData = {
-            ...primary,
-            treatmentType: combinedTreatment,
-            price: combinedPrice,
-            paidAmount: combinedPaid,
-            remainingAmount: combinedRem,
-            invoiceStatus: invStatus,
-            notes: combinedNotes,
-            procedures: combinedProcedures,
-            payments: combinedPayments,
-            status: (primary.status === 'scheduled' || primary.status === 'waiting' ? primary.status : 'completed') as any
-          };
-
-          // Save updated primary appointment to DB
-          try {
-            const primaryRef = doc(db, 'clinics', currentClinicId, 'appointments', primary.id);
-            await setDoc(primaryRef, updatedPrimaryData);
-            console.log(`[Deduplication] Successfully merged duplicates into primary appointment ID: ${primary.id}`);
-          } catch (err) {
-            console.error(`[Deduplication] Failed to update primary appointment ${primary.id}:`, err);
-          }
-
-          // Remove duplicates from mergedList and update the primary item
-          const idx = mergedList.findIndex(item => item.id === primary.id);
-          if (idx !== -1) {
-            mergedList[idx] = updatedPrimaryData;
-          }
-          duplicates.forEach(dup => {
-            const dupIdx = mergedList.findIndex(item => item.id === dup.id);
-            if (dupIdx !== -1) {
-              mergedList.splice(dupIdx, 1);
-            }
-          });
-        }
-      }
-      
       mergedList.sort((a, b) => {
         const dateCompare = a.date.localeCompare(b.date);
         if (dateCompare !== 0) return dateCompare;
@@ -600,7 +413,7 @@ export default function App() {
       const { collection, getDocs, query, where, db } = await import('./dbClient');
       const shiftsRef = collection(db, 'clinics', currentClinicId, 'shifts');
       const q = query(shiftsRef, where('status', '==', 'open'));
-      const snap = await getDocs(q);
+      const snap = await getDocs(q,true);
       if (!snap.empty) {
         // Sort in memory to make sure we pick the latest opened shift (resilience)
         const docs = [...snap.docs];
@@ -612,29 +425,11 @@ export default function App() {
           return bTime - aTime;
         });
 
-        // Heal duplicate open shifts left from older bugs
-        if (docs.length > 1) {
-          const { doc, updateDoc } = await import('./dbClient');
-          for (const staleDoc of docs.slice(1)) {
-            const staleData = staleDoc.data();
-            const startCash = Number(staleData.startCash) || 0;
-            const staleRef = doc(db, 'clinics', currentClinicId, 'shifts', staleDoc.id);
-            await updateDoc(staleRef, {
-              status: 'closed',
-              closedAt: new Date().toISOString(),
-              closedBy: 'النظام',
-              expectedCash: startCash,
-              actualCash: startCash,
-              discrepancy: 0,
-              expensesTotal: 0,
-              totalRevenue: 0,
-              notes: `${staleData.notes || ''} [تم الإغلاق تلقائياً - وردية مفتوحة مكررة]`.trim()
-            });
-          }
-        }
+        // Conflicting shifts are left open for explicit manager reconciliation.
+
 
         const docSnap = docs[0];
-        setActiveShift({ id: docSnap.id, ...docSnap.data() });
+        setActiveShift({id:docSnap.id,...docSnap.data(),needsSettlement:docs.length>1||(Date.now()-Date.parse(docSnap.data().openedAt||'')>24*60*60*1000),conflictingShifts:docs.length});
       } else {
         setActiveShift(null);
       }
@@ -884,6 +679,7 @@ export default function App() {
         const { table, id, payload } = customEvent.detail || {};
         console.log('[App] Received clinic-sync custom window event for table:', table);
         if (currentClinicId) {
+          if (!table) {fetchSharedAppointments(true,getTodayDateString(),true);fetchActiveShift(true);return;}
           if (table === 'appointments' || table === 'records' || table === 'patients') {
             clearTableCache('appointments');
             clearTableCache('records');
@@ -1680,7 +1476,7 @@ export default function App() {
             )}
  
             {/* Show settings for managers only */}
-            {!isStaff && (
+            {(
               <>
                 <motion.button
                   whileTap={{ scale: 0.98 }}
@@ -1838,6 +1634,7 @@ export default function App() {
           />
         )}
 
+        {isStaff && clinicActiveTab === 'settings' && <div className="bg-white rounded-2xl border p-5"><h2 className="text-xl font-black mb-4">{isEn?'Settings: Alerts':'الإعدادات: تنبيهات'}</h2><OfflineCommands isEn={!!isEn} showEmpty/></div>}
         {!isStaff && clinicActiveTab === 'settings' && currentClinicData && (
           <ClinicSettings
             clinicId={currentClinicId}

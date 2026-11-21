@@ -642,7 +642,7 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
   const handleDelete = async (id: string) => {
     if (checkSubscriptionBlocked(clinic, dialogs)) return;
     if (isStaff) {
-      dialogs.alert('عفواً، لا توجد لديك صلاحيات لحذف أي عنصر. الحذف متاح للطبيب فقط!', { severity: 'error' });
+      dialogs.alert(isEn?'Only the clinic manager can delete a patient.':'عفواً، لا توجد لديك صلاحيات لحذف أي عنصر. الحذف متاح للطبيب فقط!', { severity: 'error' });
       return;
     }
     setLoading(true);
@@ -653,11 +653,12 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
         await deleteDoc(doc(ref, id));
       } catch (err: any) {
         handleDbError(err, OperationType.DELETE, `clinics/${clinic.id}/patients/${id}`);
+        throw err;
       }
       await fetchPatients();
     } catch (err: any) {
       console.error(err);
-      setError('حدث خطأ أثناء حذف المريض: ' + (err.message || err.toString()));
+      setError((isEn?'Patient could not be deleted: ':'حدث خطأ أثناء حذف المريض: ') + (err.message || err.toString()));
     } finally {
       setLoading(false);
     }
@@ -947,7 +948,7 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
             <div className="bg-rose-50 border-r-4 border-rose-500 p-4 rounded-xl flex items-start gap-3">
               <AlertCircle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
               <div>
-                <h4 className="font-bold text-rose-800 text-sm">تنبيه:</h4>
+                <h4 className="font-bold text-rose-800 text-sm">{isEn?'Notice:':'تنبيه:'}</h4>
                 <p className="text-xs text-rose-700 mt-1 leading-relaxed">{error}</p>
               </div>
             </div>

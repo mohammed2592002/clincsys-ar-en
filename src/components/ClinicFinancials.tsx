@@ -1,3 +1,7 @@
+import OfflineCommands from './OfflineCommands';
+import LegacySettlement from './LegacySettlement';
+import ReturnsLog from './ReturnsLog';
+import { financeCommand } from '../dbClient';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'motion/react';
@@ -208,17 +212,18 @@ export default function ClinicFinancials({
   const { t, i18n } = useTranslation();
   const isEn = i18n.language?.startsWith('en');
   const dialogs = useDialogs();
-  const [activeTab, setActiveTab] = useState<'shift_closure' | 'shift_history' | 'installments' | 'expenses' | 'revenues'>('shift_closure');
+  const [activeTab, setActiveTab] = useState<'shift_closure' | 'shift_history' | 'installments' | 'expenses' | 'revenues' | 'returns'>('shift_closure');
   
   const allowedFeatures = clinic.allowedFeatures || ['patients', 'calendar', 'prescriptions', 'laboratory', 'financials'];
 
-  const isTabAllowed = (tabId: 'shift_closure' | 'shift_history' | 'revenues' | 'installments' | 'expenses') => {
+  const isTabAllowed = (tabId: 'shift_closure' | 'shift_history' | 'revenues' | 'installments' | 'expenses' | 'returns') => {
     const map: Record<string, string> = {
       shift_closure: 'financials_daily_closing',
       shift_history: 'financials_closing_log',
       revenues: 'financials_reports',
       installments: 'financials_patients_installments',
-      expenses: 'financials_expenses'
+      expenses: 'financials_expenses',
+      returns: 'financials_reports'
     };
     const permKey = map[tabId];
 
@@ -250,12 +255,13 @@ export default function ClinicFinancials({
   };
 
   useEffect(() => {
-    const tabsList: ('shift_closure' | 'shift_history' | 'revenues' | 'installments' | 'expenses')[] = [
+    const tabsList: ('shift_closure' | 'shift_history' | 'revenues' | 'installments' | 'expenses' | 'returns')[] = [
       'shift_closure',
       'shift_history',
       'revenues',
       'installments',
-      'expenses'
+      'expenses',
+      'returns'
     ];
     const allowed = tabsList.filter(t => isTabAllowed(t));
     if (allowed.length > 0 && !allowed.includes(activeTab)) {
@@ -268,9 +274,7 @@ export default function ClinicFinancials({
   const [shiftHistory, setShiftHistory] = useState<ShiftLog[]>([]);
 
   useEffect(() => {
-    if (sharedAppointments && sharedAppointments.length > 0) {
-      setAppointments(sharedAppointments);
-    }
+    // Financial reports load their own complete, fresh list; never replace it with a calendar week.
   }, [sharedAppointments]);
 
   // Expenses state
@@ -493,7 +497,7 @@ export default function ClinicFinancials({
 
   // Get active shift expenses (type === 'shift' and matched by shiftId or openedAt window)
   const activeShiftExpenses = React.useMemo(() => {
-    return expenses.filter(e => isExpenseInShift(e, currentShift));
+    return expenses.filter(e=>e.type==='shift'&&e.shiftId===currentShift.id);
   }, [expenses, currentShift]);
 
   const activeShiftExpensesTotal = React.useMemo(() => {
@@ -551,12 +555,15 @@ export default function ClinicFinancials({
     activeMethodsList?: string[];
   } | null>(null);
 
+  const [financialReceipts,setFinancialReceipts] = useState<any[]>([]);
   const fetchAppointments = async (silent = false) => {
     if (!silent && appointments.length === 0 && (!sharedAppointments || sharedAppointments.length === 0)) {
       setLoading(true);
     }
     setError(null);
     try {
+      const ledger=await financeCommand(clinic.id,{action:'read'});
+      setFinancialReceipts(ledger.receipts||[]);
       const ref = getAppointmentsRef(clinic.id);
       let snap;
       try {
@@ -570,6 +577,7 @@ export default function ClinicFinancials({
       snap?.forEach((docSnap: any) => {
         const data = docSnap.data();
         list.push({
+          ...data,
           id: docSnap.id,
           patientId: data.patientId || '',
           patientName: data.patientName || 'مريض غير معروف',
@@ -602,40 +610,6 @@ export default function ClinicFinancials({
     }
   };
 
-  const autoCloseShiftRecord = async (
-    shiftId: string,
-    shiftData: Record<string, any>,
-    closedBy: string,
-    reasonNote: string
-  ) => {
-    const { doc, updateDoc } = await import('../dbClient');
-    const startCash = Number(shiftData.startCash) || 0;
-    const shiftRef = doc(db, 'clinics', clinic.id, 'shifts', shiftId);
-    await updateDoc(shiftRef, {
-      status: 'closed',
-      closedAt: new Date().toISOString(),
-      closedBy,
-      expectedCash: startCash,
-      actualCash: startCash,
-      discrepancy: 0,
-      expensesTotal: 0,
-      totalRevenue: 0,
-      notes: `${shiftData.notes || ''} [${reasonNote}]`.trim()
-    });
-  };
-
-  const closeAllOpenShifts = async (exceptShiftId: string | null, closedBy: string, reasonNote: string) => {
-    const { collection, getDocs, query, where } = await import('../dbClient');
-    const shiftsRef = collection(db, 'clinics', clinic.id, 'shifts');
-    const q = query(shiftsRef, where('status', '==', 'open'));
-    const snap = await getDocs(q);
-
-    for (const openDoc of snap.docs) {
-      if (openDoc.id === exceptShiftId) continue;
-      await autoCloseShiftRecord(openDoc.id, openDoc.data(), closedBy, reasonNote);
-    }
-  };
-
   const fetchShiftHistory = async () => {
     try {
       const shiftsRef = collection(db, 'clinics', clinic.id, 'shifts');
@@ -664,6 +638,8 @@ export default function ClinicFinancials({
           instapayRevenue: data.instapayRevenue !== undefined ? Number(data.instapayRevenue) : 0,
           walletRevenue: data.walletRevenue !== undefined ? Number(data.walletRevenue) : 0,
           startCash: data.startCash !== undefined ? Number(data.startCash) : 0,
+          remainingRevenue: data.remainingRevenue,
+          snapshot: data.snapshot,
           dynamicRevenues: data.dynamicRevenues || null,
           dynamicExpenses: data.dynamicExpenses || null
         });
@@ -676,33 +652,7 @@ export default function ClinicFinancials({
     }
   };
 
-  const fetchExpenses = async () => {
-    try {
-      const expensesRef = collection(db, 'clinics', clinic.id, 'expenses');
-      const snap = await getDocs(expensesRef);
-      const list: Expense[] = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data();
-        list.push({
-          id: docSnap.id,
-          title: data.title || '',
-          amount: Number(data.amount) || 0,
-          category: data.category || 'مستلزمات طبية',
-          date: data.date || '',
-          notes: data.notes || '',
-          createdAt: data.createdAt || '',
-          type: data.type || undefined,
-          shiftId: data.shiftId || undefined,
-          paymentMethod: data.paymentMethod || undefined
-        });
-      });
-      // Sort newest first
-      list.sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || '').localeCompare(a.createdAt || ''));
-      setExpenses(list);
-    } catch (err) {
-      console.error('Error fetching expenses:', err);
-    }
-  };
+  const fetchExpenses=async()=>{try{const ledger=await financeCommand(clinic.id,{action:'read'});setExpenses((ledger.expenses||[]).filter((e:any)=>!e.deletedAt));}catch(e:any){setError(e.message);}};
 
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -800,7 +750,7 @@ export default function ClinicFinancials({
       const { table } = customEvent.detail || {};
       
       const relevantTables = ['shifts', 'appointments', 'records', 'patients', 'closings', 'billing', 'expenses'];
-      if (relevantTables.includes(table)) {
+      if (!table || relevantTables.includes(table)) {
         console.log(`[ClinicFinancials] Instant financial/shift sync triggered for table: ${table}`);
         Promise.allSettled([
           fetchShiftHistory(),
@@ -831,275 +781,21 @@ export default function ClinicFinancials({
   }, [appointments]);
 
   // Record safe payment ( قسط / دفعة جديدة )
-  const handleRecordPaymentSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (checkSubscriptionBlocked(clinic, dialogs)) return;
-    if (!selectedApp) return;
-
-    const inputAmt = Number(paymentAmount);
-    if (isNaN(inputAmt) || inputAmt <= 0) {
-      dialogs.alert('يرجى إدخال مبلغ دفع صحيح أكبر من صفر', { severity: 'warning' });
-      return;
-    }
-
-    const currentPaid = selectedApp.paidAmount !== undefined ? selectedApp.paidAmount : selectedApp.price;
-    const currentRemaining = selectedApp.remainingAmount !== undefined ? selectedApp.remainingAmount : 0;
-
-    if (inputAmt > currentRemaining && currentRemaining > 0) {
-      const hasConfirmed = await dialogs.confirm(`المبلغ المدخل (${inputAmt} ج.م) أكبر من المتبقي على المريض (${currentRemaining} ج.م). هل تريد إضافة المبلغ الفائض وتحديث التكلفة الإجمالية؟`, { severity: 'info' });
-      if (!hasConfirmed) return;
-    }
-
-    setLoading(true);
-    try {
-      const ref = getAppointmentsRef(clinic.id);
-      const docRef = doc(ref, selectedApp.id);
-
-      const newPaid = currentPaid + inputAmt;
-      // If payment exceeds remaining, we either set remaining to 0 or we keep normal math
-      const newRemaining = Math.max(0, currentRemaining - inputAmt);
-      const newPrice = Math.max(selectedApp.price, newPaid);
-
-      const existingPayments = selectedApp.payments && Array.isArray(selectedApp.payments) ? selectedApp.payments : [];
-      const resolvedPayments = [...existingPayments];
-      if (resolvedPayments.length === 0 && currentPaid > 0) {
-        resolvedPayments.push({
-          id: 'pay_init_' + selectedApp.id,
-          amount: currentPaid,
-          paymentMethod: selectedApp.paymentMethod || 'كاش',
-          date: selectedApp.date || getEgyptTodayStr(),
-          createdAt: selectedApp.updatedAt || selectedApp.createdAt || new Date().toISOString(),
-          notes: 'الدفعة الأولى السابقة',
-          type: 'initial'
-        });
-      }
-
-      const resolvedShiftId = activeShift?.id || undefined;
-      resolvedPayments.push({
-        id: 'pay_rec_' + Math.random().toString(36).substring(2, 11),
-        amount: inputAmt,
-        paymentMethod: selectedApp.paymentMethod || 'كاش',
-        date: activeShiftDate || selectedShiftDate || getEgyptTodayStr(),
-        createdAt: new Date().toISOString(),
-        shiftId: resolvedShiftId,
-        notes: paymentNotes ? `سداد قسط: ${paymentNotes}` : 'سداد قسط',
-        type: 'installment'
-      });
-
-      const updatedNotes = cleanNotes(selectedApp.notes || '') + (paymentNotes.trim() ? `\n• ${paymentNotes.trim()}` : '');
-
-      await updateDoc(docRef, {
-        paidAmount: newPaid,
-        remainingAmount: newRemaining,
-        price: newPrice,
-        payments: resolvedPayments,
-        shiftId: resolvedShiftId || selectedApp.shiftId || undefined,
-        updatedAt: new Date().toISOString(),
-        notes: updatedNotes.trim()
-      });
-
-      setPaymentAmount(0);
-      setPaymentNotes('');
-      setIsRecordingPayment(false);
-      dialogs.alert('تم تسجيل الدفعة بنجاح وتحديث حساب المريض الفوري!', { severity: 'success' });
-      await fetchAppointments();
-    } catch (err: any) {
-      console.error(err);
-      setError('فشل تسجيل الدفعة المالية: ' + (err.message || err.toString()));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleRecordPaymentSubmit=async(e:React.FormEvent)=>{e.preventDefault();if(!selectedApp)return;setLoading(true);try{await financeCommand(clinic.id,{action:'collect',appointmentId:selectedApp.id,amount:Number(paymentAmount),paymentMethod:selectedApp.paymentMethod||'كاش',reason:paymentNotes});await fetchAppointments();setIsRecordingPayment(false);}catch(e:any){setError(e.message);}finally{setLoading(false);}};
 
   // Open a new cashier shift (بدء وردية كاشير جديدة)
   const handleOpenShift = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (checkSubscriptionBlocked(clinic, dialogs)) return;
-    setLoading(true);
-    try {
-      const { collection, getDocs, addDoc, query, where } = await import('../dbClient');
-      
-      // Double check if any shift is currently open
-      const shiftsRef = collection(db, 'clinics', clinic.id, 'shifts');
-      const q = query(shiftsRef, where('status', '==', 'open'));
-      const snap = await getDocs(q);
-      
-      const cashier = cashierNameInput.trim() || operatorName || 'السكرتارية';
-      const startCash = Number(startCashInput) || 0;
-
-      if (!snap.empty) {
-        const openDocs = [...snap.docs];
-        openDocs.sort((a, b) => {
-          const aTime = a.data().openedAt ? new Date(a.data().openedAt).getTime() : 0;
-          const bTime = b.data().openedAt ? new Date(b.data().openedAt).getTime() : 0;
-          return bTime - aTime;
-        });
-        const latestOpen = openDocs[0].data();
-
-        const confirmAutoClose = await dialogs.confirm(
-          openDocs.length > 1
-            ? `تنبيه: هناك ${openDocs.length} ورديات مفتوحة (آخرها بتاريخ ${latestOpen.date} باسم ${latestOpen.cashierName}).\n\nهل ترغب في إغلاق جميع الورديات المفتوحة تلقائياً وبدء وردية جديدة الآن؟`
-            : `تنبيه: هناك وردية مفتوحة بالفعل بتاريخ (${latestOpen.date}) باسم الكاشير (${latestOpen.cashierName}).\n\nهل ترغب في إغلاق هذه الوردية السابقة تلقائياً وبدء ورديتك الجديدة الآن؟`,
-          { severity: 'warning' }
-        );
-        
-        if (confirmAutoClose) {
-          await closeAllOpenShifts(null, cashier, 'تم الإغلاق تلقائياً لفتح وردية جديدة');
-        } else {
-          setLoading(false);
-          if (onRefreshActiveShift) {
-            await onRefreshActiveShift();
-          }
-          return;
-        }
-      }
-      
-      await addDoc(shiftsRef, {
-        status: 'open',
-        cashierName: cashier,
-        startCash: startCash,
-        openedAt: new Date().toISOString(),
-        date: selectedShiftDate, // use the currently selected shift date as the working day for this shift
-        notes: openingNotesInput.trim()
-      });
-
-      setStartCashInput('');
-      setOpeningNotesInput('');
-      setShiftSuccess(`تم فتح الوردية بنجاح للكاشير (${cashier}) بعهدة افتتاحية قدرها ${startCash} ج.م! يمكنك الآن تسجيل الحجوزات والمدفوعات.`);
-      
-      if (onRefreshActiveShift) {
-        await onRefreshActiveShift();
-      }
-      
-      setTimeout(() => {
-        setShiftSuccess(null);
-      }, 5000);
-    } catch (err: any) {
-      console.error(err);
-      setError('حدث خطأ أثناء فتح الوردية: ' + (err.message || err.toString()));
-    } finally {
-      setLoading(false);
-    }
+    e.preventDefault();setLoading(true);setError(null);
+    try { await financeCommand(clinic.id,{action:'open',startCash:Number(startCashInput||0),date:selectedShiftDate,notes:openingNotesInput});setStartCashInput('');setOpeningNotesInput('');await onRefreshActiveShift?.();setShiftSuccess(isEn?'Shift opened':'تم فتح الوردية');}
+    catch(e:any){setError(e.message);}finally{setLoading(false);}
   };
-
-  // Confirm and close the active daily shift (إقفال ومطابقة الوردية المفتوحة)
   const handleConfirmShiftClosure = async () => {
-    if (checkSubscriptionBlocked(clinic, dialogs)) return;
-    if (!activeShift) {
-      dialogs.alert('عذراً، لا توجد وردية مفتوحة حالياً لإغلاقها!', { severity: 'warning' });
-      return;
-    }
-
-    const startCash = Number(activeShift.startCash) || 0;
-    const cashExpenses = dynamicExpenses['كاش'] || dynamicExpenses[activeMethodsList[0]] || 0;
-    const expected = startCash + dailyCashAmount - cashExpenses;
-    const actual = Number(actualCashInput);
-
-    if (actualCashInput.trim() === '' || isNaN(actual)) {
-      dialogs.alert('الرجاء كتابة المبلغ الفعلي المتواجد في درج العيادة لمطابقته', { severity: 'warning' });
-      return;
-    }
-
-    const discrepancy = actual - expected;
-    let confirmMsg = `هل أنت متأكد من رغبتك في إغلاق الوردية المفتوحة باسم الكاشير (${activeShift.cashierName})؟\n\n`;
-    confirmMsg += `💵 الكاش الفعلي بالدرج: ${actual} ج.م\n`;
-    confirmMsg += `📊 الكاش المتوقع بالدرج (البداية + المحصل كاش - مصاريف الكاش): ${expected} ج.م (عهدة افتتاحية: ${startCash} | كاش محصل: ${dailyCashAmount} | مصاريف نقدية مخصومة: ${cashExpenses})\n\n`;
-    
-    confirmMsg += `💳 تفصيل مطابقة بقية طرق الدفع:\n`;
-    activeMethodsList.forEach(m => {
-      const rev = dynamicRevenues[m] || 0;
-      const exp = dynamicExpenses[m] || 0;
-      if (rev > 0 || exp > 0) {
-        confirmMsg += `• ${m}: مقبوضات ${rev} ج.م | مصاريف مخصومة ${exp} ج.م | الصافي: ${rev - exp} ج.م\n`;
-      }
-    });
-    confirmMsg += `\n📈 إجمالي إيرادات الوردية (بدون عهدة البداية ودون خصم المصاريف): ${dailyExpectedCash} ج.م\n\n`;
-
-    if (discrepancy === 0) {
-      confirmMsg += `حالة المطابقة للدرج: متطابقة تماماً (درج سليم)`;
-    } else if (discrepancy < 0) {
-      confirmMsg += `حالة المطابقة للدرج: هناك عجز بالدرج بقيمة ${Math.abs(discrepancy)} ج.م`;
-    } else {
-      confirmMsg += `حالة المطابقة للدرج: هناك زيادة بالدرج بقيمة ${discrepancy} ج.م`;
-    }
-
-    const hasConfirmed = await dialogs.confirm(confirmMsg, { severity: discrepancy === 0 ? 'success' : 'warning' });
-    if (!hasConfirmed) return;
-
-    setLoading(true);
-    try {
-      const { doc, updateDoc } = await import('../dbClient');
-      const shiftDocRef = doc(db, 'clinics', clinic.id, 'shifts', activeShift.id);
-      
-      const expensesBreakdown = activeShiftExpenses.map(e => `• ${e.title}: ${e.amount} ج.م (${e.category}) [طريقة الدفع: ${e.paymentMethod || 'كاش'}]`).join('\n');
-      const methodsBreakdown = activeMethodsList.map(method => {
-        const rev = dynamicRevenues[method] || 0;
-        const exp = dynamicExpenses[method] || 0;
-        const net = rev - exp;
-        const startText = (method === 'كاش' || method === activeMethodsList[0]) ? ` (عهدة الافتتاح: ${startCash} ج.م | المتوقع بالدرج: ${expected} ج.م | الفعلي: ${actual} ج.م)` : '';
-        return `• ${method}: مقبوضات ${rev} ج.م | مصاريف مخصومة ${exp} ج.م | صافي ${net} ج.م${startText}`;
-      }).join('\n');
-
-      const autoNotes = `[تفاصيل مطابقة الوردية الديناميكية]
-عهدة الافتتاح نقداً: ${startCash} ج.م
-المتوقع نقداً بالدرج: ${expected} ج.م (البداية + كاش محصل - مصاريف نقدية)
-الفعلي المسجل نقداً: ${actual} ج.م
-الفارق نقداً بالدرج: ${discrepancy} ج.م.
-
-📊 ملخص الحسابات لكل طرق الدفع:
-${methodsBreakdown}
-
-💸 المصاريف المسجلة بالوردية بالتفصيل (${activeShiftExpensesTotal} ج.م):\n${expensesBreakdown || 'لا يوجد'}`;
-      
-      const finalNotes = shiftNotes.trim()
-        ? `${shiftNotes.trim()}\n\n— تفاصيل إلكترونية تلقائية —\n${autoNotes}`
-        : autoNotes;
-
-      const closedByName = closedByInput.trim() || operatorName || (isStaff ? 'بوابة السكرتارية' : 'مدير العيادة (الطبيب)');
-
-      await updateDoc(shiftDocRef, {
-        status: 'closed',
-        expectedCash: expected,
-        actualCash: actual,
-        discrepancy: discrepancy,
-        completedCount: dailyCompletedAppointments.length,
-        notes: finalNotes,
-        closedAt: new Date().toISOString(),
-        closedBy: closedByName,
-        totalRevenue: dailyExpectedCash,
-        cashRevenue: dailyCashAmount,
-        cardRevenue: dailyCardAmount,
-        instapayRevenue: dailyInstapayAmount,
-        walletRevenue: dailyWalletAmount,
-        remainingRevenue: dailyRemainingCash,
-        startCash: startCash,
-        expensesTotal: activeShiftExpensesTotal,
-        cashExpenses: cashExpenses,
-        dynamicRevenues: dynamicRevenues,
-        dynamicExpenses: dynamicExpenses
-      });
-
-      // Close any stale duplicate open shifts so the drawer is fully closed
-      await closeAllOpenShifts(activeShift.id, closedByName, 'تم الإغلاق تلقائياً - وردية مفتوحة مكررة');
-
-      setActualCashInput('');
-      setShiftNotes('');
-      setShiftSuccess(`تم إقفال ومطابقة الوردية بنجاح وحفظها في السجل التاريخي!`);
-      
-      if (onRefreshActiveShift) {
-         await onRefreshActiveShift();
-      }
-      await fetchShiftHistory();
-      
-      setTimeout(() => {
-        setShiftSuccess(null);
-      }, 5000);
-    } catch (err: any) {
-      console.error(err);
-      setError('حدث خطأ أثناء إقفال الوردية: ' + (err.message || err.toString()));
-    } finally {
-      setLoading(false);
-    }
+    if(!activeShift)return;
+    if(!actualCashInput.trim()) {dialogs.alert(isEn?'Enter counted drawer cash':'أدخل النقد الفعلي بعد عد الدرج',{severity:'warning'});return;}
+    const yes=await dialogs.confirm(isEn?'Close this shift using server-confirmed receipts and your counted cash?':'إقفال الوردية بالإيصالات المؤكدة على السيرفر والعد الفعلي للدرج؟',{severity:'warning'});if(!yes)return;
+    setLoading(true);setError(null);
+    try {await financeCommand(clinic.id,{action:'close',shiftId:activeShift.id,actualCash:Number(actualCashInput),notes:shiftNotes});setActualCashInput('');await onRefreshActiveShift?.();await fetchShiftHistory();setShiftSuccess(isEn?'Shift closed and snapshot saved':'تم إقفال الوردية وحفظ لقطة ثابتة');}
+    catch(e:any){setError(e.message);}finally{setLoading(false);}
   };
 
   // Filtered appointments for Billings Tab
@@ -1155,79 +851,19 @@ ${methodsBreakdown}
   }, []);
 
   // Revenues filter calculations
-  const filteredRevenueAppointments = React.useMemo(() => {
-    // Only completed appointments count as revenue
-    const completedApps = appointments.filter(app => app.status === 'completed');
-    
-    if (revenueFilterMode === 'daily') {
-      return completedApps.filter(app => app.date === revenueDailyDate);
-    } else if (revenueFilterMode === 'weekly') {
-      const { startDateStr, endDateStr } = getWeekBounds(revenueWeeklyDate);
-      return completedApps.filter(app => app.date >= startDateStr && app.date <= endDateStr);
-    } else if (revenueFilterMode === 'monthly') {
-      return completedApps.filter(app => app.date && app.date.startsWith(revenueMonthlyVal));
-    } else { // custom range
-      return completedApps.filter(app => {
-        const dateOk = (!revenueStartDate || app.date >= revenueStartDate) &&
-                       (!revenueEndDate || app.date <= revenueEndDate);
-        return dateOk;
-      });
-    }
-  }, [appointments, revenueFilterMode, revenueDailyDate, revenueWeeklyDate, revenueMonthlyVal, revenueStartDate, revenueEndDate]);
-
-  // Revenues by payment method for the selected period
-  const revenueMethodBreakdown = React.useMemo(() => {
-    const breakdown: Record<string, number> = {};
-    activeMethodsList.forEach(m => {
-      breakdown[m] = 0;
-    });
-
-    const isDateInPeriod = (rawD: string) => {
-      const d = normalizeDateStr(rawD);
-      const normDaily = normalizeDateStr(revenueDailyDate);
-      if (revenueFilterMode === 'daily') {
-        return d === normDaily;
-      } else if (revenueFilterMode === 'weekly') {
-        const { startDateStr, endDateStr } = getWeekBounds(revenueWeeklyDate);
-        return d >= normalizeDateStr(startDateStr) && d <= normalizeDateStr(endDateStr);
-      } else if (revenueFilterMode === 'monthly') {
-        return d && d.startsWith(revenueMonthlyVal);
-      } else {
-        return (!revenueStartDate || d >= normalizeDateStr(revenueStartDate)) && (!revenueEndDate || d <= normalizeDateStr(revenueEndDate));
-      }
-    };
-
-    appointments.forEach(app => {
-      const paymentsList = getAppointmentPayments(app);
-
-      if (paymentsList && paymentsList.length > 0) {
-        paymentsList.forEach(pay => {
-          const payDate = normalizeDateStr(pay.date || (pay.createdAt ? pay.createdAt.split('T')[0] : '') || app.date);
-          if (payDate && isDateInPeriod(payDate)) {
-            const normMethod = normalizePaymentMethod(pay.paymentMethod || 'كاش');
-            let matched = activeMethodsList.find(m => normalizePaymentMethod(m) === normMethod);
-            if (!matched && normMethod !== 'نقاط الولاء') {
-              matched = activeMethodsList.find(m => normalizePaymentMethod(m) === 'كاش') || activeMethodsList[0] || 'كاش';
-            }
-            if (matched) {
-              breakdown[matched] = (breakdown[matched] || 0) + Number(pay.amount || 0);
-            }
-          }
-        });
-      } else if (app.status === 'completed' && app.date && isDateInPeriod(app.date) && Number(app.paidAmount || 0) > 0) {
-        const normMethod = normalizePaymentMethod(app.paymentMethod || 'كاش');
-        let matched = activeMethodsList.find(m => normalizePaymentMethod(m) === normMethod);
-        if (!matched && normMethod !== 'نقاط الولاء') {
-          matched = activeMethodsList.find(m => normalizePaymentMethod(m) === 'كاش') || activeMethodsList[0] || 'كاش';
-        }
-        if (matched) {
-          breakdown[matched] = (breakdown[matched] || 0) + Number(app.paidAmount || 0);
-        }
-      }
-    });
-
-    return breakdown;
-  }, [activeMethodsList, appointments, revenueFilterMode, revenueDailyDate, revenueWeeklyDate, revenueMonthlyVal, revenueStartDate, revenueEndDate, normalizePaymentMethod]);
+  const filteredPeriodReceipts = React.useMemo(()=>financialReceipts.filter(r=>{
+    const date=r.collectionDate||r.date||'';
+    if(revenueFilterMode==='daily')return date===revenueDailyDate;
+    if(revenueFilterMode==='weekly'){const {startDateStr,endDateStr}=getWeekBounds(revenueWeeklyDate);return date>=startDateStr&&date<=endDateStr;}
+    if(revenueFilterMode==='monthly')return date.startsWith(revenueMonthlyVal);
+    return (!revenueStartDate||date>=revenueStartDate)&&(!revenueEndDate||date<=revenueEndDate);
+  }),[financialReceipts,revenueFilterMode,revenueDailyDate,revenueWeeklyDate,revenueMonthlyVal,revenueStartDate,revenueEndDate]);
+  const filteredRevenueAppointments=filteredPeriodReceipts.map(r=>({id:r.id,patientName:r.patientName,price:r.amount,paidAmount:r.kind==='refund'?-r.amount:r.amount,paymentMethod:r.paymentMethod,treatmentType:(r.kind==='refund'?(isEn?'Refund: ':'استرداد: '):'')+(r.receiptNumber||r.id),time:r.createdAt?new Date(r.createdAt).toLocaleTimeString('en-GB',{timeZone:'Africa/Cairo',hour:'2-digit',minute:'2-digit'}):'',date:r.collectionDate||r.date}));
+  const revenueMethodBreakdown=React.useMemo(()=>{
+    const out:Record<string,number>={};activeMethodsList.forEach(m=>out[m]=0);
+    for(const r of filteredPeriodReceipts){const m=normalizePaymentMethod(r.paymentMethod);if(m==='نقاط الولاء')continue;out[m]=(out[m]||0)+(r.kind==='refund'?-1:1)*Number(r.amount||0);}
+    return out;
+  },[filteredPeriodReceipts,activeMethodsList]);
 
   const totalPeriodRevenue = React.useMemo(() => {
     return Object.values(revenueMethodBreakdown).reduce((sum: number, val: any) => sum + Number(val || 0), 0);
@@ -1289,42 +925,11 @@ ${methodsBreakdown}
   }, [expenseMethodsList, expenses, revenueFilterMode, revenueDailyDate, revenueWeeklyDate, revenueMonthlyVal, revenueStartDate, revenueEndDate, normalizePaymentMethod]);
 
   // Compute revenues by method for active shift (filtering payments by shiftId or shift time window)
-  const dynamicRevenues = React.useMemo(() => {
-    const revenueMap: Record<string, number> = {};
-    activeMethodsList.forEach(m => {
-      revenueMap[m] = 0;
-    });
-
-    appointments.forEach(app => {
-      const paymentsList = getAppointmentPayments(app);
-
-      if (paymentsList && paymentsList.length > 0) {
-        paymentsList.forEach(pay => {
-          if (isPaymentInShift(pay, app, currentShift)) {
-            const normMethod = normalizePaymentMethod(pay.paymentMethod || 'كاش');
-            let matched = activeMethodsList.find(m => normalizePaymentMethod(m) === normMethod);
-            if (!matched && normMethod !== 'نقاط الولاء') {
-              matched = activeMethodsList.find(m => normalizePaymentMethod(m) === 'كاش') || activeMethodsList[0] || 'كاش';
-            }
-            if (matched) {
-              revenueMap[matched] = (revenueMap[matched] || 0) + Number(pay.amount || 0);
-            }
-          }
-        });
-      } else if (app.status === 'completed' && isAppointmentInShift(app, currentShift) && Number(app.paidAmount || 0) > 0) {
-        const normMethod = normalizePaymentMethod(app.paymentMethod || 'كاش');
-        let matched = activeMethodsList.find(m => normalizePaymentMethod(m) === normMethod);
-        if (!matched && normMethod !== 'نقاط الولاء') {
-          matched = activeMethodsList.find(m => normalizePaymentMethod(m) === 'كاش') || activeMethodsList[0] || 'كاش';
-        }
-        if (matched) {
-          revenueMap[matched] = (revenueMap[matched] || 0) + Number(app.paidAmount || 0);
-        }
-      }
-    });
-
-    return revenueMap;
-  }, [activeMethodsList, appointments, currentShift, normalizePaymentMethod]);
+  const dynamicRevenues=React.useMemo(()=>{
+    const out:Record<string,number>={};activeMethodsList.forEach(m=>out[m]=0);
+    for(const r of financialReceipts){if(r.shiftId!==currentShift.id)continue;const m=normalizePaymentMethod(r.paymentMethod);if(m==='نقاط الولاء')continue;out[m]=(out[m]||0)+(r.kind==='refund'?-1:1)*Number(r.amount||0);}
+    return out;
+  },[financialReceipts,currentShift,activeMethodsList]);
 
   // Compute shift expenses by method for active shift day
   const dynamicExpenses = React.useMemo(() => {
@@ -1348,67 +953,7 @@ ${methodsBreakdown}
   }, [expenseMethodsList, activeShiftExpenses, normalizePaymentMethod]);
 
   // Individual payment transactions collected in the active shift
-  const activeShiftPaymentRecords = React.useMemo(() => {
-    const list: Array<{
-      id: string;
-      app: Appointment;
-      amount: number;
-      paymentMethod: string;
-      date: string;
-      time: string;
-      notes?: string;
-    }> = [];
-
-    appointments.forEach(app => {
-      const paymentsList = getAppointmentPayments(app);
-      let foundShiftPayment = false;
-
-      paymentsList.forEach((pay, pIdx) => {
-        if (isPaymentInShift(pay, app, currentShift)) {
-          foundShiftPayment = true;
-
-          let timeStr = app.time || '12:00';
-          if (pay.createdAt) {
-            try {
-              const d = new Date(pay.createdAt);
-              if (!isNaN(d.getTime())) {
-                const hours = d.getHours().toString().padStart(2, '0');
-                const minutes = d.getMinutes().toString().padStart(2, '0');
-                timeStr = `${hours}:${minutes}`;
-              }
-            } catch (e) {
-              // fallback
-            }
-          }
-
-          list.push({
-            id: pay.id || `pay_${app.id}_${pIdx}`,
-            app,
-            amount: Number(pay.amount || 0),
-            paymentMethod: pay.paymentMethod || app.paymentMethod || 'كاش',
-            date: pay.date || app.date,
-            time: timeStr,
-            notes: pay.notes
-          });
-        }
-      });
-
-      // If appointment was completed in active shift but had 0 shift payments in array
-      if (!foundShiftPayment && app.status === 'completed' && isAppointmentInShift(app, currentShift)) {
-        list.push({
-          id: `no_pay_${app.id}`,
-          app,
-          amount: Number(app.paidAmount || 0),
-          paymentMethod: app.paymentMethod || 'كاش',
-          date: app.date,
-          time: app.time || '12:00',
-          notes: 'حجز مكتمل'
-        });
-      }
-    });
-
-    return list;
-  }, [appointments, currentShift]);
+  const activeShiftPaymentRecords=React.useMemo(()=>financialReceipts.filter(r=>r.shiftId===currentShift.id).map(r=>({id:r.id,app:appointments.find(a=>a.id===r.appointmentId)||{patientName:r.patientName,price:0,remainingAmount:0},amount:r.kind==='refund'?-r.amount:r.amount,paymentMethod:r.paymentMethod,date:r.collectionDate||r.date,time:r.createdAt?new Date(r.createdAt).toLocaleTimeString('en-GB',{timeZone:'Africa/Cairo',hour:'2-digit',minute:'2-digit'}):'',notes:r.receiptNumber||r.notes})),[financialReceipts,currentShift,appointments]);
 
   // Daily totals
   const dailyExpectedCash = Object.values(dynamicRevenues).reduce((sum: number, val: any) => sum + Number(val || 0), 0);
@@ -1443,60 +988,7 @@ ${methodsBreakdown}
     )
   );
 
-  const handleQuickNurseCollect = async (app: Appointment) => {
-    if (checkSubscriptionBlocked(clinic, dialogs)) return;
-    setLoading(true);
-    try {
-      const ref = getAppointmentsRef(clinic.id);
-      const docRef = doc(ref, app.id);
-      
-      const currentPaid = app.paidAmount !== undefined ? Number(app.paidAmount) : 0;
-      const amountToCollect = Math.max(0, (app.price || 0) - currentPaid);
-      
-      const existingPayments = app.payments && Array.isArray(app.payments) ? app.payments : [];
-      const resolvedPayments = [...existingPayments];
-      if (resolvedPayments.length === 0 && currentPaid > 0) {
-        resolvedPayments.push({
-          id: 'pay_init_' + app.id,
-          amount: currentPaid,
-          paymentMethod: app.paymentMethod || 'كاش',
-          date: app.date || getEgyptTodayStr(),
-          createdAt: app.updatedAt || app.createdAt || new Date().toISOString(),
-          notes: 'الدفعة السابقة التلقائية',
-          type: 'initial'
-        });
-      }
-      
-      const resolvedShiftId = activeShift?.id || undefined;
-      if (amountToCollect > 0) {
-        resolvedPayments.push({
-          id: 'pay_quick_' + Math.random().toString(36).substring(2, 11),
-          amount: amountToCollect,
-          paymentMethod: app.paymentMethod || 'كاش',
-          date: activeShiftDate || selectedShiftDate || getEgyptTodayStr(),
-          createdAt: new Date().toISOString(),
-          shiftId: resolvedShiftId,
-          notes: 'تحصيل سريع من لوحة الممرضة',
-          type: 'installment'
-        });
-      }
-
-      await updateDoc(docRef, {
-        paidAmount: app.price,
-        remainingAmount: 0,
-        invoiceStatus: 'paid',
-        payments: resolvedPayments,
-        shiftId: resolvedShiftId || app.shiftId || undefined,
-        updatedAt: new Date().toISOString(),
-        notes: (app.notes || '') + `\n[تم التحصيل والتأكيد عند الممرضة/الاستقبال في ${new Date().toLocaleTimeString('ar-EG')}]`
-      });
-      await fetchAppointments();
-    } catch (err: any) {
-      setError('فشل تحصيل المبلغ: ' + (err.message || err.toString()));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleQuickNurseCollect=async(app:Appointment)=>{setLoading(true);try{await financeCommand(clinic.id,{action:'collect',appointmentId:app.id,amount:Number(app.remainingAmount||0),paymentMethod:app.paymentMethod||'كاش'});await fetchAppointments();}catch(e:any){setError(e.message);}finally{setLoading(false);}};
 
   // Print Invoice trigger
   const handlePrintInvoice = (app: Appointment) => {
@@ -1544,6 +1036,13 @@ ${methodsBreakdown}
 
   // Print Shift trigger (Historical Archive Shift)
   const handlePrintHistoryShift = (shift: any) => {
+    if(shift.snapshot) {
+      const x=shift.snapshot;
+      setPrintShiftData({...x,date:shift.date,openedAt:shift.openedAt,closedAt:shift.closedAt,cashierName:shift.cashierName,closedBy:shift.closedBy,startCash:shift.startCash,actual:shift.actualCash,expected:shift.expectedCash,discrepancy:shift.discrepancy,notes:shift.notes,revenuesMap:x.dynamicRevenues,expensesMap:x.dynamicExpenses,activeMethodsList:Object.keys(x.dynamicRevenues||{}),expensesList:x.expenses,paymentRecords:x.receipts.map((r:any)=>({id:r.id,app:x.appointments.find((a:any)=>a.id===r.appointmentId)||{patientName:r.patientName,price:0,remainingAmount:0},amount:r.kind==='refund'?-r.amount:r.amount,paymentMethod:r.paymentMethod,time:new Date(r.createdAt||r.date).toLocaleTimeString('en-GB',{timeZone:'Africa/Cairo',hour:'2-digit',minute:'2-digit'}),notes:r.notes}))});
+      return;
+    }
+    dialogs.alert(isEn?'Legacy archive has no immutable snapshot. Details may reflect later edits.':'هذه وردية قديمة بلا لقطة إقفال ثابتة. تفاصيلها قد تعكس تعديلات لاحقة.',{severity:'warning'});
+
     const revMap = shift.dynamicRevenues || {
       'كاش': shift.cashRevenue || 0,
       'فيزا': shift.cardRevenue || 0,
@@ -1710,7 +1209,7 @@ ${methodsBreakdown}
                 <span className="font-bold font-mono text-slate-800">{printInvoiceData.price.toLocaleString()} ج.م</span>
               </div>
               <div className="flex justify-between text-emerald-700 bg-emerald-50/50 p-1 px-2 rounded font-bold">
-                <span>ما تم دفعه اليوم (مسدد):</span>
+                <span>إجمالي المسدد حتى الآن:</span>
                 <span className="font-black font-mono">{(printInvoiceData.paidAmount !== undefined ? printInvoiceData.paidAmount : printInvoiceData.price).toLocaleString()} ج.م</span>
               </div>
               <div className="flex justify-between text-amber-700 bg-amber-50/50 p-1 px-2 rounded font-bold border-t border-dashed border-amber-200">
@@ -1719,6 +1218,7 @@ ${methodsBreakdown}
               </div>
             </div>
 
+            <div className="border rounded-xl p-3 space-y-2 text-xs"><p className="font-bold">الإيصالات المؤكدة (وقت التحصيل بتوقيت القاهرة)</p>{financialReceipts.filter(r=>r.appointmentId===printInvoiceData.id).map(r=><div key={r.id} className="border-t pt-2"><p className="break-all">{r.receiptNumber||r.id} • {r.kind==='refund'?'استرداد':'تحصيل'} • {r.kind==='refund'?'-':''}{r.amount} ج.م</p><p>{r.createdAt?new Date(r.createdAt).toLocaleString('ar-EG',{timeZone:'Africa/Cairo'}):r.collectionDate} • {r.actorName||'سجل قديم'} • {r.actorRole||''}</p></div>)}</div>
             {printInvoiceData.notes && (
               <div className="mt-8 p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs">
                 <span className="font-bold text-slate-700 block mb-1">ملاحظات وسجل الدفعات:</span>
@@ -2000,7 +1500,7 @@ ${methodsBreakdown}
       </PrintPreviewModal>
 
       {/* Screen Title Block */}
-      <div className="print:hidden flex flex-col xl:flex-row xl:items-center justify-between gap-5 bg-gradient-to-l from-white via-slate-50/50 to-slate-100/30 p-6 rounded-3xl border border-slate-200/80 shadow-xs relative overflow-hidden">
+      <div className="print:hidden flex flex-col justify-between gap-5 bg-[#272E40] p-6 rounded-3xl border border-slate-200/80 shadow-xs relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500 rounded-full blur-3xl opacity-5 -mr-12 -mt-12 pointer-events-none"></div>
         <div className="absolute bottom-0 left-0 w-32 h-32 bg-indigo-500 rounded-full blur-3xl opacity-5 -ml-12 -mb-12 pointer-events-none"></div>
         
@@ -2009,7 +1509,7 @@ ${methodsBreakdown}
             <TrendingUp className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-800">{t('financials.title')}</h1>
+            <h1 className="text-xl font-black text-white">{t('financials.title')}</h1>
           </div>
         </div>
 
@@ -2020,8 +1520,8 @@ ${methodsBreakdown}
               onClick={() => setActiveTab('shift_closure')}
               className={`py-2 px-4 rounded-full font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
                 activeTab === 'shift_closure' 
-                  ? 'bg-slate-900 text-white shadow-sm border-slate-900' 
-                  : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                  ? 'bg-emerald-500 text-white shadow-sm border-emerald-500'
+                  : 'border-white/10 bg-white/10 text-slate-200 hover:bg-white/20'
               }`}
             >
               <Clock className="h-4 w-4 text-indigo-600" />
@@ -2034,8 +1534,8 @@ ${methodsBreakdown}
               onClick={() => setActiveTab('shift_history')}
               className={`py-2 px-4 rounded-full font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
                 activeTab === 'shift_history' 
-                  ? 'bg-slate-900 text-white shadow-sm border-slate-900' 
-                  : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                  ? 'bg-emerald-500 text-white shadow-sm border-emerald-500'
+                  : 'border-white/10 bg-white/10 text-slate-200 hover:bg-white/20'
               }`}
             >
               <Archive className="h-4 w-4 text-amber-600" />
@@ -2051,8 +1551,8 @@ ${methodsBreakdown}
               }}
               className={`py-2 px-4 rounded-full font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
                 activeTab === 'revenues' 
-                  ? 'bg-slate-900 text-white shadow-sm border-slate-900' 
-                  : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                  ? 'bg-emerald-500 text-white shadow-sm border-emerald-500'
+                  : 'border-white/10 bg-white/10 text-slate-200 hover:bg-white/20'
               }`}
             >
               <TrendingUp className="h-4 w-4 text-emerald-600" />
@@ -2068,8 +1568,8 @@ ${methodsBreakdown}
               }}
               className={`py-2 px-4 rounded-full font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
                 activeTab === 'installments' 
-                  ? 'bg-slate-900 text-white shadow-sm border-slate-900' 
-                  : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                  ? 'bg-emerald-500 text-white shadow-sm border-emerald-500'
+                  : 'border-white/10 bg-white/10 text-slate-200 hover:bg-white/20'
               }`}
             >
               <Receipt className="h-4 w-4 text-rose-500" />
@@ -2084,17 +1584,24 @@ ${methodsBreakdown}
               }}
               className={`py-2 px-4 rounded-full font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
                 activeTab === 'expenses' 
-                  ? 'bg-slate-900 text-white shadow-sm border-slate-900' 
-                  : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                  ? 'bg-emerald-500 text-white shadow-sm border-emerald-500'
+                  : 'border-white/10 bg-white/10 text-slate-200 hover:bg-white/20'
               }`}
             >
               <TrendingDown className="h-4 w-4 text-rose-500" />
               {isEn ? 'Clinic Expenses & Purchasing' : (t('financials.tabs.expenses') || 'المصروفات والبنود المقتطعة')}
             </motion.button>
           )}
+          {isTabAllowed('returns') && <button type="button" onClick={()=>setActiveTab('returns')} className={`py-2 px-4 rounded-xl font-bold border ${activeTab==='returns'?'bg-emerald-500 text-white border-emerald-500':'border-white/10 bg-white/10 text-slate-200'}`}>{isEn?'Returns Log':'سجل المرتجعات'}</button>}
+
         </div>
       </div>
 
+      {activeTab==='returns' && <ReturnsLog clinicId={clinic.id} isEn={!!isEn} />}
+
+      {activeShift?.needsSettlement&&<div role="alert" className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-xs font-bold text-amber-800">{isEn?'This drawer needs manual settlement. No shift was automatically closed and no balance was reset.':'هذا الدرج محتاج تسوية يدوية. لم تُقفل أي وردية تلقائيًا ولم يتم تصفير أي رصيد.'}{activeShift.conflictingShifts>1&&(isEn?' Conflicting open shifts: collections are blocked until settlement.':' توجد ورديات مفتوحة متعارضة: التحصيل موقوف لحين التسوية.')}</div>}
+      {activeTab==='shift_closure'&&<OfflineCommands isEn={!!isEn} shiftId={activeShift?.id||'unassigned'}/>}
+      {activeTab==='shift_closure'&&activeShift&&<LegacySettlement clinicId={clinic.id} shift={activeShift} isEn={!!isEn}/>}
       {error && (
         <div className="print:hidden bg-rose-50 border-r-4 border-rose-500 p-4 rounded-xl flex items-start gap-2.5">
           <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />

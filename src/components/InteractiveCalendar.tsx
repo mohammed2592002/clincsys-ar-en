@@ -2822,52 +2822,7 @@ export default function InteractiveCalendar({
             </div>
           </div>
 
-          {/* Daily Revenue Card */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
-            <h4 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
-              <span className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
-                <Coins className="h-3.5 w-3.5 text-emerald-600" />
-              </span>
-              {isEn ? "Today's Revenue & Collections" : 'إيرادات وتحصيل اليوم'}
-            </h4>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
-                <div className="text-sm font-black text-[#272E40] font-mono">{dailyTotalOverall.toLocaleString()}</div>
-                <div className="text-[10px] font-bold text-slate-500 mt-0.5">{isEn ? 'Total EGP' : 'الإجمالي ج.م'}</div>
-              </div>
-              <div className="bg-emerald-50/70 rounded-xl p-2.5 text-center border border-emerald-100">
-                <div className="text-sm font-black text-emerald-600 font-mono">{dailyTotalPaid.toLocaleString()}</div>
-                <div className="text-[10px] font-bold text-emerald-700/80 mt-0.5">{isEn ? 'Paid EGP' : 'المدفوع ج.م'}</div>
-              </div>
-              <div className="bg-amber-50/70 rounded-xl p-2.5 text-center border border-amber-100">
-                <div className="text-sm font-black text-amber-600 font-mono">{dailyTotalRemaining.toLocaleString()}</div>
-                <div className="text-[10px] font-bold text-amber-700/80 mt-0.5">{isEn ? 'Pending EGP' : 'الآجل ج.م'}</div>
-              </div>
-            </div>
-            <div className="space-y-2 pt-1">
-              {activeMethodsList.map((method, idx) => {
-                const amt = dailyPaymentMethods[method] || 0;
-                const maxAmt = Math.max(1, ...activeMethodsList.map(m => dailyPaymentMethods[m] || 0));
-                return (
-                  <div key={idx} className="space-y-1">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-slate-600 flex items-center gap-1">
-                        <span>{method === 'كاش' ? '💵' : method === 'فيزا' ? '💳' : method === 'إنستاباي' ? '⚡' : method === 'محفظة' ? '📱' : '💼'}</span>
-                        {formatPaymentMethodName(method, isEn)}
-                      </span>
-                      <span className="font-black text-slate-700 font-mono">{amt.toLocaleString()}</span>
-                    </div>
-                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-l from-emerald-400 to-green-500 rounded-full transition-all"
-                        style={{ width: `${Math.min(100, (amt / maxAmt) * 100)}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+
         </div>
       </div>
 

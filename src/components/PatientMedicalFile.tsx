@@ -1,3 +1,4 @@
+import { financeCommand } from '../dbClient';
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'motion/react';
@@ -1075,74 +1076,12 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
   };
 
   const handleConfirmReceptionPayment = async (app: Appointment) => {
-    if (checkSubscriptionBlocked(clinic, dialogs)) return;
-    const amt = Number(receptionPaidAmount);
-    if (isNaN(amt) || amt < 0) {
-      dialogs.alert('يرجى إدخال قيمة صحيحة للمبلغ المحصل', { severity: 'warning' });
-      return;
-    }
-
     setLoadingPatientAppointments(true);
     try {
-      const ref = getAppointmentsRef(clinic.id);
-      const docRef = doc(ref, app.id);
-      const currentPaid = app.paidAmount !== undefined ? Number(app.paidAmount) : 0;
-      const newPaid = currentPaid + amt;
-      const newRemaining = Math.max(0, (Number(app.price) || 0) - newPaid);
-      const statusFinal = newRemaining === 0 ? 'paid' : 'installment';
-
-      const selectedMethod = paymentMethod || paymentMethodsList[0] || 'كاش';
-      const existingPayments = app.payments && Array.isArray(app.payments) ? [...app.payments] : [];
-      const sumExisting = existingPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-      const resolvedPayments = [...existingPayments];
-      if (currentPaid > sumExisting) {
-        resolvedPayments.unshift({
-          id: 'pay_init_' + app.id,
-          amount: currentPaid - sumExisting,
-          paymentMethod: app.paymentMethod || 'كاش',
-          date: (app as any).paymentDate || app.date || getEgyptTodayStr(),
-          createdAt: app.updatedAt || app.createdAt || new Date().toISOString(),
-          notes: 'الدفعة الأولى السابقة',
-          type: 'initial'
-        });
-      }
-
-      const newPaymentRecord = {
-        id: 'pay_reception_' + Math.random().toString(36).substring(2, 11),
-        amount: amt,
-        paymentMethod: selectedMethod,
-        date: (activeShift && activeShift.date) ? activeShift.date : getEgyptTodayStr(),
-        createdAt: new Date().toISOString(),
-        shiftId: activeShift?.id || undefined,
-        notes: 'دفعة التحصيل بالاستقبال',
-        type: 'initial'
-      };
-      const updatedPayments = [...resolvedPayments, newPaymentRecord];
-
-      await updateDoc(docRef, {
-        paidAmount: newPaid,
-        remainingAmount: newRemaining,
-        invoiceStatus: statusFinal,
-        paymentMethod: selectedMethod,
-        payments: updatedPayments,
-        shiftId: activeShift?.id || app.shiftId || undefined,
-        updatedAt: new Date().toISOString(),
-        notes: app.notes + `\n[تأكيد الاستقبال: تحصيل مبلغ ${amt} ج.م عبر (${normalizePaymentMethod(selectedMethod)}) في ${new Date().toLocaleDateString('ar-EG')}]`
-      });
-
-      setReceptionPayingAppId(null);
-      setReceptionPaidAmount(0);
-      dialogs.alert(`تم تأكيد السداد وإصدار الفاتورة بنجاح! الحالة الآن: ${statusFinal === 'paid' ? 'مسدد بالكامل' : 'قسط متبقي'}`, { severity: 'success' });
-      await fetchPatientAppointments(selectedPatientId);
-      if (onRefreshAppointments) {
-        onRefreshAppointments(true, app.date || getLocalTodayString(), true);
-      }
-    } catch (err: any) {
-      console.error(err);
-      dialogs.alert('فشل تأكيد التحصيل: ' + err.toString(), { severity: 'error' });
-    } finally {
-      setLoadingPatientAppointments(false);
-    }
+      await financeCommand(clinic.id,{action:'collect',appointmentId:app.id,amount:Number(receptionPaidAmount),paymentMethod:paymentMethod||paymentMethodsList[0]||'كاش',reason:paymentNotes});
+      setRecordingPaymentAppId(null);setReceptionPayingAppId(null);setPaymentAmount(0);setReceptionPaidAmount(0);setPaymentNotes('');
+      await fetchPatientAppointments(selectedPatientId);dialogs.alert('تم تأكيد الدفعة على السيرفر',{severity:'success'});
+    }catch(e:any){dialogs.alert(e.message,{severity:'error'});}finally{setLoadingPatientAppointments(false);}
   };
 
   const findAppointmentInDbOrState = async (patientId: string): Promise<any | null> => {
@@ -1215,97 +1154,12 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
   };
 
   const handleRecordPatientPayment = async (app: Appointment) => {
-    if (checkSubscriptionBlocked(clinic, dialogs)) return;
-    const amt = Number(paymentAmount);
-    if (isNaN(amt) || amt <= 0) {
-      dialogs.alert('يرجى إدخال قيمة صحيحة للدفعة المحصلة', { severity: 'warning' });
-      return;
-    }
-
-    const currentPaid = app.paidAmount !== undefined ? Number(app.paidAmount) : Number(app.price) || 0;
-    const currentRemaining = app.remainingAmount !== undefined ? Number(app.remainingAmount) : 0;
-
-    if (currentRemaining <= 0 || app.invoiceStatus === 'paid' || (currentPaid >= (Number(app.price) || 0) && (Number(app.price) || 0) > 0)) {
-      dialogs.alert("عفواً، تم سداد تكلفة هذه الجلسة بالكامل ولا يوجد مبلغ متبقي لتحصيله!", { severity: 'warning' });
-      return;
-    }
-
-    if (amt > currentRemaining) {
-      dialogs.alert(`عفواً، المبلغ المدخل (${amt} ج.م) أكبر من القسط المتبقي على هذه الجلسة (${currentRemaining} ج.م). لا يمكن تحصيل مبلغ أكبر من المستحق.`, { severity: 'warning' });
-      return;
-    }
-
     setLoadingPatientAppointments(true);
     try {
-      const ref = getAppointmentsRef(clinic.id);
-      const docRef = doc(ref, app.id);
-      const newPaid = currentPaid + amt;
-      const newRemaining = Math.max(0, currentRemaining - amt);
-      const newPrice = Math.max(app.price, newPaid);
-      const newStatus = newRemaining === 0 ? 'paid' : 'installment';
-
-      const existingPayments = app.payments && Array.isArray(app.payments) ? [...app.payments] : [];
-      const sumExisting = existingPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-      const resolvedPayments = [...existingPayments];
-      if (currentPaid > sumExisting) {
-        resolvedPayments.unshift({
-          id: 'pay_init_' + app.id,
-          amount: currentPaid - sumExisting,
-          paymentMethod: app.paymentMethod || 'كاش',
-          date: (app as any).paymentDate || app.date || getEgyptTodayStr(),
-          createdAt: app.updatedAt || app.createdAt || new Date().toISOString(),
-          notes: 'الدفعة الأولى السابقة',
-          type: 'initial'
-        });
-      }
-
-      const selectedMethod = paymentMethod || paymentMethodsList[0] || 'كاش';
-
-      const newPaymentRecord = {
-        id: 'pay_' + Math.random().toString(36).substring(2, 11),
-        amount: amt,
-        paymentMethod: selectedMethod,
-        date: (activeShift && activeShift.date) ? activeShift.date : getEgyptTodayStr(),
-        createdAt: new Date().toISOString(),
-        shiftId: activeShift?.id || undefined,
-        notes: paymentNotes ? `سداد قسط: ${paymentNotes}` : 'سداد قسط',
-        type: 'installment'
-      };
-
-      const updatedPayments = [...resolvedPayments, newPaymentRecord];
-      const updatedNotes = cleanNotes(app.notes || '') + (paymentNotes.trim() ? `\n• ${paymentNotes.trim()}` : '');
-
-      await updateDoc(docRef, {
-        paidAmount: newPaid,
-        remainingAmount: newRemaining,
-        price: newPrice,
-        invoiceStatus: newStatus,
-        paymentMethod: selectedMethod,
-        payments: updatedPayments,
-        shiftId: activeShift?.id || app.shiftId || undefined,
-        updatedAt: new Date().toISOString(),
-        notes: updatedNotes.trim()
-      });
-
-      // Dispatch sync events so calendar and financials update in real time
-      window.dispatchEvent(new CustomEvent('clinic-sync', { detail: { table: 'appointments' } }));
-      window.dispatchEvent(new CustomEvent('clinic-sync', { detail: { table: 'records' } }));
-
-      setRecordingPaymentAppId(null);
-      setPaymentAmount(0);
-      setPaymentNotes('');
-      dialogs.alert('تم تسجيل الدفعة وتحديث حساب المريض الفوري بنجاح!', { severity: 'success' });
-      await autoMarkWaitingAppointmentCompleted();
-      await fetchPatientAppointments(selectedPatientId);
-      if (onRefreshAppointments) {
-        onRefreshAppointments(true, app.date || getLocalTodayString(), true);
-      }
-    } catch (err: any) {
-      console.error(err);
-      dialogs.alert('فشل حفظ الدفعة: ' + err.toString(), { severity: 'error' });
-    } finally {
-      setLoadingPatientAppointments(false);
-    }
+      await financeCommand(clinic.id,{action:'collect',appointmentId:app.id,amount:Number(paymentAmount),paymentMethod:paymentMethod||paymentMethodsList[0]||'كاش',reason:paymentNotes});
+      setRecordingPaymentAppId(null);setReceptionPayingAppId(null);setPaymentAmount(0);setReceptionPaidAmount(0);setPaymentNotes('');
+      await fetchPatientAppointments(selectedPatientId);dialogs.alert('تم تأكيد الدفعة على السيرفر',{severity:'success'});
+    }catch(e:any){dialogs.alert(e.message,{severity:'error'});}finally{setLoadingPatientAppointments(false);}
   };
 
   const handleUpdateAppointmentPrice = async (app: Appointment) => {

@@ -85,10 +85,7 @@ export const dentalService = {
       const docRef = await addDoc(ref, cleanDbData(patient));
       return { ...patient, id: docRef.id };
     } catch (err) {
-      console.error("Firestore error in addPatient:", err);
-      const current = getLocal(`patients_${clinicId}`, MOCK_PATIENTS);
-      setLocal(`patients_${clinicId}`, [newPat, ...current]);
-      return newPat;
+      throw err;
     }
   },
 
@@ -101,8 +98,7 @@ export const dentalService = {
     try {
       await deleteDoc(doc(db, `clinics/${clinicId}/patients`, patientId));
     } catch (err) {
-      const current = getLocal<Patient>(`patients_${clinicId}`, MOCK_PATIENTS);
-      setLocal(`patients_${clinicId}`, current.filter(p => p.id !== patientId));
+      throw err;
     }
   },
 
@@ -130,10 +126,7 @@ export const dentalService = {
       const docRef = await addDoc(ref, cleanDbData(apt));
       return { ...apt, id: docRef.id };
     } catch (err) {
-      console.error("Firestore error in addAppointment:", err);
-      const current = getLocal(`appointments_${clinicId}`, MOCK_APPOINTMENTS);
-      setLocal(`appointments_${clinicId}`, [newApt, ...current]);
-      return newApt;
+      throw err;
     }
   },
 
@@ -147,8 +140,7 @@ export const dentalService = {
     try {
       await updateDoc(doc(db, `clinics/${clinicId}/appointments`, id), { status });
     } catch (err) {
-      const current = getLocal<Appointment>(`appointments_${clinicId}`, MOCK_APPOINTMENTS);
-      setLocal(`appointments_${clinicId}`, current.map(a => a.id === id ? { ...a, status } : a));
+      throw err;
     }
   },
 
@@ -177,10 +169,7 @@ export const dentalService = {
       const docRef = await addDoc(ref, cleanDbData(item));
       return { ...item, id: docRef.id };
     } catch (err) {
-      console.error("Firestore error in addInventoryItem:", err);
-      const current = getLocal(`inventory_${clinicId}`, MOCK_INVENTORY);
-      setLocal(`inventory_${clinicId}`, [...current, newItem]);
-      return newItem;
+      throw err;
     }
   },
 
@@ -193,8 +182,7 @@ export const dentalService = {
     try {
       await updateDoc(doc(db, `clinics/${clinicId}/inventory`, id), { quantity });
     } catch (err) {
-      const current = getLocal<InventoryItem>(`inventory_${clinicId}`, MOCK_INVENTORY);
-      setLocal(`inventory_${clinicId}`, current.map(i => i.id === id ? { ...i, quantity } : i));
+      throw err;
     }
   },
 
@@ -222,10 +210,7 @@ export const dentalService = {
       const docRef = await addDoc(ref, cleanDbData(inv));
       return { ...inv, id: docRef.id };
     } catch (err) {
-      console.error("Firestore error in addInvoice:", err);
-      const current = getLocal(`billing_${clinicId}`, MOCK_INVOICES);
-      setLocal(`billing_${clinicId}`, [newInv, ...current]);
-      return newInv;
+      throw err;
     }
   },
 
@@ -239,10 +224,7 @@ export const dentalService = {
     try {
       await updateDoc(doc(db, `clinics/${clinicId}/billing`, id), cleanDbData(updatedFields));
     } catch (err) {
-      console.error("Firestore error in updateInvoice:", err);
-      const current = getLocal<Invoice>(`billing_${clinicId}`, MOCK_INVOICES);
-      const updated = current.map(inv => inv.id === id ? { ...inv, ...updatedFields } : inv);
-      setLocal(`billing_${clinicId}`, updated);
+      throw err;
     }
   },
 
@@ -270,10 +252,7 @@ export const dentalService = {
       const docRef = await addDoc(ref, cleanDbData(closing));
       return { ...closing, id: docRef.id };
     } catch (err) {
-      console.error("Firestore error in addDailyClosing:", err);
-      const current = getLocal<DailyClosing>(`closings_${clinicId}`, []);
-      setLocal(`closings_${clinicId}`, [newClosing, ...current]);
-      return newClosing;
+      throw err;
     }
   },
 
@@ -302,11 +281,7 @@ export const dentalService = {
       const docRef = await addDoc(ref, cleanDbData(lab));
       return { ...lab, id: docRef.id };
     } catch (err) {
-      console.error("Firestore error in addLaboratory:", err);
-      const current = getLocal(`laboratories_${clinicId}`, MOCK_LABORATORIES);
-      const updated = [newLab, ...current];
-      setLocal(`laboratories_${clinicId}`, updated);
-      return newLab;
+      throw err;
     }
   },
 
@@ -320,10 +295,7 @@ export const dentalService = {
     try {
       await updateDoc(doc(db, `clinics/${clinicId}/laboratories`, id), cleanDbData(updatedFields));
     } catch (err) {
-      console.error("Firestore error in updateLaboratory:", err);
-      const current = getLocal<Laboratory>(`laboratories_${clinicId}`, MOCK_LABORATORIES);
-      const updated = current.map(lab => lab.id === id ? { ...lab, ...updatedFields } : lab);
-      setLocal(`laboratories_${clinicId}`, updated);
+      throw err;
     }
   },
 
@@ -336,8 +308,7 @@ export const dentalService = {
     try {
       await deleteDoc(doc(db, `clinics/${clinicId}/laboratories`, id));
     } catch (err) {
-      const current = getLocal<Laboratory>(`laboratories_${clinicId}`, MOCK_LABORATORIES);
-      setLocal(`laboratories_${clinicId}`, current.filter(lab => lab.id !== id));
+      throw err;
     }
   },
 
@@ -367,11 +338,7 @@ export const dentalService = {
       const docRef = await addDoc(ref, cleanDbData(order));
       return { ...order, id: docRef.id };
     } catch (err) {
-      console.error("Firestore error in addLabOrder:", err);
-      const current = getLocal(`lab_orders_${clinicId}`, MOCK_LAB_ORDERS);
-      const updated = [newOrder, ...current];
-      setLocal(`lab_orders_${clinicId}`, updated);
-      return newOrder;
+      throw err;
     }
   },
 
@@ -385,10 +352,7 @@ export const dentalService = {
     try {
       await updateDoc(doc(db, `clinics/${clinicId}/lab_orders`, id), cleanDbData(updatedFields));
     } catch (err) {
-      console.error("Firestore error in updateLabOrder:", err);
-      const current = getLocal<LabOrder>(`lab_orders_${clinicId}`, MOCK_LAB_ORDERS);
-      const updated = current.map(order => order.id === id ? { ...order, ...updatedFields } : order);
-      setLocal(`lab_orders_${clinicId}`, updated);
+      throw err;
     }
   },
 
@@ -401,8 +365,7 @@ export const dentalService = {
     try {
       await deleteDoc(doc(db, `clinics/${clinicId}/lab_orders`, id));
     } catch (err) {
-      const current = getLocal<LabOrder>(`lab_orders_${clinicId}`, MOCK_LAB_ORDERS);
-      setLocal(`lab_orders_${clinicId}`, current.filter(order => order.id !== id));
+      throw err;
     }
   },
 
@@ -446,10 +409,7 @@ export const dentalService = {
           seenNames.add(cleanKey);
           uniqueItems.push(item);
         } else {
-          // Delete duplicate document from Firestore in background
-          deleteDoc(doc(db, `clinics/${clinicId}/lab_work_types`, item.id)).catch(e => {
-            console.error("Error cleaning up duplicate lab work type:", e);
-          });
+          // Hide duplicate labels without mutating historical data during reads.
         }
       }
 
@@ -502,11 +462,7 @@ export const dentalService = {
       const docRef = await addDoc(ref, cleanDbData(workType));
       return { ...workType, id: docRef.id };
     } catch (err) {
-      console.error("Firestore error in addLabWorkType:", err);
-      const current = getLocal<LabWorkType>(`lab_work_types_${clinicId}`, defaultList);
-      const updated = [...current, newWt];
-      setLocal(`lab_work_types_${clinicId}`, updated);
-      return newWt;
+      throw err;
     }
   },
 
@@ -562,10 +518,7 @@ export const dentalService = {
 
       await updateDoc(doc(db, `clinics/${clinicId}/lab_work_types`, id), cleanDbData(updatedFields));
     } catch (err) {
-      console.error("Firestore error in updateLabWorkType:", err);
-      const current = getLocal<LabWorkType>(`lab_work_types_${clinicId}`, defaultList);
-      const updated = current.map(wt => wt.id === id ? { ...wt, ...updatedFields } : wt);
-      setLocal(`lab_work_types_${clinicId}`, updated);
+      throw err;
     }
   },
 
@@ -613,9 +566,7 @@ export const dentalService = {
         await deleteDoc(doc(db, `clinics/${clinicId}/lab_work_types`, id));
       }
     } catch (err) {
-      console.error("Firestore error in deleteLabWorkType:", err);
-      const current = getLocal<LabWorkType>(`lab_work_types_${clinicId}`, defaultList);
-      setLocal(`lab_work_types_${clinicId}`, current.filter(wt => wt.id !== id));
+      throw err;
     }
   }
 };

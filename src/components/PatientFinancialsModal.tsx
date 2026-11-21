@@ -1,3 +1,4 @@
+import { financeCommand } from '../dbClient';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
@@ -220,7 +221,7 @@ export default function PatientFinancialsModal({
       dialogs.alert(`عفواً، الحد الأدنى لاستبدال النقاط هو ${minRedeemPoints} نقطة (ما يعادل ${minRedeemEgp} ج.م). رصيد المريض الحالي (${patientPoints} نقطة) أقل من الحد الأدنى المسموح به.`, { severity: 'warning' });
       return;
     }
-    const defaultApp = appointments.find(a => a.id === targetAppId) || appointments.find(a => (a.remainingAmount || 0) > 0) || appointments[0];
+    const defaultApp = appointments.find(a => a.id === targetAppId) || appointments.find(a => a.status!=='cancelled'&&(a.remainingAmount || 0) > 0) || appointments[0];
     if (defaultApp) {
       setPointsAppId(defaultApp.id);
       const rem = defaultApp.remainingAmount !== undefined ? Number(defaultApp.remainingAmount) : 0;
@@ -245,11 +246,13 @@ export default function PatientFinancialsModal({
   // Printing State
   const [printingApp, setPrintingApp] = useState<Appointment | null>(null);
 
+  const [receiptLedger,setReceiptLedger]=useState<any[]>([]);
   const fetchFinancialRecords = async () => {
     if (!clinicId || (!patientId && !patientName)) return;
     setLoading(true);
     setError(null);
     try {
+      const ledger=await financeCommand(clinicId,{action:'read'});setReceiptLedger(ledger.receipts||[]);
       // Fetch clinic data for loyalty settings
       try {
         const clinicSnap = await getDocSmart(doc(db, 'clinics', clinicId));
@@ -291,7 +294,7 @@ export default function PatientFinancialsModal({
       }
 
       // Sort by date descending and filter out cancelled appointments
-      loadedApps = loadedApps.filter(a => a.status !== 'cancelled');
+      // Cancelled appointments keep their immutable payment history.
       loadedApps.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
       setAppointments(loadedApps);
 
@@ -319,6 +322,7 @@ export default function PatientFinancialsModal({
       } else {
         // Auto select the first unpaid or pending appointment
         const firstUnpaid = loadedApps.find(a => {
+          if(a.status==='cancelled')return false;
           const rem = a.remainingAmount !== undefined ? a.remainingAmount : 0;
           return rem > 0 || a.invoiceStatus === 'pending_payment';
         });
@@ -370,14 +374,10 @@ export default function PatientFinancialsModal({
   const selectedAppointmentObj = appointments.find(a => a.id === selectedAppId);
 
   const allPayments = React.useMemo(() => {
-    const flat: any[] = [];
-    appointments.forEach(app => {
-      getAppointmentPayments(app).forEach((pay: any) => {
-        flat.push({ ...pay, appId: app.id });
-      });
-    });
+    const ids=new Set(appointments.map(a=>a.id));
+    const flat=receiptLedger.filter(r=>ids.has(r.appointmentId)).map(r=>({...r,appId:r.appointmentId,amount:r.kind==='refund'?-Number(r.amount):Number(r.amount)}));
     const ts = (pay: any) => {
-      const t = new Date(pay.createdAt || pay.date || '').getTime();
+      const t = new Date(pay.createdAt || pay.collectionDate || pay.date || '').getTime();
       return isNaN(t) ? 0 : t;
     };
     const asc = [...flat].sort((a, b) => ts(a) - ts(b));
@@ -387,282 +387,31 @@ export default function PatientFinancialsModal({
       return { ...pay, remainingAfter: Math.max(0, totalCost - cum) };
     });
     return withRem.reverse();
-  }, [appointments, totalCost]);
+  }, [appointments, totalCost,receiptLedger]);
 
   const handleConfirmPointsPayment = async () => {
-    const pts = Number(pointsInput);
-    const egp = Number(egpInput);
-
-    if (!pointsAppId) {
-      dialogs.alert("يرجى اختيار الجلسة المراد السداد عليها أولاً", { severity: 'warning' });
-      return;
-    }
-    if (!pts || pts <= 0 || !egp || egp <= 0) {
-      dialogs.alert("يرجى إدخال قيم صحيحة للنقاط والمبلغ المدفوع", { severity: 'warning' });
-      return;
-    }
-    if (pts > patientPoints) {
-      dialogs.alert(`عفواً، عدد النقاط المطلوب (${pts} نقطة) أكبر من الرصيد المتوفر في محفظة المريض (${patientPoints} نقطة).`, { severity: 'warning' });
-      return;
-    }
-    if (minRedeemPoints > 0 && pts < minRedeemPoints) {
-      dialogs.alert(`عفواً، عدد النقاط المطلوب (${pts} نقطة) أقل من الحد الأدنى المسموح به للاستبدال (${minRedeemPoints} نقطة - ما يعادل ${minRedeemEgp} ج.م).`, { severity: 'warning' });
-      return;
-    }
-
-    const app = appointments.find(a => a.id === pointsAppId);
-    if (!app) return;
-
-    const currentPaid = app.paidAmount !== undefined ? Number(app.paidAmount) : Number(app.price) || 0;
-    const currentRemaining = app.remainingAmount !== undefined ? Number(app.remainingAmount) : 0;
-
-    if (egp > currentRemaining) {
-      dialogs.alert(`عفواً، المبلغ المدفوع بالنقاط (${egp} ج.م) أكبر من المتبقي على الجلسة (${currentRemaining} ج.م).`, { severity: 'warning' });
-      return;
-    }
-
+    if (!pointsAppId || !Number(egpInput)) return;
     setIsRedeemingPoints(true);
     try {
-      // 1. Deduct points from patient wallet in Firestore
-      const newBalance = await redeemLoyaltyPoints(clinicId, resolvedPatientId, pts);
-
-      // 2. Record payment on appointment with method "نقاط الولاء"
-      const docRef = doc(getAppointmentsRef(clinicId), app.id);
-      const newPaid = currentPaid + egp;
-      const newRemaining = Math.max(0, currentRemaining - egp);
-      const newPrice = Math.max(Number(app.price) || 0, newPaid);
-      const newStatus = newRemaining === 0 ? 'paid' : 'installment';
-
-      const existingPayments = app.payments && Array.isArray(app.payments) ? app.payments : [];
-      const resolvedPayments = [...existingPayments];
-      if (resolvedPayments.length === 0 && currentPaid > 0) {
-        resolvedPayments.push({
-          id: 'pay_init_' + app.id,
-          amount: currentPaid,
-          paymentMethod: app.paymentMethod || 'كاش',
-          date: app.date || getEgyptTodayStr(),
-          createdAt: app.updatedAt || app.createdAt || new Date().toISOString(),
-          notes: 'دفعة أولى (تلقائية)',
-          type: 'initial'
-        });
-      }
-
-      const resolvedShiftId = activeShiftId || (activeShift ? activeShift.id : undefined);
-      const noteDetail = `[تم السداد من محفظة النقاط: خصم ${pts} نقطة مقابل ${egp} ج.م] ${pointsPaymentNotes.trim() ? `(${pointsPaymentNotes.trim()})` : ''}`;
-      const newPaymentRecord = {
-        id: 'pay_' + Math.random().toString(36).substring(2, 11),
-        amount: egp,
-        paymentMethod: 'نقاط الولاء',
-        date: (activeShift && activeShift.date) || activeShiftDate || getEgyptTodayStr(),
-        createdAt: new Date().toISOString(),
-        shiftId: resolvedShiftId || undefined,
-        notes: noteDetail,
-        type: 'installment'
-      };
-
-      const updatedPayments = [...resolvedPayments, newPaymentRecord];
-      const updatedNotes = cleanNotes(app.notes || '') + `\n• ${noteDetail}`;
-
-      await setDoc(docRef, cleanDbData({
-        ...(app || {}),
-        paidAmount: newPaid,
-        remainingAmount: newRemaining,
-        price: newPrice,
-        invoiceStatus: newStatus,
-        notes: updatedNotes.trim(),
-        paymentMethod: app.paymentMethod || 'نقاط الولاء',
-        shiftId: resolvedShiftId || app.shiftId || undefined,
-        updatedAt: new Date().toISOString(),
-        payments: updatedPayments
-      }), { merge: true });
-
-      dialogs.alert(`تم سداد ${egp} ج.م بنجاح عبر محفظة النقاط! (خصم ${pts} نقطة - الرصيد المتبقي: ${newBalance} نقطة).`, { severity: 'success' });
-
-      setPatientPoints(newBalance);
-      setIsPointsModalOpen(false);
-      setPointsInput('');
-      setEgpInput('');
-      setPointsPaymentNotes('');
-      setShowPaymentBox(false);
-
-      await fetchFinancialRecords();
-    } catch (err: any) {
-      console.error("Error confirming points payment:", err);
-      dialogs.alert("فشل السداد بالنقاط: " + (err.message || err.toString()), { severity: 'error' });
-    } finally {
-      setIsRedeemingPoints(false);
-    }
+      await financeCommand(clinicId,{action:'points',appointmentId:pointsAppId,amount:Number(egpInput),reason:pointsPaymentNotes});
+      setIsPointsModalOpen(false); await fetchFinancialRecords(); dialogs.alert(isEn?'Points payment confirmed':'تم تأكيد السداد بالنقاط',{severity:'success'});
+    } catch(e:any) { dialogs.alert(e.message,{severity:'error'}); } finally { setIsRedeemingPoints(false); }
   };
 
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedAppId) {
-      dialogs.alert("يرجى تحديد جلسة أو موعد لتسجيل الدفعة عليه", { severity: 'warning' });
-      return;
-    }
-
-    if (normalizePaymentMethod(paymentMethod) === 'نقاط الولاء') {
-      openPointsPaymentModal(selectedAppId);
-      return;
-    }
-
-    const amt = Number(paymentAmount);
-    if (isNaN(amt) || amt <= 0) {
-      dialogs.alert("يرجى إدخال مبلغ صحيح أكبر من الصفر", { severity: 'warning' });
-      return;
-    }
-
-    const app = appointments.find(a => a.id === selectedAppId);
-    if (!app) {
-      dialogs.alert("يرجى اختيار الجلسة أولاً", { severity: 'warning' });
-      return;
-    }
-
-    const currentPaid = app.paidAmount !== undefined ? Number(app.paidAmount) : Number(app.price) || 0;
-    const currentRemaining = app.remainingAmount !== undefined ? Number(app.remainingAmount) : 0;
-
-    if (currentRemaining <= 0 || app.invoiceStatus === 'paid' || (currentPaid >= (Number(app.price) || 0) && (Number(app.price) || 0) > 0)) {
-      dialogs.alert("عفواً، تم سداد تكلفة هذه الجلسة بالكامل ولا يوجد مبلغ متبقي لتحصيله!", { severity: 'warning' });
-      return;
-    }
-
-    if (amt > currentRemaining) {
-      dialogs.alert(`عفواً، المبلغ المدخل (${amt} ج.م) أكبر من القسط المتبقي على هذه الجلسة (${currentRemaining} ج.م). لا يمكن تحصيل مبلغ أكبر من المستحق.`, { severity: 'warning' });
-      return;
-    }
-
+    if (normalizePaymentMethod(paymentMethod)==='نقاط الولاء') { openPointsPaymentModal(selectedAppId);return; }
     setIsSubmitting(true);
     try {
-      // Award points earned on cash/visa/etc payment
-      let newlyEarnedPts = 0;
-      if (isLoyaltyEnabled && clinicData && clinicId && resolvedPatientId) {
-        newlyEarnedPts = calculateEarnedPoints(amt, clinicData);
-        if (newlyEarnedPts > 0) {
-          const updatedPts = await awardLoyaltyPoints(clinicId, resolvedPatientId, newlyEarnedPts);
-          setPatientPoints(updatedPts);
-        }
-      }
-
-      const docRef = doc(getAppointmentsRef(clinicId), app.id);
-      const newPaid = currentPaid + amt;
-      const newRemaining = Math.max(0, currentRemaining - amt);
-      const newPrice = Math.max(Number(app.price) || 0, newPaid);
-      const newStatus = newRemaining === 0 ? 'paid' : 'installment';
-
-      const selectedMethod = paymentMethod || methodsList[0] || 'كاش';
-
-      const existingPayments = app.payments && Array.isArray(app.payments) ? [...app.payments] : [];
-      const sumExisting = existingPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
-      const resolvedPayments = [...existingPayments];
-      if (currentPaid > sumExisting) {
-        resolvedPayments.unshift({
-          id: 'pay_init_' + app.id,
-          amount: currentPaid - sumExisting,
-          paymentMethod: app.paymentMethod || 'كاش',
-          date: app.paymentDate || app.date || getEgyptTodayStr(),
-          createdAt: app.updatedAt || app.createdAt || new Date().toISOString(),
-          notes: 'الدفعة الأولى السابقة',
-          type: 'initial'
-        });
-      }
-
-      const resolvedShiftId = activeShiftId || (activeShift ? activeShift.id : undefined);
-      const newPaymentRecord = {
-        id: 'pay_' + Math.random().toString(36).substring(2, 11),
-        amount: amt,
-        paymentMethod: selectedMethod,
-        date: (activeShift && activeShift.date) || activeShiftDate || getEgyptTodayStr(),
-        createdAt: new Date().toISOString(),
-        shiftId: resolvedShiftId || undefined,
-        notes: paymentNotes ? `سداد قسط: ${paymentNotes}` : 'سداد قسط',
-        type: 'installment'
-      };
-
-      const updatedPayments = [...resolvedPayments, newPaymentRecord];
-      const updatedNotes = cleanNotes(app.notes || '') + (paymentNotes.trim() ? `\n• ${paymentNotes.trim()}` : '');
-
-      await setDoc(docRef, cleanDbData({
-        ...(app || {}),
-        paidAmount: newPaid,
-        remainingAmount: newRemaining,
-        price: newPrice,
-        invoiceStatus: newStatus,
-        notes: updatedNotes.trim(),
-        paymentMethod: selectedMethod,
-        shiftId: resolvedShiftId || app.shiftId || undefined,
-        updatedAt: new Date().toISOString(),
-        payments: updatedPayments
-      }), { merge: true });
-
-      // Dispatch sync events so calendar and financials update in real time
-      window.dispatchEvent(new CustomEvent('clinic-sync', { detail: { table: 'appointments' } }));
-      window.dispatchEvent(new CustomEvent('clinic-sync', { detail: { table: 'records' } }));
-
-      let successMsg = `تم تحصيل القسط بقيمة (${amt} ج.م) وتحديث حساب المريض بنجاح!`;
-      if (newlyEarnedPts > 0) {
-        successMsg += `\n✨ وحصل المريض على +${newlyEarnedPts} نقطة ولاء جديدة!`;
-      }
-
-      dialogs.alert(successMsg, { severity: 'success' });
-
-      setPaymentAmount(0);
-      setPaymentNotes('');
-      setShowPaymentBox(false);
-
-      await fetchFinancialRecords();
-    } catch (err: any) {
-      console.error("Error updating payment:", err);
-      dialogs.alert("فشل تحديث الحساب: " + (err.message || err.toString()), { severity: 'error' });
-    } finally {
-      setIsSubmitting(false);
-    }
+      const result=await financeCommand(clinicId,{action:'collect',appointmentId:selectedAppId,amount:Number(paymentAmount),paymentMethod:paymentMethod||methodsList[0]||'كاش',reason:paymentNotes});
+      setPaymentAmount(0);setPaymentNotes('');setShowPaymentBox(false);await fetchFinancialRecords();
+      dialogs.alert((isEn?'Payment confirmed. Receipt: ':'تم تأكيد التحصيل، رقم الإيصال: ')+result.receipt.receiptNumber,{severity:'success'});
+    } catch(e:any) { dialogs.alert(e.message,{severity:'error'}); } finally {setIsSubmitting(false);}
   };
 
   const handleConfirmSessionDiscount = async () => {
-    if (!sessionDiscountAppId || !sessionDiscountAmount || Number(sessionDiscountAmount) <= 0) {
-      dialogs.alert("يرجى إدخال مبلغ الخصم المراد تأكيده بشكل صحيح", { severity: 'warning' });
-      return;
-    }
-    const app = appointments.find(a => a.id === sessionDiscountAppId);
-    if (!app) return;
-
-    const discountVal = Number(sessionDiscountAmount);
-    const currentPrice = Number(app.price) || 0;
-    const currentPaid = Number(app.paidAmount) || 0;
-    const currentRem = app.remainingAmount !== undefined ? Number(app.remainingAmount) : Math.max(0, currentPrice - currentPaid);
-
-    if (discountVal > currentRem) {
-      dialogs.alert(`عفواً، مبلغ الخصم (${discountVal} ج.م) أكبر من المتبقي على هذه الجلسة (${currentRem} ج.م)!`, { severity: 'warning' });
-      return;
-    }
-
-    setIsApplyingSessionDiscount(true);
-    try {
-      const docRef = doc(getAppointmentsRef(clinicId), app.id);
-      const newPrice = Math.max(currentPaid, currentPrice - discountVal);
-      const newRem = Math.max(0, currentRem - discountVal);
-      const newStatus = newRem === 0 ? 'paid' : 'installment';
-      const noteText = `\n• [تم تأكيد خصم خاص بقيمة ${discountVal} ج.م] ${sessionDiscountNotes.trim() ? `(${sessionDiscountNotes.trim()})` : ''}`;
-
-      await setDoc(docRef, cleanDbData({
-        ...(app || {}),
-        price: newPrice,
-        remainingAmount: newRem,
-        invoiceStatus: newStatus,
-        notes: (cleanNotes(app.notes || '') + noteText).trim()
-      }), { merge: true });
-
-      dialogs.alert(`تم تأكيد الخصم بقيمة ${discountVal} ج.م وتحديث باقي حساب الجلسة بنجاح!`, { severity: 'success' });
-      setSessionDiscountAppId(null);
-      setSessionDiscountAmount('');
-      setSessionDiscountNotes('');
-      await fetchFinancialRecords();
-    } catch (err: any) {
-      console.error("Error applying session discount:", err);
-      dialogs.alert("حدث خطأ أثناء تأكيد الخصم: " + err.message, { severity: 'error' });
-    } finally {
-      setIsApplyingSessionDiscount(false);
-    }
+    if(!sessionDiscountAppId)return;setIsApplyingSessionDiscount(true);
+    try {await financeCommand(clinicId,{action:'discount',appointmentId:sessionDiscountAppId,amount:Number(sessionDiscountAmount),reason:sessionDiscountNotes});setSessionDiscountAppId(null);await fetchFinancialRecords();dialogs.alert(isEn?'Discount confirmed':'تم تأكيد الخصم',{severity:'success'});}catch(e:any){dialogs.alert(e.message,{severity:'error'});}finally{setIsApplyingSessionDiscount(false);}
   };
 
   const getPaymentMethodLabel = (method?: string) => {
@@ -783,7 +532,7 @@ export default function PatientFinancialsModal({
                       onClick={() => {
                         setShowPaymentBox(true);
                         if (!selectedAppId && appointments.length > 0) {
-                          const firstPending = appointments.find(a => (a.remainingAmount !== undefined ? a.remainingAmount : 0) > 0) || appointments[0];
+                          const firstPending = appointments.find(a => a.status!=='cancelled'&&(a.remainingAmount !== undefined ? a.remainingAmount : 0) > 0) || appointments[0];
                           if (firstPending) {
                             setSelectedAppId(firstPending.id);
                             const rem = firstPending.remainingAmount !== undefined ? firstPending.remainingAmount : 0;
@@ -878,7 +627,7 @@ export default function PatientFinancialsModal({
                                 }}
                                 className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-hidden"
                               >
-                                {appointments.map(app => {
+                                {appointments.filter(a=>a.status!=='cancelled').map(app => {
                                   const rem = app.remainingAmount !== undefined ? app.remainingAmount : 0;
                                   return (
                                     <option key={app.id} value={app.id}>
@@ -979,13 +728,13 @@ export default function PatientFinancialsModal({
                         <div className="space-y-2.5 max-h-[240px] overflow-y-auto pr-1">
                           {allPayments.map((pay, idx) => {
                             const norm = normalizePaymentMethod(pay.paymentMethod);
-                            const title = isEn
+                            const title = pay.kind==='refund'?(isEn?'Actual refund':'استرداد فعلي'):isEn
                               ? `${getPaymentMethodLabel(pay.paymentMethod)} payment`
                               : norm === 'كاش' ? 'دفعة نقدية' : `دفعة ${getPaymentMethodLabel(pay.paymentMethod)}`;
                             let dateLabel = pay.date || '';
-                            const parsed = new Date(pay.createdAt || pay.date || '');
+                            const parsed = new Date(pay.createdAt || pay.collectionDate || pay.date || '');
                             if (!isNaN(parsed.getTime())) {
-                              dateLabel = parsed.toLocaleDateString(isEn ? 'en-US' : 'ar-EG', { day: 'numeric', month: 'long', year: 'numeric' });
+                              dateLabel = parsed.toLocaleDateString(isEn ? 'en-US' : 'ar-EG', {timeZone:'Africa/Cairo',day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
                             }
                             return (
                               <div key={pay.id || idx} className="flex items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3">
@@ -995,7 +744,7 @@ export default function PatientFinancialsModal({
                                   </span>
                                   <div className="min-w-0">
                                     <div className="text-sm font-bold text-slate-900 truncate">{title}</div>
-                                    <div className="text-[11px] text-slate-400 font-medium">{dateLabel}</div>
+                                    <div className="text-[11px] text-slate-400 font-medium">{dateLabel}</div><div className="text-[10px] text-slate-400 break-all">{pay.receiptNumber||pay.id} • {pay.actorName|| (isEn?'Legacy record':'سجل قديم')} {pay.actorRole||''}</div>
                                   </div>
                                 </div>
                                 <div className="text-end shrink-0">
@@ -1049,7 +798,7 @@ export default function PatientFinancialsModal({
                                   <span className="text-xs font-bold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg">
                                     {app.date} • {formatTimeTo12Hour(app.time)}
                                   </span>
-                                  {rem === 0 ? (
+                                  {app.status==='cancelled'?<span className="text-xs text-slate-400">{isEn?'Cancelled, financial history retained':'ملغي، التاريخ المالي محفوظ'}</span>:rem === 0 ? (
                                     <span className="text-[11px] bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold border border-emerald-200">
                                       {isEn ? '✓ Fully Paid' : '✓ خالص الحساب'}
                                     </span>
@@ -1086,7 +835,7 @@ export default function PatientFinancialsModal({
 
                                 {/* Actions */}
                                 <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                                  {rem > 0 && (
+                                  {rem > 0 && app.status!=='cancelled' && (
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -1101,7 +850,7 @@ export default function PatientFinancialsModal({
                                       <span>{isEn ? 'Discount' : 'خصم'}</span>
                                     </button>
                                   )}
-                                  {rem > 0 ? (
+                                  {rem > 0 && app.status !== 'cancelled' ? (
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -1262,7 +1011,7 @@ export default function PatientFinancialsModal({
                         }}
                         className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-xs font-bold bg-slate-50 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-hidden"
                       >
-                        {appointments.map((a) => {
+                        {appointments.filter(a=>a.status!=='cancelled').map((a) => {
                           const rem = a.remainingAmount !== undefined ? Number(a.remainingAmount) : 0;
                           return (
                             <option key={a.id} value={a.id}>
@@ -1430,7 +1179,7 @@ export default function PatientFinancialsModal({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">{isEn ? 'Reason / Notes (Optional)' : 'ملاحظة / سبب الخصم (اختياري)'}</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{isEn ? 'Reason (required)' : 'سبب الخصم (مطلوب)'}</label>
                       <input
                         type="text"
                         value={sessionDiscountNotes}
@@ -1510,6 +1259,7 @@ export default function PatientFinancialsModal({
                     <span>{isEn ? 'Remaining Balance (Due):' : 'المتبقي (الأقساط):'}</span>
                     <span>{(printingApp.remainingAmount !== undefined ? Number(printingApp.remainingAmount) : 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
                   </div>
+                  <div className="space-y-2 border rounded-lg p-3"><p>{isEn?'Confirmed receipts (Cairo collection time)':'الإيصالات المؤكدة (وقت التحصيل بتوقيت القاهرة)'}</p>{receiptLedger.filter(r=>r.appointmentId===printingApp.id).map(r=><div key={r.id} className="border-t pt-2 text-xs space-y-1"><p className="break-all">{r.receiptNumber||r.id} • {r.kind==='refund'?(isEn?'Refund':'استرداد'):(isEn?'Payment':'تحصيل')} • {r.kind==='refund'?'-':''}{r.amount} {isEn?'EGP':'ج.م'}</p><p>{r.createdAt?new Date(r.createdAt).toLocaleString(isEn?'en-GB':'ar-EG',{timeZone:'Africa/Cairo'}):r.collectionDate} • {r.actorName|| (isEn?'Legacy record':'سجل قديم')} • {r.actorRole||''}</p></div>)}</div>
                   {printingApp.notes && (
                     <div className="mt-4 p-3 bg-gray-100 rounded">
                       <p>{isEn ? 'Notes & Transaction Logs:' : 'ملاحظات وحركات التحصيل:'}</p>

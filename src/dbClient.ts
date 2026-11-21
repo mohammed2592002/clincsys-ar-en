@@ -1,3 +1,5 @@
+import {commandMessage} from './utils/commandMessages';
+import {listCommands,saveCommand,removeCommand,enqueueCommand,settleConflict,commandOwner,commandFingerprint, type DurableCommand} from './utils/commandQueue';
 import {
   saveLocalDoc,
   getLocalDoc,
@@ -45,7 +47,7 @@ export function clearAuthToken() {
 
 export function authHeaders(): Record<string, string> {
   const token = getAuthToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return {'Accept-Language':safeStorage.getItem('i18nextLng')||'ar',...(token?{Authorization:`Bearer ${token}`}:{})};
 }
 
 function handleAuthExpiry() {
@@ -599,8 +601,8 @@ export async function getDoc(docRef: MockDocumentReference, forceRefresh = false
       throw new Error(await res.text());
     }
     const docData = await res.json();
-    if (docData) {
-      saveLocalDoc(path, id, docData).catch(() => {});
+    if (docData && !(await isDocPendingInSyncQueue(path,id))) {
+      await saveLocalDoc(path, id, docData);
     }
     return {
       id,
@@ -617,11 +619,91 @@ export async function getDoc(docRef: MockDocumentReference, forceRefresh = false
   }
 }
 
+const commandError=(message:string)=>new Error(commandMessage(message,(safeStorage.getItem('i18nextLng')||'ar').startsWith('en')));
+// The queue persists commands, never a replacement paid-balance snapshot.
+let commandFlush:Promise<void>|null=null;
+async function sendDurable(command:DurableCommand){
+ if(command.owner!==commandOwner(getAuthToken()))throw commandError('الطلب يخص حسابًا آخر');
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+ try{
+  const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId:command.clinicId,...command.body,requestId:command.id}),signal:controller.signal});
+  const result=await response.json();
+  if(!response.ok){if(response.status>=400&&response.status<500){command.status='conflict';command.error=result.message||'يلزم مراجعة الطلب';command.conflict=result.conflict;await saveCommand(command);}throw commandError(result.message||'لم يؤكد السيرفر الطلب');}
+  if(result.appointment)await saveLocalDoc('clinics/'+command.clinicId+'/appointments',result.appointment.id,result.appointment);
+  if(command.localPath&&command.localId){if(command.body.action==='delete')await removeLocalDoc(command.localPath,command.localId);else await saveLocalDoc(command.localPath,command.localId,{...(command.body.table==='clinics'?await getLocalDoc(command.localPath,command.localId):{}),...result,_syncStatus:'confirmed'});}
+  await removeCommand(command.id);if(command.localPath&&command.localId){for(const next of await listCommands()){if(next.localPath===command.localPath&&next.localId===command.localId&&next.body.action==='write'&&next.body.optimistic){const cached=await getLocalDoc(command.localPath,command.localId);await saveLocalDoc(command.localPath,command.localId,{...cached,...next.body.data,_syncStatus:next.status==='conflict'?'conflict':'pending'});}}}clearQueryCache();window.dispatchEvent(new CustomEvent('clinic-sync',{detail:{action:'command-confirmed'}}));syncChannel?.postMessage({action:'command-confirmed'});return result;
+ }finally{clearTimeout(timer);}
+}
+function commandsDependOn(current:DurableCommand,earlier:DurableCommand){
+ if(current.clinicId!==earlier.clinicId)return false;
+ if(current.body.table===earlier.body.table&&current.body.id&&current.body.id===earlier.body.id)return true;
+ if(current.body.appointmentId&&current.body.appointmentId===earlier.body.appointmentId)return true;
+ if(earlier.body.id&&(current.body.appointmentId===earlier.body.id||current.body.data?.appointmentId===earlier.body.id))return true;
+ if(earlier.body.create&&earlier.body.id&&current.body.data?.patientId===earlier.body.id)return true;
+ return earlier.body.table==='clinics'&&current.financial;
+}
+export async function flushDurableCommands(){if(commandFlush)return commandFlush;if(!navigator.onLine)return;
+ commandFlush=(async()=>{const owner=commandOwner(getAuthToken()),blocked:DurableCommand[]=[];for(const command of await listCommands()){if(command.owner!==owner)continue;if(command.status==='conflict'||blocked.some(c=>commandsDependOn(command,c))){blocked.push(command);continue;}try{await sendDurable(command);}catch{if((command as DurableCommand).status==='conflict'){blocked.push(command);continue;}break;}}})().finally(()=>{commandFlush=null;});return commandFlush;
+}
+export async function inspectFinancialConflict(id:string){const command=(await getPendingCommands()).find(c=>c.id===id);if(!command||!command.financial||command.status!=='conflict')throw commandError('اختر طلبًا ماليًا متعارضًا');const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId:command.clinicId,action:'inspect_pending',targetRequestId:command.id,appointmentId:command.body.appointmentId})});if(!response.ok)throw commandError((await response.json()).message||'تعذر المراجعة المالية');return {command,...await response.json()};}
+export async function reconcileFinancialConflict(id:string,reason:string){const review=await inspectFinancialConflict(id);const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId:review.command.clinicId,action:'review_pending',targetRequestId:id,reason,requestId:crypto.randomUUID()})});const result=await response.json();if(!response.ok)throw commandError(result.message||'لم يؤكد السيرفر المراجعة');await settleConflict({...review.command,status:'resolved',resolution:result.reviewState,resolvedAt:new Date().toISOString()});if(result.originalResult?.appointment)await saveLocalDoc('clinics/'+review.command.clinicId+'/appointments',result.originalResult.appointment.id,result.originalResult.appointment);clearQueryCache();window.dispatchEvent(new CustomEvent('clinic-sync',{detail:{action:'financial-reviewed'}}));return result;}
+export async function reviewDurableCommand(id:string){const c=(await getPendingCommands()).find(c=>c.id===id);if(!c||c.status!=='conflict'||!c.localPath||!c.localId||c.financial)throw commandError('هذه الحركة تحتاج مراجعة مالية مع المدير، دون تعديل تلقائي');const response=await fetch('/api/db',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({action:'getDoc',path:c.localPath,id:c.localId})});if(!response.ok)throw commandError('تعذر تحميل النسخة الحالية من السيرفر');return {command:c,current:await response.json()};}
+export async function resolveDurableCommand(id:string,choice:'server'|'local',reviewedCurrent:any){
+ const {command,current}=await reviewDurableCommand(id);if(!current)throw commandError('السجل غير موجود على السيرفر، يلزم مراجعة المدير');
+ if(JSON.stringify(current)!==JSON.stringify(reviewedCurrent))throw commandError('تغيرت نسخة السيرفر بعد عرضها، أعد المراجعة');
+ let replacement:DurableCommand|undefined;
+ if(choice==='local'){
+  if(command.body.create||command.body.action!=='write')throw commandError('لا يمكن استبدال سجل بهذه الحركة');
+  const base:any={};for(const k of Object.keys(command.body.data||{}))base[k]=current[k]??null;
+  const body={...command.body,base};replacement={...command,id:crypto.randomUUID(),body,fingerprint:commandFingerprint(command.clinicId,body),status:'pending',error:undefined,createdAt:new Date().toISOString()};
+ }
+ if(command.owner!==commandOwner(getAuthToken()))throw commandError('تغير الحساب، أعد فتح التنبيهات');
+ await settleConflict({...command,status:'resolved',resolution:choice,resolvedAt:new Date().toISOString()},replacement);
+ if(choice==='server'&&command.localPath&&command.localId)await saveLocalDoc(command.localPath,command.localId,{...current,_syncStatus:'confirmed'});
+ clearQueryCache();notifyLocalSync(command.localPath||'','conflict-reviewed',command.localId);await flushDurableCommands();
+}
+export async function exportCommandHistory(){const owner=commandOwner(getAuthToken());return (await listCommands(true)).filter(c=>c.owner===owner);}
+export function pendingMoneyAmount(c:DurableCommand){if(['collect','refund'].includes(c.body.action))return Number(c.body.amount||0);if(c.body.pendingMoneyAmount!==undefined)return Number(c.body.pendingMoneyAmount);if(c.body.table==='expenses')return Number(c.body.data?.amount||0);return 0;}
+export async function getPendingCommands(){const owner=commandOwner(getAuthToken());return (await listCommands()).filter(c=>c.owner===owner||(owner.startsWith('manager:')&&c.clinicId===owner.split(':')[1]));}
+export async function financeCommand(clinicId:string,body:any):Promise<any>{
+ if(body.action==='read'){try{const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId,...body})});if(!response.ok){const denied:any=commandError((await response.json()).message||'تعذر تحميل السجل');denied.authoritative=true;throw denied;}const result=await response.json();await saveLocalDoc('finance-ledger',commandOwner(getAuthToken())+':'+clinicId,result);return result;}catch(e:any){if(e.authoritative)throw e;const cached=await getLocalDoc('finance-ledger',commandOwner(getAuthToken())+':'+clinicId);if(cached)return {...cached,fromCache:true};throw e;}}
+ const owner=commandOwner(getAuthToken());if(!owner)throw commandError('يلزم تسجيل الدخول قبل تسجيل طلب');
+ if(body.action==='close'){const unresolved=(await getPendingCommands()).some(c=>c.financial&&c.body.action!=='close'&&(!c.body.expectedShiftId||c.body.expectedShiftId===body.shiftId));if(unresolved)throw commandError('توجد حركات مالية معلقة، راجع تنبيهات الإعدادات قبل إقفال الوردية');}
+ const fingerprint=commandFingerprint(clinicId,body);let command=(await listCommands()).find(c=>c.owner===owner&&c.fingerprint===fingerprint);
+ if(command?.status==='conflict')throw commandError('طلب محفوظ للمراجعة: '+command.error);
+ if(!command){const shifts=await getLocalDocsForPath('clinics/'+clinicId+'/shifts');const activeShifts=shifts.filter(s=>s.status==='open');if((['collect','points','refund','discount'].includes(body.action)||body.table==='expenses'||(body.table==='lab_orders'&&Number(body.data?.paidAmount)>0)))body={...body,expectedShiftId:activeShifts.length===1?activeShifts[0].id:(!navigator.onLine?'unverified':undefined)};command={id:crypto.randomUUID(),owner,clinicId,body:{...body,clientOccurredAt:new Date().toISOString(),queuedBy:owner},fingerprint,createdAt:new Date().toISOString(),status:'pending',financial:!body.optimistic,localPath:body.localPath,localId:body.id};const clinic=await getLocalDoc('clinics',clinicId);let identity:any={};try{identity=JSON.parse(atob(getAuthToken().split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));}catch{}command.actorName=identity.staffName||clinic?.doctorName||clinic?.name||(owner.startsWith('manager:')?'مدير العيادة':'حساب العيادة');command.actorRole=identity.staffRole||(owner.startsWith('manager:')?'المدير':'موظف');const entity=body.localPath&&body.id?await getLocalDoc(body.localPath,body.id):body.appointmentId?await getLocalDoc('clinics/'+clinicId+'/appointments',body.appointmentId):null;const patientId=body.data?.patientId||entity?.patientId;const patient=patientId?await getLocalDoc('clinics/'+clinicId+'/patients',patientId):null;command.entityName=body.data?.patientName||body.data?.name||entity?.patientName||entity?.name||patient?.name||body.data?.title||entity?.title;command=await enqueueCommand(command);}
+ if(body.optimistic&&body.localPath&&command.localId){const old=await getLocalDoc(body.localPath,command.localId);await saveLocalDoc(body.localPath,command.localId,{...old,...body.data,id:command.localId,_syncStatus:'pending'});notifyLocalSync(body.localPath,'pending',command.localId);}
+ if(navigator.onLine){try{const earlier=(await listCommands()).filter(c=>c.owner===owner&&(c.sequence&&command.sequence?c.sequence<command.sequence:c.createdAt<command.createdAt));for(const c of earlier){if(c.status==='conflict'){if(commandsDependOn(command,c))throw commandError('طلب مرتبط يحتاج مراجعة');continue;}await sendDurable(c);}return await sendDurable(command);}catch(e:any){if(command.status==='conflict')throw e;}}
+ if(body.optimistic){return {id:command.localId,pending:true,_syncStatus:'pending'};}
+ throw commandError('محفوظ على الجهاز كطلب غير مؤكد. ستتم المزامنة عند رجوع الاتصال، لا تسجله مرة ثانية.');
+}
+const clinicSettingsKeys=new Set(['name','nameAr','nameEn','logoUrl','doctorName','doctorNameEn','doctorPhone','additionalPhones','doctorSpecialtyAr','doctorSpecialtyEn','clinicHours','address','prescriptionStyle','prescriptionLayout','customPrescriptionPadConfig','consultationPrice','bookingSystemMode','questionnaireQuestions','customDentalServices','dentalServiceCategories','paymentMethods','dentalChartStyleSettings','autoBackupEnabled','autoBackupFormat','loyaltyProgramEnabled','loyaltyEarnEgpThreshold','loyaltyEarnPoints','loyaltyRedeemPointsThreshold','loyaltyRedeemDiscountEgp','loyaltyMinRedeemPoints','updatedAt']);
+async function clinicSettingsWrite(path:string,id:string,data:any){
+ if(Object.keys(data||{}).every(k=>clinicSettingsKeys.has(k))){const old=await getLocalDoc(path,id),base:any={};if(old)for(const k of Object.keys(data))base[k]=old[k]??null;return financeCommand(id,{action:'write',table:'clinics',id,data,base:old?base:undefined,optimistic:true,localPath:path});}
+ // Credentials, staff access and subscription changes require a live server. Never persist them in the command queue.
+ if(!navigator.onLine)throw commandError('تغيير بيانات الدخول والصلاحيات أو الاشتراك يحتاج اتصال بالسيرفر');
+ const response=await fetch('/api/db',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({action:'updateDoc',path,id,data})});if(!response.ok)throw commandError('لم يؤكد السيرفر تعديل الإعدادات');
+ await saveLocalDoc(path,id,await response.json());return {id};
+}
+function protectedPath(path:string){return /^clinics\/[^/]+\/(patients\/[^/]+\/)?(appointments|shifts|expenses|lab_orders|patients|records|prescriptions|xrays|teeth|inventory|custom_medications|custom_categories|laboratories|lab_work_types|billing|closings)(\/[^/]+)?$/.test(path);}
+async function confirmedWrite(action:string,path:string,id:string,data?:any,options?:any){
+ const parts=path.split('/');if(parts[2]==='patients'&&parts.length>=5){data={...data,patientId:parts[3]};parts[2]=parts[4];}
+ const old=await getLocalDoc(path,id);const table=parts[2];
+ const financial=action==='deleteDoc'||['expenses','shifts','billing','closings'].includes(table)||(table==='lab_orders'&&Number(data?.paidAmount||0)!==Number(old?.paidAmount||0))||(table==='appointments'&&(data?.status==='cancelled'||(data?.price!==undefined&&old?.price!==undefined&&Number(data.price)!==Number(old.price))));
+ const patch={...data};delete patch._syncStatus;delete patch._fieldEdits;
+ if(table==='appointments'&&old){for(const k of ['paidAmount','remainingAmount','invoiceStatus','payments'])delete patch[k];}
+ const base:any={};if(old)for(const k of Object.keys(patch))base[k]=old[k]===undefined?null:old[k];
+ const pendingMoneyAmount=table==='lab_orders'?Math.max(0,Number(data?.paidAmount||0)-Number(old?.paidAmount||0)):table==='expenses'?Number(data?.amount||0):0;
+ return financeCommand(parts[1],{pendingMoneyAmount,action:action==='deleteDoc'?'delete':'write',table,id,data:patch,options,base:old?base:undefined,create:action==='addDoc',optimistic:!financial,localPath:path});
+}
+if(typeof window!=='undefined'){window.addEventListener('online',()=>{flushDurableCommands().catch(console.error);});setInterval(()=>{flushDurableCommands().catch(console.error);},10000);}
+
 export async function addDoc(collectionRef: MockCollectionReference, data: any): Promise<any> {
   clearQueryCache();
   const path = collectionRef.path;
   const id = generateAutoId();
   const docData = { ...data, id };
+  if (protectedPath(path)) return confirmedWrite('addDoc',path,id,docData);
 
   // Save to local offline DB immediately for zero latency / offline execution
   await saveLocalDoc(path, id, docData);
@@ -662,6 +744,8 @@ export async function setDoc(docRef: MockDocumentReference, data: any, options?:
   const path = docRef.path;
   const id = docRef.id;
   const { collectionPath } = normalizeDocPath(path, id);
+  if(path==='clinics'||path==='clinics/'+id)return clinicSettingsWrite(path,id,data);
+  if (protectedPath(path)) return confirmedWrite('setDoc',path,id,data,options);
 
   let finalData = { ...data, id };
   if (options?.merge) {
@@ -699,6 +783,8 @@ export async function updateDoc(docRef: MockDocumentReference, data: any): Promi
   const path = docRef.path;
   const id = docRef.id;
   const { collectionPath } = normalizeDocPath(path, id);
+  if(path==='clinics'||path==='clinics/'+id)return clinicSettingsWrite(path,id,data);
+  if (protectedPath(path)) return confirmedWrite('updateDoc',path,id,data);
 
   const existing = await getLocalDoc(path, id);
   const finalData = existing ? { ...existing, ...data, id } : { id, ...data };
@@ -730,6 +816,7 @@ export async function deleteDoc(docRef: MockDocumentReference): Promise<any> {
   const path = docRef.path;
   const id = docRef.id;
   const { collectionPath } = normalizeDocPath(path, id);
+  if (protectedPath(path)) return confirmedWrite('deleteDoc',path,id);
 
   await removeLocalDoc(path, id);
   notifyLocalSync(collectionPath, 'delete', id);
@@ -767,6 +854,7 @@ export async function processSyncQueue(): Promise<void> {
     }
 
     console.log(`[Offline Sync Engine] Processing ${queue.length} pending offline actions...`);
+    await flushDurableCommands();
 
     // 1. Process pending media uploads (e.g., offline X-Rays, attachments)
     const mediaQueue = queue.filter((item) => item.action === 'uploadOfflineMedia');
@@ -802,9 +890,11 @@ export async function processSyncQueue(): Promise<void> {
         }
 
         const clinicId = item.data?.clinicId || item.options?.clinicId || media.clinicId;
+        const owner=commandOwner(getAuthToken());if(!owner||owner.split(':')[1]!==clinicId||media.owner!==owner)continue;
         const category = item.category || media.category || 'xrays';
 
-        const publicUrl = await uploadFileToR2(fileToUpload, category, clinicId, targetFileName);
+        const publicUrl = media.uploadedUrl || await uploadFileToR2(fileToUpload, category, clinicId, targetFileName);
+        await saveOfflineMedia({...media,uploadedUrl:publicUrl});
 
         if (publicUrl) {
           console.log(`[Offline Sync Engine] Offline media successfully uploaded to Cloudflare R2: ${publicUrl}`);
@@ -813,21 +903,9 @@ export async function processSyncQueue(): Promise<void> {
           const path = item.path || media.docPath;
 
           if (path && docId) {
-            // Update database record on server
-            try {
-              await fetchWithRetry('/api/db', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  action: 'updateDoc',
-                  path,
-                  id: docId,
-                  data: { [fieldName]: publicUrl, isOfflinePending: false }
-                })
-              }, 2, 300, 10000);
-            } catch (e) {
-              console.warn('[Offline Sync Engine] Notice updating doc after R2 upload:', e);
-            }
+            // Keep the original bytes until the linked record is server-confirmed.
+            const linked=await updateDoc(doc(db,path,docId),{[fieldName]:publicUrl,isOfflinePending:false});
+            if(linked?.pending)throw new Error('ملف مرفوع وربطه محفوظ في انتظار التأكيد');
 
             // Update local document in IndexedDB cache
             try {
@@ -897,6 +975,7 @@ export async function processSyncQueue(): Promise<void> {
 
           if (res.ok) {
             const result = await res.json();
+            if((result.errors||[]).some((e:any)=>e.error==='financial_sync_requires_review'))window.dispatchEvent(new CustomEvent('financial-sync-review',{detail:{message:'توجد حركات قديمة معلقة لم تحفظ ماليًا. راجعها مع المدير قبل إعادة تسجيلها.'}}));
             const processedIds = new Set((result.processedIds || []).map((pid: any) => String(pid)));
 
             for (const item of chunk) {

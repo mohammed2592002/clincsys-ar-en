@@ -390,35 +390,8 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
         difference = newPaid;
       }
 
-      if (difference !== 0) {
-        try {
-          const expensePayload = {
-            title: difference > 0 ? (isEn ? `Lab Payment: ${orderPayload.laboratoryName}` : `دفعة معمل: ${orderPayload.laboratoryName}`) : (isEn ? `Lab Adjustment: ${orderPayload.laboratoryName}` : `تعديل بالخصم معمل: ${orderPayload.laboratoryName}`),
-            amount: difference,
-            category: isEn ? 'Lab Expenses' : 'مصاريف معامل',
-            date: (() => {
-              const d = new Date();
-              const pad = (n: number) => String(n).padStart(2, '0');
-              return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-            })(),
-            notes: difference > 0
-              ? (isEn ? `Lab order payment for ${orderPayload.workType} - Patient: ${orderPayload.patientName} [Payment Method: ${orderPayload.paymentMethod}]. ${activeShift ? 'Deducted from open shift' : 'Personal funds'}` : `طلب معمل لـ ${orderPayload.workType} - مريض: ${orderPayload.patientName} [طريقة الدفع: ${orderPayload.paymentMethod}]. ${activeShift ? 'مخصوم من الوردية المفتوحة' : 'مال خاص'}`).trim()
-              : (isEn ? `Lab order deduction adjustment for ${orderPayload.workType} - Patient: ${orderPayload.patientName} [Payment Method: ${orderPayload.paymentMethod}]. ${activeShift ? 'Adjusted in open shift' : 'Personal funds'}` : `تعديل خفض قيمة الدفعة لطلب معمل لـ ${orderPayload.workType} - مريض: ${orderPayload.patientName} [طريقة الدفع: ${orderPayload.paymentMethod}]. ${activeShift ? 'مصحح بالوردية المفتوحة' : 'مال خاص'}`).trim(),
-            type: activeShift ? 'shift' : 'personal',
-            shiftId: activeShift ? activeShift.id : null,
-            paymentMethod: orderPayload.paymentMethod || (isEn ? 'Cash' : 'كاش'),
-            createdAt: new Date().toISOString()
-          };
-          await addDoc(collection(db, 'clinics', clinic.id, 'expenses'), expensePayload);
-          if (difference > 0) {
-            dialogs.alert(isEn ? `Lab payment (${difference} EGP - ${orderPayload.paymentMethod}) automatically recorded under "Lab Expenses"` : `تم ترحيل دفعة المعمل (${difference} ج.م - ${orderPayload.paymentMethod}) تلقائياً كمنصرف في الحسابات تحت تصنيف "مصاريف معامل"`, { severity: 'info' });
-          } else {
-            dialogs.alert(isEn ? `Lab deduction adjustment (${Math.abs(difference)} EGP - ${orderPayload.paymentMethod}) automatically recorded in lab expenses` : `تم تسجيل تسوية بالخصم (${Math.abs(difference)} ج.م - ${orderPayload.paymentMethod}) تلقائياً في حسابات المعامل لتصحيح الخزينة والمصروفات`, { severity: 'info' });
-          }
-        } catch (expErr) {
-          console.error("Failed to automatically record lab expense:", expErr);
-        }
-      }
+      // Lab expenses and cancellation audit are committed atomically by the server.
+
 
       setIsOrderModalOpen(false);
       setSelectedOrder(null);
@@ -608,30 +581,8 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
       
       // Compute difference to log expense
       const difference = finalAmount - oldPaid;
-      if (difference !== 0) {
-        try {
-          const expensePayload = {
-            title: difference > 0 ? (isEn ? `Lab Payment: ${order.laboratoryName}` : `دفعة معمل: ${order.laboratoryName}`) : (isEn ? `Lab Adjustment: ${order.laboratoryName}` : `تعديل بالخصم معمل: ${order.laboratoryName}`),
-            amount: difference,
-            category: isEn ? 'Lab Expenses' : 'مصاريف معامل',
-            date: (() => {
-              const d = new Date();
-              const pad = (n: number) => String(n).padStart(2, '0');
-              return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-            })(),
-            notes: difference > 0
-              ? (isEn ? `Recorded lab payment for order ${order.workType} - Patient: ${order.patientName}` : `دفعة معمل مسجلة لطلب ${order.workType} - مريض: ${order.patientName} [طريقة الدفع: ${selectedMethod}]. ${activeShift ? 'مخصوم من الوردية المفتوحة' : 'مال خاص'}`).trim()
-              : (isEn ? `Deduction adjustment for lab order ${order.workType} - Patient: ${order.patientName}` : `تعديل خفض قيمة الدفعة لطلب معمل لـ ${order.workType} - مريض: ${order.patientName} [طريقة الدفع: ${selectedMethod}]. ${activeShift ? 'مصحح بالوردية المفتوحة' : 'مال خاص'}`).trim(),
-            type: activeShift ? 'shift' : 'personal',
-            shiftId: activeShift ? activeShift.id : null,
-            paymentMethod: selectedMethod,
-            createdAt: new Date().toISOString()
-          };
-          await addDoc(collection(db, 'clinics', clinic.id, 'expenses'), expensePayload);
-        } catch (expErr) {
-          console.error("Failed to automatically record lab expense:", expErr);
-        }
-      }
+      // Lab expenses and cancellation audit are committed atomically by the server.
+
 
       const newStatusText = newStatus === 'paid' ? (isEn ? 'Fully Paid' : 'مدفوع بالكامل') : newStatus === 'partial' ? (isEn ? 'Partially Paid' : 'مدفوع جزئياً') : (isEn ? 'Unpaid' : 'غير مدفوع');
       dialogs.alert(isEn ? `Payment updated for patient [${order.patientName}] successfully with ${finalAmount} EGP (New status: ${newStatusText})` : `تم تحديث الدفعة للمريض [${order.patientName}] بنجاح بقيمة ${finalAmount} ج.م [طريقة الدفع: ${selectedMethod}] (الحالة الجديدة: ${newStatusText})${difference > 0 ? ` وتم ترحيل ${difference} ج.م إلى المصاريف (${selectedMethod}) تلقائياً` : (difference < 0 ? ` وتم تسجيل تسوية بالخصم بقيمة ${Math.abs(difference)} ج.م تلقائياً` : '')}`, { severity: 'success' });
@@ -677,34 +628,8 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
       
       // Compute difference to log expense
       const difference = updatedPaidAmount - oldPaid;
-      if (difference !== 0) {
-        try {
-          const expensePayload = {
-            title: difference > 0 ? (isEn ? `Lab Payment: ${order.laboratoryName}` : `دفعة معمل: ${order.laboratoryName}`) : (isEn ? `Lab Adjustment: ${order.laboratoryName}` : `تعديل بالخصم معمل: ${order.laboratoryName}`),
-            amount: difference,
-            category: isEn ? 'Lab Expenses' : 'مصاريف معامل',
-            date: (() => {
-              const d = new Date();
-              const pad = (n: number) => String(n).padStart(2, '0');
-              return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-            })(),
-            notes: difference > 0
-              ? (isEn ? `Lab payment recorded on changing payment status to [${newPaymentStatus}] for ${order.workType} - Patient: ${order.patientName}` : `دفعة معمل مسجلة عند تغيير حالة الدفع إلى [${
-                  newPaymentStatus === 'paid' ? 'مدفوع بالكامل' : 'مدفوع جزئياً'
-                }] لطلب ${order.workType} - مريض: ${order.patientName} [طريقة الدفع: ${selectedMethod}]. ${activeShift ? 'مخصوم من الوردية المفتوحة' : 'مال خاص'}`).trim()
-              : (isEn ? `Deduction adjustment recorded for ${order.workType} - Patient: ${order.patientName}` : `تعديل خفض قيمة الدفعة لطلب معمل عند تغيير حالة الدفع إلى [${
-                  newPaymentStatus === 'unpaid' ? 'غير مدفوع' : 'مدفوع جزئياً'
-                }] لـ ${order.workType} - مريض: ${order.patientName} [طريقة الدفع: ${selectedMethod}]. ${activeShift ? 'مصحح بالوردية المفتوحة' : 'مال خاص'}`).trim(),
-            type: activeShift ? 'shift' : 'personal',
-            shiftId: activeShift ? activeShift.id : null,
-            paymentMethod: selectedMethod,
-            createdAt: new Date().toISOString()
-          };
-          await addDoc(collection(db, 'clinics', clinic.id, 'expenses'), expensePayload);
-        } catch (expErr) {
-          console.error("Failed to automatically record lab expense:", expErr);
-        }
-      }
+      // Lab expenses and cancellation audit are committed atomically by the server.
+
 
       // Clear local editing state for this order to stay in sync
       setEditingPaidAmounts(prev => {
@@ -735,7 +660,7 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
       return;
     }
     const orderToDelete = labOrders.find(o => o.id === id);
-    const confirm = await dialogs.confirm(isEn ? 'Are you sure you want to permanently delete this lab order?' : 'هل أنت متأكد من حذف طلب المعمل هذا نهائياً؟', { severity: 'danger' });
+    const confirm = await dialogs.confirm(isEn ? 'Cancel this lab order? Payments stay recorded. This does not return money.' : 'إلغاء طلب المعمل؟ المدفوعات والمصروفات تفضل مسجلة. الإلغاء لا يرد فلوس.', { severity: 'danger' });
     if (!confirm) return;
 
     setLoading(true);
@@ -743,31 +668,10 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
       await dentalService.deleteLabOrder(clinic.id, id, isDemoMode);
 
       // If order had a paid amount, reverse it in clinic expenses
-      if (orderToDelete && Number(orderToDelete.paidAmount) > 0) {
-        try {
-          const refundAmt = Number(orderToDelete.paidAmount);
-          const expensePayload = {
-            title: isEn ? `Lab Payment Cancelled (Order Deleted): ${orderToDelete.laboratoryName}` : `إلغاء دفعة معمل (حذف طلب): ${orderToDelete.laboratoryName}`,
-            amount: -refundAmt,
-            category: isEn ? 'Lab Expenses' : 'مصاريف معامل',
-            date: (() => {
-              const d = new Date();
-              const pad = (n: number) => String(n).padStart(2, '0');
-              return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-            })(),
-            notes: isEn ? `Deduction adjustment due to deletion of lab order ${orderToDelete.workType} - Patient: ${orderToDelete.patientName}` : `تسوية بالخصم بسبب حذف طلب معمل ${orderToDelete.workType} - مريض: ${orderToDelete.patientName} [طريقة الدفع: ${orderToDelete.paymentMethod || 'كاش'}]`,
-            type: activeShift ? 'shift' : 'personal',
-            shiftId: activeShift ? activeShift.id : null,
-            paymentMethod: orderToDelete.paymentMethod || paymentMethodsList[0] || (isEn ? 'Cash' : 'كاش'),
-            createdAt: new Date().toISOString()
-          };
-          await addDoc(collection(db, 'clinics', clinic.id, 'expenses'), expensePayload);
-        } catch (expErr) {
-          console.error("Failed to record expense reversal on order delete:", expErr);
-        }
-      }
+      // Lab expenses and cancellation audit are committed atomically by the server.
 
-      dialogs.alert(isEn ? 'Lab order deleted and expenses adjusted successfully' : 'تم حذف طلب المعمل وتصحيح المصاريف بنجاح', { severity: 'success' });
+
+      dialogs.alert(isEn ? 'Lab order cancelled. No cash refund was recorded.' : 'تم إلغاء طلب المعمل، بدون تسجيل رد نقدي.', { severity: 'success' });
       await loadAllData();
     } catch (err: any) {
       dialogs.alert((isEn ? 'Error deleting order: ' : 'خطأ أثناء حذف الطلب: ') + err.toString(), { severity: 'error' });

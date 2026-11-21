@@ -1,3 +1,4 @@
+import {listCommands,commandOwner} from './commandQueue';
 import { safeStorage } from './storage';
 
 const DB_NAME = 'CrownDentOfflineDB';
@@ -55,6 +56,8 @@ export interface OfflineMediaItem {
   docPath?: string;
   docId?: string;
   field?: string;
+  uploadedUrl?: string;
+  owner?: string;
   status?: 'pending' | 'synced' | 'failed';
   createdAt: number;
 }
@@ -86,6 +89,7 @@ export function normalizeDocPath(path: string, id: string): { collectionPath: st
 
 export async function saveLocalDoc(path: string, id: string, data: any): Promise<void> {
   if (!id) return;
+  if(normalizeDocPath(path,id).collectionPath==='clinics'&&data&&typeof data==='object'){data={...data};delete data.password;delete data.staffPin;if(Array.isArray(data.staffMembers))data.staffMembers=data.staffMembers.map(({password,...member}:any)=>member);}
   const { collectionPath, docKey } = normalizeDocPath(path, id);
   const docItem: CachedDoc = { key: docKey, path: collectionPath, id, data: { ...data, id }, updatedAt: Date.now() };
 
@@ -206,6 +210,7 @@ export async function addToSyncQueue(item: Omit<QueueItem, 'id' | 'createdAt'>):
 export async function isDocPendingInSyncQueue(path: string, docId: string): Promise<boolean> {
   const { collectionPath } = normalizeDocPath(path, docId);
   const queue = await getSyncQueue();
+  const commands=await listCommands().catch(()=>[]);if(commands.some(c=>c.owner===commandOwner(safeStorage.getItem('dental_auth_token')||'')&&normalizeDocPath(c.localPath||'',c.localId||'').collectionPath===collectionPath&&c.localId===docId))return true;
   return queue.some((item) => {
     const itemNorm = normalizeDocPath(item.path, item.docId || '');
     return itemNorm.collectionPath === collectionPath && item.docId === docId;
@@ -337,6 +342,7 @@ export async function saveOfflineMedia(item: OfflineMediaItem): Promise<void> {
       const tx = idb.transaction('offline_media', 'readwrite');
       tx.objectStore('offline_media').put({
         ...item,
+        owner: item.owner || commandOwner(safeStorage.getItem('dental_auth_token')||''),
         status: item.status || 'pending',
         createdAt: item.createdAt || Date.now()
       });
@@ -344,7 +350,7 @@ export async function saveOfflineMedia(item: OfflineMediaItem): Promise<void> {
       tx.onerror = () => reject(tx.error);
     });
   } catch (err) {
-    console.warn('[OfflineDB] Error saving offline media to IDB:', err);
+    console.warn('[OfflineDB] Error saving offline media to IDB:', err);throw new Error('تعذر حفظ المرفق على الجهاز، لم يتم تسجيله');
   }
 }
 

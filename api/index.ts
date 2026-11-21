@@ -1,3 +1,6 @@
+import {commandMessage} from '../src/utils/commandMessages';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createFinanceService } from './finance';
 import 'dotenv/config';
 import express from 'express';
 import path from 'path';
@@ -168,6 +171,7 @@ function verifyPassword(stored: any, plain: string): boolean {
 interface AuthInfo {
   type: 'manager' | 'staff' | 'admin';
   clinicId?: string;
+  staffId?: string;
   staffName?: string;
   staffRole?: string;
   allowedTabs?: string[];
@@ -501,11 +505,21 @@ class LocalJsonDbEmulator {
     }
   }
 
+  private inTransaction = false;
+  beginTransaction() { this.inTransaction = true; return JSON.stringify(this.data); }
+  finishTransaction(snapshot: string, commit: boolean) {
+    if (!commit) this.data = JSON.parse(snapshot);
+    this.inTransaction = false;
+    if (commit) this.save();
+  }
   private save() {
+    if (this.inTransaction) return;
     try {
-      fs.writeFileSync(this.filePath, JSON.stringify(this.data, null, 2), 'utf8');
+      const temp = this.filePath + '.tmp';
+      fs.writeFileSync(temp, JSON.stringify(this.data, null, 2), 'utf8');
+      fs.renameSync(temp, this.filePath);
     } catch (e) {
-      console.error('[Mock DB] Failed to save database to disk:', e);
+      console.error('[Mock DB] Failed to save database to disk:', e); throw e;
     }
   }
 
@@ -896,14 +910,6 @@ class PostgresDbClient {
       rawPgHost = '';
     }
 
-    // Ignore internal Dokploy/Docker hostnames that cannot be resolved in this runtime container
-    if (rawPgUrl.includes('clinicsys-mo-xo2fyj')) {
-      rawPgUrl = '';
-    }
-    if (rawPgHost.includes('clinicsys-mo-xo2fyj')) {
-      rawPgHost = '';
-    }
-
     const pgUrl = rawPgUrl;
     const pgHost = rawPgHost;
 
@@ -1013,6 +1019,33 @@ class PostgresDbClient {
     }
   }
 
+  private financeContext = new AsyncLocalStorage<any>();
+  private financeTail: Promise<any> = Promise.resolve();
+  async financeTransaction<T>(clinicId: string, fn: () => Promise<T>): Promise<T> {
+    if (this.financeContext.getStore()) return fn();
+    const previous = this.financeTail;
+    let release!: () => void;
+    this.financeTail = new Promise<void>(r => release = r);
+    await previous;
+    try {
+      if (this.isPostgres) {
+        if (!this.pgPool) this.createPool();
+        const client = await this.pgPool!.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['finance:' + clinicId]);
+          const result = await this.financeContext.run(client, fn);
+          await client.query('COMMIT');
+          return result;
+        } catch (e) { await client.query('ROLLBACK'); throw e; }
+        finally { client.release(); }
+      }
+      if (!this.localDb) this.localDb = new LocalJsonDbEmulator();
+      const snapshot = this.localDb.beginTransaction();
+      try { const result = await this.financeContext.run({local: true}, fn); this.localDb.finishTransaction(snapshot, true); return result; }
+      catch(e) { this.localDb.finishTransaction(snapshot, false); throw e; }
+    } finally { release(); }
+  }
   async execute(optionsOrSql: string | { sql: string; args?: any[] }): Promise<{ rows: any[] }> {
     let sql: string;
     let args: any[] = [];
@@ -1024,6 +1057,9 @@ class PostgresDbClient {
       args = optionsOrSql.args || [];
     }
 
+    const transaction = this.financeContext.getStore();
+    if (transaction?.local) return this.localDb!.execute(sql, args);
+    if (transaction) { let i=1; const converted=sql.replace(/\?/g,()=>'$'+i++); return transaction.query(converted,args); }
     if (this.isPostgres) {
       let pgSql = sql;
       
@@ -1068,14 +1104,7 @@ class PostgresDbClient {
           const isConnErr = this.isConnectionError(err);
           const isDnsErr = (err.message && (err.message.includes('getaddrinfo') || err.message.includes('EAI_AGAIN') || err.message.includes('ENOTFOUND'))) || err.code === 'ENOTFOUND' || err.code === 'EAI_AGAIN';
 
-          if (isDnsErr) {
-            console.warn(`[Database Fallback] PostgreSQL hostname cannot be resolved (${err.message}). Seamlessly switching to local database emulator...`);
-            this.isPostgres = false;
-            if (!this.localDb) {
-              this.localDb = new LocalJsonDbEmulator();
-            }
-            return this.localDb.execute(sql, args);
-          }
+          if (isDnsErr) throw err;
 
           if (isConnErr && attempts < maxAttempts) {
             console.warn(`[PostgreSQL Pool Retry] Connection issue detected ("${err.message}"). Re-establishing connection pool (attempt ${attempts}/${maxAttempts})...`);
@@ -1084,14 +1113,7 @@ class PostgresDbClient {
             continue;
           }
 
-          if (isConnErr) {
-            console.warn(`[Database Fallback] PostgreSQL unreachable ("${err.message}"). Safely switching to local database emulator...`);
-            this.isPostgres = false;
-            if (!this.localDb) {
-              this.localDb = new LocalJsonDbEmulator();
-            }
-            return this.localDb.execute(sql, args);
-          }
+          if (isConnErr) throw err;
 
           console.error(`[PostgreSQL Error] Failed to execute SQL:`, pgSql, `Args:`, args, `Error:`, err);
           throw err;
@@ -2310,6 +2332,10 @@ function parsePath(pathStr: string) {
   return { tableName: pathStr, clinicId: null, patientId: null, docId: null };
 }
 
+function financeSync(clinicId:string,event:any){const eventId=crypto.randomUUID();broadcastSync(clinicId,{...event,eventId});publishSyncEvent(clinicId,event.table,event.action,event.id,undefined,eventId).then(id=>{if(id)handledEvents.add(id);});}
+const finance = createFinanceService({db: dbClient, getAuth: getRequestAuth, broadcast: financeSync, mapColumns: mapDataToColumns});
+app.post('/api/finance', finance.handler);
+
 // Generic Database Queries Router
 app.post('/api/db', async (req, res) => {
   const { action, path: pathStr, constraints, id, data } = req.body;
@@ -2335,10 +2361,20 @@ app.post('/api/db', async (req, res) => {
     }
   }
 
+  if(!clinicId&&['addDoc','setDoc','updateDoc','deleteDoc'].includes(action)&&['appointments','expenses','shifts','lab_orders','patients','records','billing','prescriptions','xrays','teeth','inventory','custom_medications','custom_categories','laboratories','lab_work_types'].includes(tableName))return res.status(400).json({message:'حدد العيادة للحركة المحمية'});
+
   const hasClinicId = !['files', 'system_settings', 'announcements', 'superadmin_credentials'].includes(tableName);
   const hasPatientId = ['records', 'appointments', 'prescriptions', 'xrays', 'teeth'].includes(tableName);
   const hasCreatedAt = tableName !== 'files';
 
+  if (auth && clinicId && ['addDoc','setDoc','updateDoc','deleteDoc'].includes(action) && ['appointments','expenses','shifts','lab_orders','patients','records','billing','prescriptions','xrays','teeth','inventory','custom_medications','custom_categories','laboratories','lab_work_types'].includes(tableName)) {
+    try {
+      if (tableName === 'shifts') return res.status(409).json({message:'استخدم إجراء فتح/إقفال الوردية الآمن'});
+      const result = await finance.run(clinicId, auth, {action: action === 'deleteDoc' ? 'delete' : 'write', table: tableName, id: requestedDocId || data?.id, data: {...data,...(patientId?{patientId}: {})}, requestId: req.body.requestId || crypto.randomUUID()});
+      financeSync(clinicId,{table: tableName,action:'finance'});
+      return res.json(result);
+    } catch(e:any) { return res.status(e.status || 500).json({message:commandMessage(e.message,String(req.headers['accept-language']||'').startsWith('en')),conflict:e.details}); }
+  }
   try {
     if (action === 'getAppointmentsCounts') {
       if (!clinicId) {
@@ -2847,6 +2883,8 @@ app.post('/api/db/batch', async (req, res) => {
       continue;
     }
 
+    if (['appointments','expenses','shifts','lab_orders','patients','records','billing','prescriptions','xrays','teeth','inventory','custom_medications','custom_categories','laboratories','lab_work_types'].includes(tableName)) { errors.push({itemId,error:'financial_sync_requires_review',message:'حركة قديمة معلقة تحتاج مراجعة، لم يتم حفظها على السيرفر'}); continue; }
+
     try {
       const finalId = docId || parsedDocId || data?.id;
 
@@ -3070,6 +3108,7 @@ app.post('/api/auth/clinic-login', async (req, res) => {
           const token = await signAuthToken({
             type: 'staff',
             clinicId,
+            staffId: viaPin ? undefined : matchedStaff.id,
             staffName: matchedStaff.name,
             staffRole: viaPin ? 'استقبال / مساعد' : matchedStaff.role,
             allowedTabs: viaPin ? undefined : matchedStaff.allowedTabs
