@@ -2419,7 +2419,12 @@ export default function InteractiveCalendar({
                           <span className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shadow-sm ${
                             app.status === 'completed' ? 'bg-emerald-500 text-white' : app.status === 'waiting' ? 'bg-amber-500 text-white' : app.status === 'cancelled' ? 'bg-slate-300 text-white' : 'bg-[#272E40] text-white'
                           }`}>
-                            {app.status === 'completed' ? '✓' : (displayTurn || '—')}
+                            {app.status === 'completed' ? (
+                              <>
+                                <span className="sm:hidden">{displayTurn || '—'}</span>
+                                <span className="hidden sm:inline">✓</span>
+                              </>
+                            ) : (displayTurn || '—')}
                           </span>
                           <span className="text-[9px] font-bold text-slate-400 mt-1 whitespace-nowrap">
                             {app.status === 'completed'
@@ -2477,14 +2482,9 @@ export default function InteractiveCalendar({
                           <p className="text-[11px] text-slate-400 mt-0.5 font-medium sm:truncate">
                             {appPhone}{appAge ? ` • ${isEn ? 'Age' : 'عمر'} ${appAge}${isEn ? '' : ' سنة'}` : ''}
                           </p>
-                          {/* Mobile-only row: turn chip + patient actions (name takes full width) */}
+                          {/* Mobile-only row: patient actions (name takes full width; turn number is inside the avatar) */}
                           {app.status !== 'cancelled' && (
                             <div className="flex sm:hidden items-center gap-1.5 flex-wrap mt-1.5">
-                              {isTurnCard && displayTurn && (
-                                <span className="text-[10px] font-black bg-slate-100 text-slate-600 border border-slate-200 px-2 py-1 rounded-lg">
-                                  {isEn ? 'Turn' : 'الدور'} {displayTurn}
-                                </span>
-                              )}
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); handleOpenEditPatientModal(app); }}
