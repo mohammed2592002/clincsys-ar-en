@@ -13,6 +13,7 @@ import compression from 'compression';
 import helmet from 'helmet';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createLoginLockout, createRateLimiter, getClientIp, parseLockDurationsEnv } from './loginProtection';
 const { Pool } = pg;
 
 function getR2ClientConfig() {
@@ -50,6 +51,17 @@ app.use(helmet({
 app.use(compression());
 
 app.use(cors());
+
+// ---- Global API rate limit (moderate): 300 requests / minute / IP ----
+// Protects every endpoint from request floods; per-endpoint rules still apply on top.
+const globalApiLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 300 });
+app.use('/api', (req, res, next) => {
+  if (globalApiLimiter.isLimited(getClientIp(req))) {
+    return res.status(429).json({ error: 'rate_limited', message: 'طلبات كثيرة جداً، يرجى المحاولة بعد قليل' });
+  }
+  next();
+});
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(fileUpload({
@@ -138,9 +150,17 @@ import crypto from 'crypto';
 
 const SCRYPT_PREFIX = 'scrypt$';
 
-function hashPassword(plain: string): string {
+// Async scrypt: password hashing runs on Node's threadpool so a login never
+// blocks the event loop for every other request.
+function scryptAsync(password: string, salt: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (err, derivedKey) => (err ? reject(err) : resolve(derivedKey)));
+  });
+}
+
+async function hashPassword(plain: string): Promise<string> {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.scryptSync(plain, salt, 64).toString('hex');
+  const hash = (await scryptAsync(plain, salt)).toString('hex');
   return `${SCRYPT_PREFIX}${salt}$${hash}`;
 }
 
@@ -148,13 +168,13 @@ function isPasswordHashed(stored: any): boolean {
   return typeof stored === 'string' && stored.startsWith(SCRYPT_PREFIX);
 }
 
-function verifyPassword(stored: any, plain: string): boolean {
+async function verifyPassword(stored: any, plain: string): Promise<boolean> {
   if (typeof stored !== 'string' || !stored || !plain) return false;
   try {
     if (isPasswordHashed(stored)) {
       const parts = stored.split('$');
       if (parts.length !== 3) return false;
-      const candidate = crypto.scryptSync(plain, parts[1], 64);
+      const candidate = await scryptAsync(plain, parts[1]);
       const expected = Buffer.from(parts[2], 'hex');
       return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
     }
@@ -256,18 +276,25 @@ async function getRequestAuth(req: express.Request): Promise<AuthInfo | null> {
   return verifyAuthToken(token);
 }
 
-// ---- Lightweight in-memory rate limiter for login endpoints ----
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+// ---- Per-IP rate limiter for login endpoints (30 attempts / 10 min / IP) ----
+const loginIpLimiter = createRateLimiter({ windowMs: 10 * 60 * 1000, max: 30 });
 function isRateLimited(req: express.Request): boolean {
-  const ip = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
-  const now = Date.now();
-  const entry = loginAttempts.get(ip);
-  if (!entry || entry.resetAt < now) {
-    loginAttempts.set(ip, { count: 1, resetAt: now + 10 * 60 * 1000 });
-    return false;
-  }
-  entry.count++;
-  return entry.count > 30; // 30 attempts per 10 minutes per IP
+  return loginIpLimiter.isLimited(getClientIp(req));
+}
+
+// ---- Per-account login lockout (owner policy) ----
+// 3 failed attempts -> 15s lock, next 3 -> 30s, next 3 -> 60s, capped at 60s;
+// a successful login resets the counter and escalation. Applies to every login
+// role: clinic manager, staff/secretary (password or PIN) and superadmin.
+const loginLockout = createLoginLockout(parseLockDurationsEnv(process.env.LOGIN_LOCKOUT_DURATIONS_MS));
+
+function lockoutResponse(res: express.Response, retryAfterSeconds: number) {
+  return res.status(429).json({
+    success: false,
+    locked: true,
+    retryAfterSeconds,
+    message: `تم إيقاف تسجيل الدخول مؤقتاً بسبب محاولات خاطئة متكررة، حاول مرة أخرى بعد ${retryAfterSeconds} ثانية`
+  });
 }
 
 // ---- Response sanitization: secrets never leave the server ----
@@ -312,7 +339,7 @@ function isSafeFieldName(field: any): boolean {
 // ---- Write-time secret protection for the clinics table ----
 // Hashes any new plaintext password/PIN, and preserves existing stored secrets
 // when the client (which can no longer read them) writes a record without them.
-function secureClinicPayload(data: any, existing: any): any {
+async function secureClinicPayload(data: any, existing: any): Promise<any> {
   const out: any = { ...data };
   const ex: any = existing || {};
 
@@ -320,7 +347,7 @@ function secureClinicPayload(data: any, existing: any): any {
   stripLegacyNestedData(out);
 
   if (typeof out.password === 'string' && out.password.trim()) {
-    if (!isPasswordHashed(out.password)) out.password = hashPassword(out.password.trim());
+    if (!isPasswordHashed(out.password)) out.password = await hashPassword(out.password.trim());
   } else if (ex.password) {
     out.password = ex.password;
   } else {
@@ -328,7 +355,7 @@ function secureClinicPayload(data: any, existing: any): any {
   }
 
   if (typeof out.staffPin === 'string' && out.staffPin.trim()) {
-    if (!isPasswordHashed(out.staffPin)) out.staffPin = hashPassword(out.staffPin.trim());
+    if (!isPasswordHashed(out.staffPin)) out.staffPin = await hashPassword(out.staffPin.trim());
   } else if (ex.staffPin) {
     out.staffPin = ex.staffPin;
   } else {
@@ -337,19 +364,19 @@ function secureClinicPayload(data: any, existing: any): any {
 
   if (Array.isArray(out.staffMembers)) {
     const exMembers: any[] = Array.isArray(ex.staffMembers) ? ex.staffMembers : [];
-    out.staffMembers = out.staffMembers.map((m: any) => {
+    out.staffMembers = await Promise.all(out.staffMembers.map(async (m: any) => {
       if (!m || typeof m !== 'object') return m;
       const member: any = { ...m };
       const prev = exMembers.find((x: any) => x && x.id === member.id);
       if (typeof member.password === 'string' && member.password.trim()) {
-        if (!isPasswordHashed(member.password)) member.password = hashPassword(member.password.trim());
+        if (!isPasswordHashed(member.password)) member.password = await hashPassword(member.password.trim());
       } else if (prev && prev.password) {
         member.password = prev.password;
       } else {
         delete member.password;
       }
       return member;
-    });
+    }));
   } else if (Array.isArray(ex.staffMembers)) {
     out.staffMembers = ex.staffMembers;
   }
@@ -375,21 +402,21 @@ async function migrateClinicSecrets(clinicRowId: string, clinic: any): Promise<v
       changed = true;
     }
     if (typeof updated.password === 'string' && updated.password && !isPasswordHashed(updated.password)) {
-      updated.password = hashPassword(updated.password);
+      updated.password = await hashPassword(updated.password);
       changed = true;
     }
     if (typeof updated.staffPin === 'string' && updated.staffPin && !isPasswordHashed(updated.staffPin)) {
-      updated.staffPin = hashPassword(updated.staffPin);
+      updated.staffPin = await hashPassword(updated.staffPin);
       changed = true;
     }
     if (Array.isArray(updated.staffMembers)) {
-      updated.staffMembers = updated.staffMembers.map((m: any) => {
+      updated.staffMembers = await Promise.all(updated.staffMembers.map(async (m: any) => {
         if (m && typeof m.password === 'string' && m.password && !isPasswordHashed(m.password)) {
           changed = true;
-          return { ...m, password: hashPassword(m.password) };
+          return { ...m, password: await hashPassword(m.password) };
         }
         return m;
-      });
+      }));
     }
     if (changed) {
       await dbClient.execute({
@@ -2630,7 +2657,7 @@ app.post('/api/db', async (req, res) => {
       let fullData = { ...data, id: finalId };
       if (tableName === 'clinics') {
         const existingClinic = await getExistingClinicData(finalId);
-        fullData = secureClinicPayload(fullData, existingClinic);
+        fullData = await secureClinicPayload(fullData, existingClinic);
       }
       if (targetClinicId) fullData.clinicId = targetClinicId;
       if (targetPatientId) fullData.patientId = targetPatientId;
@@ -2706,7 +2733,7 @@ app.post('/api/db', async (req, res) => {
 
       if (tableName === 'clinics') {
         const existingClinic = await getExistingClinicData(finalId);
-        finalData = secureClinicPayload(finalData, existingClinic);
+        finalData = await secureClinicPayload(finalData, existingClinic);
       }
       
       const createdAt = finalData.createdAt || data?.createdAt || new Date().toISOString();
@@ -2769,7 +2796,7 @@ app.post('/api/db', async (req, res) => {
       const updated0 = { ...existing, ...data, id: finalId };
       let updated = updated0;
       if (tableName === 'clinics') {
-        updated = secureClinicPayload(updated0, existing);
+        updated = await secureClinicPayload(updated0, existing);
       }
       const { cols, vals } = mapDataToColumns(tableName, finalId, updated, clinicId, patientId, updated.createdAt);
       
@@ -2946,7 +2973,7 @@ app.post('/api/db/batch', async (req, res) => {
 
         if (tableName === 'clinics') {
           const existingClinic = await getExistingClinicData(fullData.id);
-          fullData = secureClinicPayload(fullData, existingClinic);
+          fullData = await secureClinicPayload(fullData, existingClinic);
         }
 
         const createdAt = fullData.createdAt || new Date().toISOString();
@@ -2992,7 +3019,7 @@ app.post('/api/db/batch', async (req, res) => {
         const updated0 = { ...currentData, ...data, id: finalId };
         let updated = updated0;
         if (tableName === 'clinics') {
-          updated = secureClinicPayload(updated0, currentData);
+          updated = await secureClinicPayload(updated0, currentData);
         }
         if (clinicId) updated.clinicId = clinicId;
         if (patientId) updated.patientId = patientId;
@@ -3103,6 +3130,13 @@ app.post('/api/auth/clinic-login', async (req, res) => {
   const passClean = String(password).trim();
   const loginRole = role === 'staff' ? 'staff' : 'manager';
 
+  // Per-account lockout: keyed per role so a locked-out manager does not block staff of the same clinic.
+  const lockKey = `clinic:${loginRole}:${emailClean}`;
+  const lockState = loginLockout.check(lockKey);
+  if (lockState.locked) {
+    return lockoutResponse(res, lockState.retryAfterSeconds);
+  }
+
   try {
     const result = await dbClient.execute({
       sql: `SELECT id, data FROM clinics WHERE json_extract(data, '$.email') = ?`,
@@ -3110,6 +3144,8 @@ app.post('/api/auth/clinic-login', async (req, res) => {
     });
 
     if (result.rows.length === 0) {
+      const fail = loginLockout.recordFailure(lockKey);
+      if (fail.justLocked) return lockoutResponse(res, fail.retryAfterSeconds);
       return res.status(404).json({ success: false, message: 'البريد الإلكتروني هذا غير مسجل أو غير صحيح' });
     }
 
@@ -3119,7 +3155,8 @@ app.post('/api/auth/clinic-login', async (req, res) => {
       const clinicId = String(row.id || clinic.id || '');
 
       if (loginRole === 'manager') {
-        if (clinic.password && verifyPassword(String(clinic.password), passClean)) {
+        if (clinic.password && (await verifyPassword(String(clinic.password), passClean))) {
+          loginLockout.recordSuccess(lockKey);
           await migrateClinicSecrets(clinicId, clinic);
           const token = await signAuthToken({ type: 'manager', clinicId });
           return res.json({
@@ -3130,13 +3167,20 @@ app.post('/api/auth/clinic-login', async (req, res) => {
         }
       } else {
         const staffList: any[] = Array.isArray(clinic.staffMembers) ? clinic.staffMembers : [];
-        let matchedStaff = staffList.find((m: any) => m && m.password && verifyPassword(String(m.password), passClean));
+        let matchedStaff: any = null;
+        for (const m of staffList) {
+          if (m && m.password && (await verifyPassword(String(m.password), passClean))) {
+            matchedStaff = m;
+            break;
+          }
+        }
         let viaPin = false;
-        if (!matchedStaff && clinic.staffPin && verifyPassword(String(clinic.staffPin), passClean)) {
+        if (!matchedStaff && clinic.staffPin && (await verifyPassword(String(clinic.staffPin), passClean))) {
           viaPin = true;
           matchedStaff = { name: 'طاقم العيادة', role: 'استقبال / مساعد' };
         }
         if (matchedStaff) {
+          loginLockout.recordSuccess(lockKey);
           await migrateClinicSecrets(clinicId, clinic);
           const token = await signAuthToken({
             type: 'staff',
@@ -3160,8 +3204,11 @@ app.post('/api/auth/clinic-login', async (req, res) => {
       }
     }
 
+    const fail = loginLockout.recordFailure(lockKey);
+    if (fail.justLocked) return lockoutResponse(res, fail.retryAfterSeconds);
     return res.status(401).json({
       success: false,
+      attemptsLeft: 3 - (fail.fails % 3),
       message: loginRole === 'manager'
         ? 'كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى'
         : 'كلمة المرور أو رمز دخول الموظف غير صحيح، يرجى التأكد من الطبيب'
@@ -3995,6 +4042,12 @@ app.post('/api/superadmin/login', async (req, res) => {
   const cleanEmail = String(email).trim().toLowerCase();
   const cleanPass = String(password).trim();
 
+  const lockKey = `superadmin:${cleanEmail}`;
+  const lockState = loginLockout.check(lockKey);
+  if (lockState.locked) {
+    return lockoutResponse(res, lockState.retryAfterSeconds);
+  }
+
   try {
     const result = await dbClient.execute({
       sql: "SELECT email, password FROM superadmin_credentials WHERE id = 'main'",
@@ -4004,13 +4057,14 @@ app.post('/api/superadmin/login', async (req, res) => {
     if (result.rows.length > 0) {
       const storedEmail = String(result.rows[0].email || '').trim().toLowerCase();
       const storedPass = String(result.rows[0].password || '').trim();
-      if (cleanEmail === storedEmail && verifyPassword(storedPass, cleanPass)) {
+      if (cleanEmail === storedEmail && (await verifyPassword(storedPass, cleanPass))) {
+        loginLockout.recordSuccess(lockKey);
         // Migrate legacy plaintext superadmin password to a scrypt hash
         if (!isPasswordHashed(storedPass)) {
           try {
             await dbClient.execute({
               sql: "UPDATE superadmin_credentials SET password = ?, updatedAt = ? WHERE id = 'main'",
-              args: [hashPassword(cleanPass), new Date().toISOString()]
+              args: [await hashPassword(cleanPass), new Date().toISOString()]
             });
             console.log('[Auth Migration] Hashed plaintext superadmin password');
           } catch (e) {}
@@ -4018,14 +4072,19 @@ app.post('/api/superadmin/login', async (req, res) => {
         const token = await signAuthToken({ type: 'admin' });
         return res.json({ success: true, token });
       } else {
+        const fail = loginLockout.recordFailure(lockKey);
+        if (fail.justLocked) return lockoutResponse(res, fail.retryAfterSeconds);
         return res.json({ success: false, message: 'بيانات اعتماد مدير النظام غير صحيحة' });
       }
     } else {
       // Default credentials before admin ever changes them
       if (cleanEmail === 'admin@crowndent.com' && cleanPass === 'admin123') {
+        loginLockout.recordSuccess(lockKey);
         const token = await signAuthToken({ type: 'admin' });
         return res.json({ success: true, token, usingDefaultCredentials: true });
       } else {
+        const fail = loginLockout.recordFailure(lockKey);
+        if (fail.justLocked) return lockoutResponse(res, fail.retryAfterSeconds);
         return res.json({ success: false, message: 'بيانات اعتماد مدير النظام غير صحيحة' });
       }
     }
@@ -4078,14 +4137,14 @@ app.post('/api/superadmin/credentials', async (req, res) => {
       expectedPass = String(checkRes.rows[0].password).trim();
     }
 
-    if (!verifyPassword(expectedPass, cleanCurrentPass)) {
+    if (!(await verifyPassword(expectedPass, cleanCurrentPass))) {
       return res.status(400).json({ success: false, message: 'كلمة المرور الحالية غير صحيحة!' });
     }
 
     const updatedAt = new Date().toISOString();
     await dbClient.execute({
       sql: `INSERT OR REPLACE INTO superadmin_credentials (id, email, password, updatedAt) VALUES ('main', ?, ?, ?)`,
-      args: [cleanNewEmail, hashPassword(cleanNewPass), updatedAt]
+      args: [cleanNewEmail, await hashPassword(cleanNewPass), updatedAt]
     });
 
     return res.json({ success: true, email: cleanNewEmail, message: 'تم تحديث بيانات اعتماد مدير النظام بنجاح!' });
@@ -4146,5 +4205,5 @@ if (!process.env.VERCEL && isMainFile) {
   startServer();
 }
 
-export { app, initDb };
+export { app, initDb, hashPassword, verifyPassword, isPasswordHashed };
 export default app;

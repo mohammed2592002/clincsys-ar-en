@@ -20,6 +20,8 @@
     "test:admin-save": "npm run lint && npm run build && tsx tests/system-settings-sql.test.ts && node tests/run-admin-save.mjs && TEST_DEV=1 node tests/run-admin-save.mjs",
     "test:website-whitespace": "npm run lint && npm run build && TEST_UI_ENTRY=tests/website-whitespace.ui.cjs node tests/run-admin-save.mjs && TEST_DEV=1 TEST_UI_ENTRY=tests/website-whitespace.ui.cjs node tests/run-admin-save.mjs",
     "test:login": "npm run lint && npm run build && node tests/login-redesign.mjs",
+    "test:login-protection": "tsx tests/login-protection.test.ts && tsx tests/auth-scrypt.test.ts",
+    "test:login-lockout": "npm run build && node tests/login-lockout.integration.mjs",
     "test:odontogram-panel": "npm run lint && npm run build && node tests/odontogram-panel.mjs"
   },
   "dependencies": {
