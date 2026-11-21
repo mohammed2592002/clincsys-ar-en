@@ -327,6 +327,7 @@ export default function ClinicFinancials({
     phone?: string;
     appointmentId?: string;
   } | null>(null);
+  const [financialModalAutoPay, setFinancialModalAutoPay] = useState<boolean>(true);
   
   // Installment payment input
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
@@ -2940,172 +2941,188 @@ ${methodsBreakdown}
 
         {/* TAB 4: Installments (الأقساط والمستحقات) */}
         {activeTab === 'installments' && (
-          <div className="lg:col-span-12 space-y-4 animate-fade-in">
+          <div className="lg:col-span-12 space-y-5 animate-fade-in">
 
-            {/* List and Search Panel */}
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-800 font-sans">{isEn ? 'Track Patient Outstanding Balances & Installments' : 'متابعة دفعات وأقساط المرضى المستحقة'}</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">{isEn ? 'Displays patients with remaining balances from completed clinical sessions' : 'يعرض المرضى الذين لديهم مبالغ متبقية على ذمة جلسات علاجية مكتملة لم تسدد بالكامل'}</p>
-                </div>
-                
-                <div className="flex flex-wrap items-center gap-3">
-                  {/* Period Filter */}
-                  <div className="bg-slate-100 p-1 rounded-xl flex gap-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setInstallmentsFilterPeriod('today');
-                        setInstallmentsLimit(5);
-                      }}
-                      className={`px-3 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer ${installmentsFilterPeriod === 'today' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
-                    >
-                      {isEn ? 'Today' : 'اليوم'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setInstallmentsFilterPeriod('month');
-                        setInstallmentsLimit(5);
-                      }}
-                      className={`px-3 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer ${installmentsFilterPeriod === 'month' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
-                    >
-                      {isEn ? 'This Month' : 'هذا الشهر'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setInstallmentsFilterPeriod('all');
-                        setInstallmentsLimit(5);
-                      }}
-                      className={`px-3 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer ${installmentsFilterPeriod === 'all' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
-                    >
-                      {isEn ? 'All' : 'الكل'}
-                    </button>
+            {/* Stat cards */}
+            {(() => {
+              const totalRemainingAll = filteredInstallmentPatients.reduce((s, p) => s + p.totalRemaining, 0);
+              const biggest = filteredInstallmentPatients.length > 0 ? filteredInstallmentPatients[0] : null;
+              const oldestApp = biggest && biggest.appointments.length > 0
+                ? [...biggest.appointments].sort((a, b) => (a.date || '').localeCompare(b.date || ''))[0]
+                : null;
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="md:col-span-2 bg-orange-600 text-white p-6 rounded-3xl shadow-sm">
+                    <span className="text-xs font-bold text-orange-100">{isEn ? 'Total Outstanding Balances on Patients' : 'إجمالي المتبقي على المرضى'}</span>
+                    <p className="text-4xl font-black font-mono mt-2">
+                      {totalRemainingAll.toLocaleString()} <span className="text-sm font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
+                    </p>
+                    <span className="text-xs text-orange-100/90 block mt-2">
+                      {isEn
+                        ? `${filteredInstallmentPatients.length} patients with due installments for completed treatment sessions`
+                        : `${filteredInstallmentPatients.length} مرضى عليهم أقساط مستحقة لجلسات علاجية مكتملة`}
+                    </span>
                   </div>
 
-                  {/* Search bar */}
-                  <div className="relative w-full sm:w-72">
-                    <Search className="absolute right-3 top-2.5 h-4 w-4 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder={isEn ? 'Search patient name or phone...' : 'ابحث باسم المريض أو رقم الهاتف...'}
-                      value={installmentsSearch}
-                      onChange={(e) => {
-                        setInstallmentsSearch(e.target.value);
-                        setInstallmentsLimit(5); // Reset limit on search
-                      }}
-                      className="w-full pl-3 pr-9 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold"
-                    />
+                  <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <span className="text-xs font-bold text-slate-500">{isEn ? 'Largest Due Installment' : 'أقرب وأكبر قسط مستحق'}</span>
+                    {biggest ? (
+                      <>
+                        <p className="text-2xl font-black text-slate-800 mt-2">
+                          {biggest.patientName} · <span className="font-mono">{biggest.totalRemaining.toLocaleString()}</span> <span className="text-sm font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
+                        </p>
+                        <span className="text-xs text-slate-400 block mt-2">
+                          {oldestApp ? (
+                            isEn
+                              ? `Since ${oldestApp.date} · ${oldestApp.treatmentType || 'General Treatment'}`
+                              : `منذ ${formatArabicDate(oldestApp.date)} · ${oldestApp.treatmentType || 'علاج عام'}`
+                          ) : ''}
+                        </span>
+                      </>
+                    ) : (
+                      <p className="text-sm font-bold text-slate-400 mt-3">{isEn ? 'No due installments' : 'لا توجد أقساط مستحقة'}</p>
+                    )}
                   </div>
                 </div>
+              );
+            })()}
+
+            {/* Filter row: period pills + search */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex bg-white border border-slate-200 p-1 rounded-full text-xs gap-1 shadow-sm">
+                {([
+                  { id: 'today', ar: 'اليوم', en: 'Today' },
+                  { id: 'month', ar: 'هذا الشهر', en: 'This Month' },
+                  { id: 'all', ar: 'الكل', en: 'All' }
+                ] as const).map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => { setInstallmentsFilterPeriod(p.id); setInstallmentsLimit(5); }}
+                    className={`py-1.5 px-4 rounded-full font-bold transition cursor-pointer ${
+                      installmentsFilterPeriod === p.id
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {isEn ? p.en : p.ar}
+                  </button>
+                ))}
               </div>
 
-              {filteredInstallmentPatients.length === 0 ? (
-                <div className="p-12 text-center text-slate-400">
-                  <Receipt className="h-10 w-10 mx-auto text-slate-300 mb-2" />
-                  <span className="text-xs font-bold">{isEn ? 'No patients matching search criteria or having due installments' : 'لا يوجد أي مرضى يطابقون خيارات البحث أو لديهم أقساط مستحقة حالياً'}</span>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-right text-xs">
-                      <thead>
-                        <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-150">
-                          <th className="p-3 text-right">{isEn ? 'Patient' : 'المريض'}</th>
-                          <th className="p-3 text-center">{isEn ? 'Total Cost' : 'إجمالي التكلفة'}</th>
-                          <th className="p-3 text-center">{isEn ? 'Paid So Far' : 'المدفوع حتى الآن'}</th>
-                          <th className="p-3 text-center">{isEn ? 'Due Balance' : 'المتبقي (القسط المستحق)'}</th>
-                          <th className="p-3 text-right">{isEn ? 'Treatments / Installments' : 'تفاصيل العلاجات/الأقساط'}</th>
-                          <th className="p-3 text-center">{isEn ? 'Actions' : 'الإجراءات'}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {visibleInstallmentPatients.map((patient, index) => {
-                          return (
-                            <tr key={index} className="border-b border-slate-100 hover:bg-slate-50/40">
-                              <td className="p-3">
-                                <div className="flex items-center gap-2.5">
-                                  <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold">
-                                    <User className="h-4 w-4" />
-                                  </div>
-                                  <div>
-                                    <span className="font-bold text-slate-800 block text-xs">{patient.patientName}</span>
-                                    <span className="text-xs text-slate-400 font-mono block mt-0.5">{patient.patientPhone || (isEn ? 'No phone' : 'بدون هاتف')}</span>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="p-3 text-center font-bold font-mono text-slate-600">
-                                {patient.totalPrice.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
-                              </td>
-                              <td className="p-3 text-center font-bold font-mono text-emerald-600">
-                                {patient.totalPaid.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
-                              </td>
-                              <td className="p-3 text-center">
-                                <span className="px-2.5 py-1 rounded-xl bg-rose-50 text-rose-600 font-black font-mono">
-                                  {patient.totalRemaining.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
-                                </span>
-                              </td>
-                              <td className="p-3 text-right">
-                                <div className="space-y-1 max-w-xs">
-                                  {patient.appointments.slice(0, 2).map((app, appIdx) => (
-                                    <div key={appIdx} className="text-xs text-slate-500 flex items-center gap-1">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0"></span>
-                                      <span className="font-bold text-slate-700 truncate">{app.treatmentType || (isEn ? 'General Treatment' : 'علاج عام')}:</span>
-                                      <span className="font-mono text-rose-500 font-semibold">{app.remainingAmount} {isEn ? 'EGP due' : 'ج.م متبقي'}</span>
-                                      <span className="text-xs text-slate-400 font-mono">({app.date})</span>
-                                    </div>
-                                  ))}
-                                  {patient.appointments.length > 2 && (
-                                    <span className="text-xs text-indigo-500 font-bold block">+{patient.appointments.length - 2} {isEn ? 'more due payments' : 'دفعات أخرى مستحقة'}</span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="p-3 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setFinancialModalPatient({
-                                      id: patient.patientId,
-                                      name: patient.patientName,
-                                      phone: patient.patientPhone
-                                    });
-                                  }}
-                                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition shadow-xs cursor-pointer flex items-center gap-1 mx-auto"
-                                >
-                                  <Receipt className="h-3 w-3" />
-                                  {isEn ? 'Pay / Statement' : 'سداد دفعة / كشف حساب'}
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+              <div className="relative flex-1 min-w-[220px] max-w-md">
+                <Search className="absolute right-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder={isEn ? 'Search patient name or phone...' : 'ابحث باسم المريض أو رقم الهاتف...'}
+                  value={installmentsSearch}
+                  onChange={(e) => {
+                    setInstallmentsSearch(e.target.value);
+                    setInstallmentsLimit(5);
+                  }}
+                  className="w-full pl-3 pr-9 py-2 border border-slate-200 rounded-full text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold bg-white shadow-sm"
+                />
+              </div>
+            </div>
 
-                  {/* Show More Pagination Bar */}
-                  {filteredInstallmentPatients.length > installmentsLimit && (
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200">
-                      <span className="text-xs font-bold text-slate-500">
-                        {isEn ? `Showing ${Math.min(installmentsLimit, filteredInstallmentPatients.length)} of ${filteredInstallmentPatients.length} patients with dues` : <>يتم عرض <span className="font-mono font-black text-indigo-600">{Math.min(installmentsLimit, filteredInstallmentPatients.length)}</span> من أصل <span className="font-mono font-black text-slate-800">{filteredInstallmentPatients.length}</span> مريض لديه مستحقات</>}
-                      </span>
-                      <div className="flex items-center gap-2">
+            {/* Patient installment cards */}
+            {filteredInstallmentPatients.length === 0 ? (
+              <div className="bg-white p-12 rounded-3xl border border-slate-200 shadow-sm text-center text-slate-400">
+                <Receipt className="h-10 w-10 mx-auto text-slate-300 mb-2" />
+                <span className="text-xs font-bold">{isEn ? 'No patients matching search criteria or having due installments' : 'لا يوجد أي مرضى يطابقون خيارات البحث أو لديهم أقساط مستحقة حالياً'}</span>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {visibleInstallmentPatients.map((patient, index) => {
+                  const paidPct = patient.totalPrice > 0 ? Math.round((patient.totalPaid / patient.totalPrice) * 100) : 0;
+                  const firstApp = patient.appointments[0];
+                  return (
+                    <div key={index} className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <span className="font-black text-slate-800 text-sm block">{patient.patientName}</span>
+                          <span className="text-xs text-slate-400 font-mono block mt-0.5" dir="ltr">{patient.patientPhone || (isEn ? 'No phone' : 'بدون هاتف')}</span>
+                        </div>
+                        <div className="text-end shrink-0">
+                          <span className="text-[11px] text-slate-400 block">{isEn ? 'Due Balance (Installment Due)' : 'المتبقي (القسط المستحق)'}</span>
+                          <span className="text-xl font-black text-orange-600 font-mono">
+                            {patient.totalRemaining.toLocaleString()} <span className="text-xs font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${Math.max(0, Math.min(100, paidPct))}%` }} />
+                      </div>
+
+                      <div className="text-xs font-bold text-slate-600">
+                        {isEn ? 'Total Cost' : 'إجمالي التكلفة'} <span className="font-mono text-slate-800">{patient.totalPrice.toLocaleString()}</span> {isEn ? 'EGP' : 'ج.م'}
+                        <span className="mx-2 text-slate-300">·</span>
+                        {isEn ? 'Paid so far' : 'المدفوع حتى الآن'} <span className="font-mono text-emerald-600">{patient.totalPaid.toLocaleString()}</span> {isEn ? 'EGP' : 'ج.م'} <span className="font-mono text-slate-500">({paidPct}%)</span>
+                      </div>
+
+                      {firstApp && (
+                        <div className="bg-slate-50 rounded-xl px-3.5 py-2.5 text-xs text-slate-500">
+                          <span className="font-bold text-slate-600">{firstApp.treatmentType || (isEn ? 'General Treatment' : 'علاج عام')}</span>
+                          {firstApp.date ? (isEn ? ` · ${firstApp.date}` : ` · ${formatArabicDate(firstApp.date)}`) : ''}
+                          {patient.appointments.length > 1 && (
+                            <span className="text-orange-500 font-bold"> +{patient.appointments.length - 1}</span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2 pt-1">
                         <button
                           type="button"
-                          onClick={() => setInstallmentsLimit(prev => prev + 5)}
-                          className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                          onClick={() => {
+                            setFinancialModalAutoPay(true);
+                            setFinancialModalPatient({
+                              id: patient.patientId,
+                              name: patient.patientName,
+                              phone: patient.patientPhone
+                            });
+                          }}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-xs cursor-pointer"
                         >
-                          <RefreshCw className="h-3.5 w-3.5" />
-                          <span>{isEn ? 'Show More' : 'إظهار المزيد'}</span>
+                          {isEn ? 'Pay Installment' : 'سداد دفعة'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFinancialModalAutoPay(false);
+                            setFinancialModalPatient({
+                              id: patient.patientId,
+                              name: patient.patientName,
+                              phone: patient.patientPhone
+                            });
+                          }}
+                          className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs transition border border-slate-200 cursor-pointer"
+                        >
+                          {isEn ? 'Account Statement' : 'كشف حساب'}
                         </button>
                       </div>
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
+                  );
+                })}
+
+                {/* Show More Pagination Bar */}
+                {filteredInstallmentPatients.length > installmentsLimit && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-white rounded-2xl border border-slate-200 shadow-sm">
+                    <span className="text-xs font-bold text-slate-500">
+                      {isEn ? `Showing ${Math.min(installmentsLimit, filteredInstallmentPatients.length)} of ${filteredInstallmentPatients.length} patients with dues` : <>يتم عرض <span className="font-mono font-black text-orange-600">{Math.min(installmentsLimit, filteredInstallmentPatients.length)}</span> من أصل <span className="font-mono font-black text-slate-800">{filteredInstallmentPatients.length}</span> مريض لديه مستحقات</>}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setInstallmentsLimit(prev => prev + 5)}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      <span>{isEn ? 'Show More' : 'إظهار المزيد'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -4007,7 +4024,7 @@ ${methodsBreakdown}
           patientName={financialModalPatient.name}
           patientPhone={financialModalPatient.phone}
           initialAppointmentId={financialModalPatient.appointmentId}
-          autoShowPayment={true}
+          autoShowPayment={financialModalAutoPay}
           paymentMethods={clinic.paymentMethods}
           activeShiftDate={activeShiftDate || selectedShiftDate || getEgyptTodayStr()}
           activeShiftId={activeShift?.id}
