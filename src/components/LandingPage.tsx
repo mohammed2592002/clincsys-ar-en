@@ -10,6 +10,12 @@ import {
   MessageSquare
 } from 'lucide-react';
 
+// Preserve editor copy without interpreting HTML or collapsing spaces/newlines.
+// A wrapper also lets flex rows wrap long text without pushing icons off screen.
+function Copy({ children }: { children: string }) {
+  return <span className="whitespace-break-spaces [overflow-wrap:anywhere] min-w-0">{children}</span>;
+}
+
 // Fixed icon set the super admin can pick from for each feature card.
 function FeatureIcon({ name, className }: { name: string; className?: string }) {
   const cls = className || 'h-6 w-6';
@@ -107,7 +113,7 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
     const out: any = { ...item.ar };
     for (const k of Object.keys(item.en)) {
       const v = (item.en as any)[k];
-      if (v !== undefined && v !== null && v !== '') out[k] = v;
+      if (v !== undefined && v !== null && v !== '' && !(k === 'features' && Array.isArray(v) && v.length === 0)) out[k] = v;
     }
     return out;
   };
@@ -127,36 +133,36 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
     <div dir={dir} className="min-h-screen bg-[#f6faff] text-slate-900 font-sans">
       {/* ================= NAV ================= */}
       <nav className="sticky top-0 z-40 bg-white/85 backdrop-blur-md border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-3.5 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <div className="max-w-6xl mx-auto px-3 sm:px-5 py-3.5 flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3">
             {content.logoUrl
               ? <img src={content.logoUrl} alt={T.brandName} className="h-11 w-11 rounded-2xl object-cover shadow-lg shadow-blue-200" />
               : <PulseLogo />}
-            <span className="font-black text-xl tracking-tight">
+            <span className="font-black text-base sm:text-xl tracking-tight whitespace-break-spaces">
               {T.brandName.includes('Dent')
                 ? <>{T.brandName.split('Dent')[0]}<span className="bg-gradient-to-l from-blue-600 to-emerald-500 bg-clip-text text-transparent">Dent</span>{T.brandName.split('Dent')[1]}</>
                 : T.brandName}
             </span>
           </div>
           <div className="hidden md:flex items-center gap-7 font-semibold text-slate-600 text-[15px]">
-            <a href="#features" onClick={scrollTo('features')} className="hover:text-blue-700 transition-colors">{T.navFeatures}</a>
-            <a href="#how" onClick={scrollTo('how')} className="hover:text-blue-700 transition-colors">{T.navHow}</a>
-            <a href="#pricing" onClick={scrollTo('pricing')} className="hover:text-blue-700 transition-colors">{T.navPricing}</a>
-            <a href="#contact" onClick={scrollTo('contact')} className="hover:text-blue-700 transition-colors">{T.navContact}</a>
+            <a href="#features" onClick={scrollTo('features')} className="hover:text-blue-700 transition-colors"><Copy>{T.navFeatures}</Copy></a>
+            <a href="#how" onClick={scrollTo('how')} className="hover:text-blue-700 transition-colors"><Copy>{T.navHow}</Copy></a>
+            <a href="#pricing" onClick={scrollTo('pricing')} className="hover:text-blue-700 transition-colors"><Copy>{T.navPricing}</Copy></a>
+            <a href="#contact" onClick={scrollTo('contact')} className="hover:text-blue-700 transition-colors"><Copy>{T.navContact}</Copy></a>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => setLang(isEn ? 'ar' : 'en')}
-              className="border border-slate-200 bg-white text-slate-600 rounded-full px-4 py-1.5 font-bold text-[13px] hover:border-blue-300 transition-colors flex items-center gap-1.5"
+              className="border border-slate-200 bg-white text-slate-600 rounded-full px-3 sm:px-4 py-1.5 font-bold text-[12px] sm:text-[13px] hover:border-blue-300 transition-colors flex items-center gap-1.5"
             >
               <Globe className="h-3.5 w-3.5" />
               {isEn ? 'العربية' : 'English'}
             </button>
             <button
               onClick={onLogin}
-              className="bg-gradient-to-l from-blue-600 to-blue-700 text-white rounded-xl px-5 sm:px-6 py-2.5 font-extrabold text-[15px] shadow-lg shadow-blue-600/30 hover:shadow-blue-600/45 hover:-translate-y-px transition-all flex items-center gap-2"
+              className="bg-gradient-to-l from-blue-600 to-blue-700 text-white rounded-xl px-3 sm:px-6 py-2.5 font-extrabold text-[12px] sm:text-[15px] shrink-0 shadow-lg shadow-blue-600/30 hover:shadow-blue-600/45 hover:-translate-y-px transition-all flex items-center gap-2"
             >
-              {T.loginLabel}
+              <Copy>{T.loginLabel}</Copy>
               <Arrow className="h-4 w-4" />
             </button>
           </div>
@@ -169,19 +175,19 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
           {T.heroBadge && (
             <div className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[13px] rounded-full px-4 py-1.5 mb-6">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              {T.heroBadge}
+              <Copy>{T.heroBadge}</Copy>
             </div>
           )}
           <h1 className="text-4xl sm:text-5xl font-black leading-[1.35] mb-5">
-            {T.heroTitleA}
+            <Copy>{T.heroTitleA}</Copy>
             {T.heroTitleB && (
               <>
                 <br />
-                <span className="bg-gradient-to-l from-blue-600 to-emerald-500 bg-clip-text text-transparent">{T.heroTitleB}</span>
+                <span className="bg-gradient-to-l from-blue-600 to-emerald-500 bg-clip-text text-transparent"><Copy>{T.heroTitleB}</Copy></span>
               </>
             )}
           </h1>
-          <p className="text-slate-500 text-[16.5px] leading-8 mb-8 max-w-xl">{T.heroSubtitle}</p>
+          <p className="text-slate-500 text-[16.5px] leading-8 mb-8 max-w-xl"><Copy>{T.heroSubtitle}</Copy></p>
           <div className="flex flex-wrap items-center gap-3.5 mb-9">
             <a
               href={trialUrl}
@@ -190,21 +196,21 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
               className="bg-gradient-to-l from-emerald-500 to-emerald-600 text-white rounded-2xl px-7 py-4 font-extrabold text-[16px] shadow-xl shadow-emerald-500/30 hover:shadow-emerald-500/45 hover:-translate-y-px transition-all flex items-center gap-2.5"
             >
               <MessageSquare className="h-5 w-5" />
-              {T.trialButtonLabel}
+              <Copy>{T.trialButtonLabel}</Copy>
             </a>
             <a
               href="#pricing"
               onClick={scrollTo('pricing')}
               className="bg-white text-blue-700 border-[1.5px] border-blue-200 rounded-2xl px-6 py-[15px] font-extrabold text-[15px] hover:border-blue-400 transition-colors"
             >
-              {T.pricingButtonLabel}
+              <Copy>{T.pricingButtonLabel}</Copy>
             </a>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-2 text-slate-500 text-[13.5px] font-semibold">
             {[T.heroPoint1, T.heroPoint2, T.heroPoint3].filter(Boolean).map((p, i) => (
               <span key={i} className="flex items-center gap-1.5">
                 <Check className="h-4 w-4 text-emerald-500" strokeWidth={3} />
-                {p}
+                <Copy>{p}</Copy>
               </span>
             ))}
           </div>
@@ -225,8 +231,8 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
               const t = lt(s);
               return (
                 <div key={s.id} className="text-center">
-                  <div className="font-black text-xl sm:text-2xl mb-1">{t.value}</div>
-                  <div className="text-blue-100 text-[13px] font-semibold">{t.label}</div>
+                  <div className="font-black text-xl sm:text-2xl mb-1"><Copy>{t.value}</Copy></div>
+                  <div className="text-blue-100 text-[13px] font-semibold"><Copy>{t.label}</Copy></div>
                 </div>
               );
             })}
@@ -237,9 +243,9 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
       {/* ================= FEATURES ================= */}
       <section id="features" className="max-w-6xl mx-auto px-5 pt-20">
         <div className="text-center max-w-xl mx-auto mb-12">
-          <div className="text-blue-600 font-extrabold text-[13.5px] tracking-wide mb-2">{T.featuresKicker}</div>
-          <h2 className="text-3xl sm:text-4xl font-black mb-3">{T.featuresTitle}</h2>
-          <p className="text-slate-500 leading-7">{T.featuresSubtitle}</p>
+          <div className="text-blue-600 font-extrabold text-[13.5px] tracking-wide mb-2"><Copy>{T.featuresKicker}</Copy></div>
+          <h2 className="text-3xl sm:text-4xl font-black mb-3"><Copy>{T.featuresTitle}</Copy></h2>
+          <p className="text-slate-500 leading-7"><Copy>{T.featuresSubtitle}</Copy></p>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {content.features.map((f: LandingFeature, i: number) => {
@@ -250,8 +256,8 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${green ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-700'}`}>
                   <FeatureIcon name={f.icon} />
                 </div>
-                <h3 className="font-extrabold text-[15.5px] mb-1.5">{t.title}</h3>
-                <p className="text-slate-500 text-[13px] leading-6">{t.desc}</p>
+                <h3 className="font-extrabold text-[15.5px] mb-1.5"><Copy>{t.title}</Copy></h3>
+                <p className="text-slate-500 text-[13px] leading-6"><Copy>{t.desc}</Copy></p>
               </div>
             );
           })}
@@ -270,8 +276,8 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
       {content.steps.length > 0 && (
         <section id="how" className="max-w-6xl mx-auto px-5 pt-20">
           <div className="text-center max-w-xl mx-auto mb-12">
-            <div className="text-blue-600 font-extrabold text-[13.5px] tracking-wide mb-2">{T.stepsKicker}</div>
-            <h2 className="text-3xl sm:text-4xl font-black">{T.stepsTitle}</h2>
+            <div className="text-blue-600 font-extrabold text-[13.5px] tracking-wide mb-2"><Copy>{T.stepsKicker}</Copy></div>
+            <h2 className="text-3xl sm:text-4xl font-black"><Copy>{T.stepsTitle}</Copy></h2>
           </div>
           <div className="grid md:grid-cols-3 gap-5">
             {content.steps.map((s: LandingStep, i: number) => {
@@ -281,8 +287,8 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
                   <div className="w-11 h-11 rounded-xl bg-gradient-to-bl from-blue-600 to-emerald-500 text-white font-black text-lg flex items-center justify-center mb-4 shadow-lg shadow-blue-600/25">
                     {i + 1}
                   </div>
-                  <h3 className="font-extrabold text-[17px] mb-2">{t.title}</h3>
-                  <p className="text-slate-500 text-[14px] leading-7">{t.desc}</p>
+                  <h3 className="font-extrabold text-[17px] mb-2"><Copy>{t.title}</Copy></h3>
+                  <p className="text-slate-500 text-[14px] leading-7"><Copy>{t.desc}</Copy></p>
                 </div>
               );
             })}
@@ -294,9 +300,9 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
       <section id="pricing" className="max-w-6xl mx-auto px-5 pt-20">
         <div className="bg-gradient-to-b from-blue-50 to-transparent rounded-[2rem] px-4 sm:px-8 py-14">
           <div className="text-center max-w-xl mx-auto mb-12">
-            <div className="text-blue-600 font-extrabold text-[13.5px] tracking-wide mb-2">{T.pricingKicker}</div>
-            <h2 className="text-3xl sm:text-4xl font-black mb-3">{T.pricingTitle}</h2>
-            <p className="text-slate-500 leading-7">{T.pricingSubtitle}</p>
+            <div className="text-blue-600 font-extrabold text-[13.5px] tracking-wide mb-2"><Copy>{T.pricingKicker}</Copy></div>
+            <h2 className="text-3xl sm:text-4xl font-black mb-3"><Copy>{T.pricingTitle}</Copy></h2>
+            <p className="text-slate-500 leading-7"><Copy>{T.pricingSubtitle}</Copy></p>
           </div>
           <div className={`grid gap-5 ${content.plans.length === 1 ? 'md:grid-cols-1 max-w-md mx-auto' : content.plans.length === 2 ? 'md:grid-cols-2 max-w-3xl mx-auto' : 'md:grid-cols-3'}`}>
             {content.plans.map((p: LandingPlan) => {
@@ -313,17 +319,17 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
                       {isEn ? 'Most popular' : 'الأكثر اختياراً'}
                     </div>
                   )}
-                  <h3 className="font-extrabold text-lg">{t.name}</h3>
-                  <p className="text-slate-400 text-[13px] mt-1 mb-5">{t.desc}</p>
+                  <h3 className="font-extrabold text-lg"><Copy>{t.name}</Copy></h3>
+                  <p className="text-slate-400 text-[13px] mt-1 mb-5"><Copy>{t.desc}</Copy></p>
                   <div className="flex items-baseline gap-2 mb-6">
-                    <span className="font-black text-[42px] leading-none">{p.price}</span>
-                    <span className="text-slate-400 font-bold text-[13px]">{t.period}</span>
+                    <span className="font-black text-[42px] leading-none"><Copy>{p.price}</Copy></span>
+                    <span className="text-slate-400 font-bold text-[13px]"><Copy>{t.period}</Copy></span>
                   </div>
                   <ul className="space-y-2.5 mb-7 flex-1">
                     {feats.map((f, i) => (
-                      <li key={i} className="flex items-start gap-2 text-[13.5px] font-semibold text-slate-600">
-                        <Check className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" strokeWidth={3} />
-                        {f}
+                      <li key={i} aria-hidden={f === '' ? true : undefined} className="flex items-start gap-2 text-[13.5px] min-h-[1.5em] font-semibold text-slate-600">
+                        {f !== '' && <Check className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" strokeWidth={3} />}
+                        <Copy>{f}</Copy>
                       </li>
                     ))}
                   </ul>
@@ -333,7 +339,7 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
                     rel="noopener noreferrer"
                     className={`text-center rounded-xl py-3.5 font-extrabold text-[15px] transition-all ${p.popular ? 'bg-gradient-to-l from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/45' : 'border-[1.5px] border-blue-200 text-blue-700 hover:border-blue-400'}`}
                   >
-                    {t.buttonLabel}
+                    <Copy>{t.buttonLabel}</Copy>
                   </a>
                 </div>
               );
@@ -347,8 +353,8 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
         <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-l from-blue-900 via-blue-700 to-emerald-600 text-white text-center px-6 py-16">
           <div className="absolute -top-24 -end-24 w-72 h-72 rounded-full bg-emerald-400/20 blur-3xl"></div>
           <div className="absolute -bottom-24 -start-24 w-72 h-72 rounded-full bg-blue-400/20 blur-3xl"></div>
-          <h2 className="relative text-3xl sm:text-4xl font-black mb-4">{T.ctaTitle}</h2>
-          <p className="relative text-blue-100 text-[16px] mb-9 max-w-lg mx-auto leading-7">{T.ctaSubtitle}</p>
+          <h2 className="relative text-3xl sm:text-4xl font-black mb-4"><Copy>{T.ctaTitle}</Copy></h2>
+          <p className="relative text-blue-100 text-[16px] mb-9 max-w-lg mx-auto leading-7"><Copy>{T.ctaSubtitle}</Copy></p>
           <div className="relative flex flex-wrap justify-center gap-3.5">
             <a
               href={trialUrl}
@@ -357,13 +363,13 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
               className="bg-white text-blue-900 rounded-2xl px-8 py-4 font-black text-[16px] shadow-xl hover:-translate-y-px transition-all flex items-center gap-2.5"
             >
               <MessageSquare className="h-5 w-5" />
-              {T.ctaTrialLabel}
+              <Copy>{T.ctaTrialLabel}</Copy>
             </a>
             <button
               onClick={onLogin}
               className="border-2 border-white/50 text-white rounded-2xl px-7 py-[15px] font-extrabold text-[15.5px] hover:bg-white/10 transition-colors flex items-center gap-2"
             >
-              {T.ctaLoginLabel}
+              <Copy>{T.ctaLoginLabel}</Copy>
               <Arrow className="h-4 w-4" />
             </button>
           </div>
@@ -377,19 +383,19 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
             {content.logoUrl
               ? <img src={content.logoUrl} alt={T.brandName} className="h-9 w-9 rounded-xl object-cover" />
               : <PulseLogo size={36} />}
-            <span className="font-black text-[17px]">{T.brandName}</span>
+            <span className="font-black text-[17px]"><Copy>{T.brandName}</Copy></span>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-2 text-slate-500 font-semibold text-[13.5px]">
             {content.whatsappCommunityUrl && (
-              <a href={content.whatsappCommunityUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 transition-colors">{T.footerCommunityLabel}</a>
+              <a href={content.whatsappCommunityUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 transition-colors"><Copy>{T.footerCommunityLabel}</Copy></a>
             )}
             {content.facebookUrl && (
-              <a href={content.facebookUrl} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 transition-colors">{T.footerFacebookLabel}</a>
+              <a href={content.facebookUrl} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 transition-colors"><Copy>{T.footerFacebookLabel}</Copy></a>
             )}
-            <span>{T.footerFaqLabel}</span>
+            <span><Copy>{T.footerFaqLabel}</Copy></span>
           </div>
         </div>
-        <div className="text-center text-slate-400 text-[12.5px] font-semibold pb-7">{T.footerCopyright}</div>
+        <div className="text-center text-slate-400 text-[12.5px] font-semibold pb-7"><Copy>{T.footerCopyright}</Copy></div>
       </footer>
     </div>
   );

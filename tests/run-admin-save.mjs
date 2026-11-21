@@ -20,6 +20,6 @@ const server=spawn(process.execPath,dev?[resolve('node_modules/tsx/dist/cli.mjs'
 let log=''; server.stdout.on('data',d=>log+=d); server.stderr.on('data',d=>log+=d);
 try {
  let ready=false; for(let i=0;i<100;i++){try{await fetch(env.TEST_BASE);ready=true;break;}catch{} await new Promise(r=>setTimeout(r,100));} if(!ready)throw Error(log);
- const test=spawn(process.execPath,[resolve('tests/admin-save.ui.cjs')],{env,stdio:'inherit'});
+ const test=spawn(process.execPath,[resolve(process.env.TEST_UI_ENTRY || 'tests/admin-save.ui.cjs')],{env,stdio:'inherit'});
  if(await new Promise(r=>test.on('exit',r))!==0)throw Error('Admin UI regression failed');
 } finally {server.kill(); await new Promise(r=>server.on('exit',r));await rm(dir,{recursive:true,force:true});}

@@ -50,7 +50,7 @@ function Area({ label, value, onChange, rows = 2, placeholder, dir }: { label: s
   return (
     <div>
       <label className={labelCls}>{label}</label>
-      <textarea className={inputCls} rows={rows} value={value || ''} placeholder={placeholder} dir={dir} onChange={e => onChange(e.target.value)} />
+      <textarea className={`${inputCls} whitespace-break-spaces resize-y`} rows={rows} value={value || ''} placeholder={placeholder} dir={dir} onChange={e => onChange(e.target.value)} />
     </div>
   );
 }
@@ -215,7 +215,7 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
           <Field label="نقطة الثقة 1" value={textOf('heroPoint1')} onChange={v => setText('heroPoint1', v)} placeholder={ph('heroPoint1')} dir={dir} />
           <Field label="نقطة الثقة 2" value={textOf('heroPoint2')} onChange={v => setText('heroPoint2', v)} placeholder={ph('heroPoint2')} dir={dir} />
           <Field label="نقطة الثقة 3" value={textOf('heroPoint3')} onChange={v => setText('heroPoint3', v)} placeholder={ph('heroPoint3')} dir={dir} />
-          <Field label="رسالة الواتساب الجاهزة (تتبعت مع زر التجربة)" value={textOf('trialWhatsappPrefill')} onChange={v => setText('trialWhatsappPrefill', v)} placeholder={ph('trialWhatsappPrefill')} dir={dir} />
+          <Area label="رسالة الواتساب الجاهزة (تتبعت مع زر التجربة)" value={textOf('trialWhatsappPrefill')} onChange={v => setText('trialWhatsappPrefill', v)} placeholder={ph('trialWhatsappPrefill')} dir={dir} />
         </div>
       </Card>
 
@@ -252,15 +252,15 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
           <div></div>
           <Field label="عنوان صغير: المميزات" value={textOf('featuresKicker')} onChange={v => setText('featuresKicker', v)} placeholder={ph('featuresKicker')} dir={dir} />
           <Field label="عنوان: المميزات" value={textOf('featuresTitle')} onChange={v => setText('featuresTitle', v)} placeholder={ph('featuresTitle')} dir={dir} />
-          <Field label="وصف: المميزات" value={textOf('featuresSubtitle')} onChange={v => setText('featuresSubtitle', v)} placeholder={ph('featuresSubtitle')} dir={dir} />
+          <Area label="وصف: المميزات" value={textOf('featuresSubtitle')} onChange={v => setText('featuresSubtitle', v)} placeholder={ph('featuresSubtitle')} dir={dir} />
           <Field label="عنوان صغير: الخطوات" value={textOf('stepsKicker')} onChange={v => setText('stepsKicker', v)} placeholder={ph('stepsKicker')} dir={dir} />
           <Field label="عنوان: الخطوات" value={textOf('stepsTitle')} onChange={v => setText('stepsTitle', v)} placeholder={ph('stepsTitle')} dir={dir} />
           <div></div>
           <Field label="عنوان صغير: الأسعار" value={textOf('pricingKicker')} onChange={v => setText('pricingKicker', v)} placeholder={ph('pricingKicker')} dir={dir} />
           <Field label="عنوان: الأسعار" value={textOf('pricingTitle')} onChange={v => setText('pricingTitle', v)} placeholder={ph('pricingTitle')} dir={dir} />
-          <Field label="وصف: الأسعار" value={textOf('pricingSubtitle')} onChange={v => setText('pricingSubtitle', v)} placeholder={ph('pricingSubtitle')} dir={dir} />
+          <Area label="وصف: الأسعار" value={textOf('pricingSubtitle')} onChange={v => setText('pricingSubtitle', v)} placeholder={ph('pricingSubtitle')} dir={dir} />
           <Field label="عنوان الـ CTA الكبير" value={textOf('ctaTitle')} onChange={v => setText('ctaTitle', v)} placeholder={ph('ctaTitle')} dir={dir} />
-          <Field label="وصف الـ CTA" value={textOf('ctaSubtitle')} onChange={v => setText('ctaSubtitle', v)} placeholder={ph('ctaSubtitle')} dir={dir} />
+          <Area label="وصف الـ CTA" value={textOf('ctaSubtitle')} onChange={v => setText('ctaSubtitle', v)} placeholder={ph('ctaSubtitle')} dir={dir} />
           <div></div>
           <Field label="زر CTA: التجربة" value={textOf('ctaTrialLabel')} onChange={v => setText('ctaTrialLabel', v)} placeholder={ph('ctaTrialLabel')} dir={dir} />
           <Field label="زر CTA: تسجيل الدخول" value={textOf('ctaLoginLabel')} onChange={v => setText('ctaLoginLabel', v)} placeholder={ph('ctaLoginLabel')} dir={dir} />
@@ -269,7 +269,7 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
           <Field label="فوتر: رابط فيسبوك" value={textOf('footerFacebookLabel')} onChange={v => setText('footerFacebookLabel', v)} placeholder={ph('footerFacebookLabel')} dir={dir} />
           <Field label="فوتر: الأسئلة الشائعة" value={textOf('footerFaqLabel')} onChange={v => setText('footerFaqLabel', v)} placeholder={ph('footerFaqLabel')} dir={dir} />
           <div className="md:col-span-3">
-            <Field label="سطر الحقوق في الفوتر" value={textOf('footerCopyright')} onChange={v => setText('footerCopyright', v)} placeholder={ph('footerCopyright')} dir={dir} />
+            <Area label="سطر الحقوق في الفوتر" value={textOf('footerCopyright')} onChange={v => setText('footerCopyright', v)} placeholder={ph('footerCopyright')} dir={dir} />
           </div>
         </div>
       </Card>
@@ -292,7 +292,7 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
                 </div>
               ) : <div></div>}
               <Field label="العنوان" value={itemText(f, 'title')} onChange={v => setListText('features', f.id, 'title', v)} placeholder={en ? `العربي: ${f.ar.title}` : undefined} dir={dir} />
-              <Field label="الوصف" value={itemText(f, 'desc')} onChange={v => setListText('features', f.id, 'desc', v)} placeholder={en ? `العربي: ${f.ar.desc}` : undefined} dir={dir} />
+              <Area label="الوصف" value={itemText(f, 'desc')} onChange={v => setListText('features', f.id, 'desc', v)} placeholder={en ? `العربي: ${f.ar.desc}` : undefined} dir={dir} />
               {!en && (
                 <button
                   onClick={() => setContent(prev => ({ ...prev, features: prev.features.filter(x => x.id !== f.id) }))}
@@ -325,7 +325,7 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
           {content.stats.map(s => (
             <div key={s.id} className="grid grid-cols-[1fr_2fr] gap-3 border border-slate-100 rounded-xl p-3 bg-slate-50/50">
               <Field label="القيمة" value={itemText(s, 'value')} onChange={v => setListText('stats', s.id, 'value', v)} placeholder={en ? `العربي: ${s.ar.value}` : undefined} dir={dir} />
-              <Field label="الوصف" value={itemText(s, 'label')} onChange={v => setListText('stats', s.id, 'label', v)} placeholder={en ? `العربي: ${s.ar.label}` : undefined} dir={dir} />
+              <Area label="الوصف" value={itemText(s, 'label')} onChange={v => setListText('stats', s.id, 'label', v)} placeholder={en ? `العربي: ${s.ar.label}` : undefined} dir={dir} />
             </div>
           ))}
         </div>
@@ -351,7 +351,7 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
             <div key={p.id} className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50">
               <div className="grid md:grid-cols-4 gap-3 mb-3">
                 <Field label="اسم الخطة" value={itemText(p, 'name')} onChange={v => setListText('plans', p.id, 'name', v)} placeholder={en ? `العربي: ${p.ar.name}` : undefined} dir={dir} />
-                <Field label="وصف قصير" value={itemText(p, 'desc')} onChange={v => setListText('plans', p.id, 'desc', v)} placeholder={en ? `العربي: ${p.ar.desc}` : undefined} dir={dir} />
+                <Area label="وصف قصير" value={itemText(p, 'desc')} onChange={v => setListText('plans', p.id, 'desc', v)} placeholder={en ? `العربي: ${p.ar.desc}` : undefined} dir={dir} />
                 {!en ? (
                   <Field label="السعر (رقم)" value={p.price} onChange={v => setContent(prev => ({ ...prev, plans: prev.plans.map(x => x.id === p.id ? { ...x, price: v } : x) }))} dir="ltr" />
                 ) : <div></div>}
@@ -364,7 +364,8 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
                     const feats = en ? (p.en?.features ?? []) : p.ar.features;
                     return Array.isArray(feats) ? feats.join('\n') : '';
                   })()}
-                  onChange={v => setListText('plans', p.id, 'features', v.split('\n').map(x => x.trim()).filter(Boolean))}
+                  // Keep unfinished lines/spaces while typing; trimming here eats Enter and Space.
+                  onChange={v => setListText('plans', p.id, 'features', v === '' ? [] : v.split('\n'))}
                   rows={4}
                   placeholder={en ? 'اتركها فارغة لاستخدام القائمة العربية' : 'ميزة في كل سطر'}
                   dir={dir}

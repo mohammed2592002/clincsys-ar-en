@@ -89,8 +89,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await page.waitForFunction(() => [...document.querySelectorAll('label')].some(el => el.textContent.trim() === 'سطر الحقوق في الفوتر'));
     async function editCopyright(value) {
       await page.evaluate(value => {
-        const el = [...document.querySelectorAll('label')].find(el => el.textContent.trim() === 'سطر الحقوق في الفوتر').parentElement.querySelector('input');
-        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, value);
+        const el = [...document.querySelectorAll('label')].find(el => el.textContent.trim() === 'سطر الحقوق في الفوتر').parentElement.querySelector('input,textarea');
+        Object.getOwnPropertyDescriptor(el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value').set.call(el, value);
         el.dispatchEvent(new Event('input', {bubbles: true}));
       }, value);
     }
