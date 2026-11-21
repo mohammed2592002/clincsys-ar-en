@@ -116,6 +116,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
     ? 'Rinse with warm salt water, and avoid hot food and drinks for 24 hours.'
     : 'المضمضة بالماء الدافئ والملح، وتجنب المأكولات والمشروبات الساخنة لمدة 24 ساعة.'
   );
+  const [recommendationsOn, setRecommendationsOn] = useState(false);
 
   useEffect(() => {
     if (isEn) {
@@ -1001,7 +1002,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
         patientAge,
         date: new Date().toISOString(),
         medications,
-        notes: notes.trim(),
+        notes: recommendationsOn ? notes.trim() : '',
         prescriptionStyle: pStyle,
         prescriptionLayout: pLayout
       });
@@ -1015,7 +1016,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
         patientName: patient.name,
         patientAge,
         medications,
-        notes: notes.trim(),
+        notes: recommendationsOn ? notes.trim() : '',
         prescriptionStyle: pStyle,
         prescriptionLayout: pLayout,
         customPrescriptionPadConfig: effectivePadConfig,
@@ -1056,7 +1057,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
         patientAge,
         date: new Date().toISOString(),
         medications,
-        notes: notes.trim(),
+        notes: recommendationsOn ? notes.trim() : '',
         prescriptionStyle: pStyle,
         prescriptionLayout: pLayout
       });
@@ -1080,52 +1081,35 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
 
   return (
     <div className="space-y-6">
-      {/* Upper header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <FileSpreadsheet className="h-6 w-6 text-emerald-600" />
-            {t('prescriptions.title')}
-          </h2>
+      {/* Navy hero */}
+      <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 shadow-lg border border-slate-800 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
+            <FileSpreadsheet className="h-5 w-5 text-emerald-400" />
+          </div>
+          <div>
+            <h2 className="text-base sm:text-lg font-black text-white">{isEn ? 'Medical Prescription' : 'الروشتة العلاجية'}</h2>
+            <p className="text-xs text-slate-300 mt-0.5">{isEn ? 'Write the prescription in 3 steps, without leaving the page' : 'اكتب الروشتة في 3 خطوات، من غير ما تسيب الصفحة'}</p>
+          </div>
         </div>
-        
-        {/* Style selection pill indicators */}
-        <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200/60 self-start sm:self-auto">
-          <span className="text-[10px] font-bold text-slate-400 px-2">{t('prescriptions.prescriptionIdentity')}:</span>
-          <button
-            onClick={() => setPStyle('classic')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${pStyle === 'classic' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
-          >
-            {t('prescriptions.classic')}
-          </button>
-          <button
-            onClick={() => setPStyle('modern')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${pStyle === 'modern' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
-          >
-            {t('prescriptions.modern')}
-          </button>
-          <button
-            onClick={() => setPStyle('minimal')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${pStyle === 'minimal' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
-          >
-            {t('prescriptions.minimal')}
-          </button>
-          <button
-            onClick={() => setPStyle('elegant')}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${pStyle === 'elegant' ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
-          >
-            {t('prescriptions.elegant')}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPStyle('custom_pad');
-              setShowPadEditor(!showPadEditor);
-            }}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${pStyle === 'custom_pad' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
-          >
-            🎨 {t('prescriptions.customPad')}
-          </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 bg-white/10 rounded-full ps-1.5 pe-3 py-1.5">
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${selectedPatientId ? 'bg-emerald-500 text-white' : 'bg-white/20 text-slate-200'}`}>{selectedPatientId ? '✓' : (isEn ? '1' : '١')}</span>
+            <span className="text-[11px] font-bold text-slate-200">{isEn ? 'Pick the patient' : 'اختر المريض'}</span>
+          </div>
+          {selectedPatientId && patients.find(p => p.id === selectedPatientId) && (
+            <span className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-1.5 text-[11px] font-bold text-emerald-300">
+              {patients.find(p => p.id === selectedPatientId)?.name}
+            </span>
+          )}
+          <div className="flex items-center gap-1.5 bg-white/10 rounded-full ps-1.5 pe-3 py-1.5">
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black ${medications.length > 0 ? 'bg-emerald-500 text-white' : 'bg-white/20 text-slate-200'}`}>{medications.length > 0 ? '✓' : (isEn ? '2' : '٢')}</span>
+            <span className="text-[11px] font-bold text-slate-200">{isEn ? 'Add the medications' : 'أضف الأدوية'}</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-white/10 rounded-full ps-1.5 pe-3 py-1.5">
+            <span className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black bg-white/20 text-slate-200">{isEn ? '3' : '٣'}</span>
+            <span className="text-[11px] font-bold text-slate-200">{isEn ? 'Review & print' : 'راجع واطبع'}</span>
+          </div>
         </div>
       </div>
 
@@ -1139,29 +1123,8 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Prescription Setup Form (Left block of controls) */}
-        <div className="lg:col-span-6 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
-          <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
-            <h3 className="text-base font-bold text-slate-800">{isEn ? 'Draft Prescription Items' : 'صياغة بنود الروشتة الطبية'}</h3>
-            
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold text-slate-400">{isEn ? 'Format:' : 'التنسيق:'}</span>
-              <button
-                type="button"
-                onClick={() => setPLayout('traditional')}
-                className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${pLayout === 'traditional' ? 'bg-slate-200 text-slate-800' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
-              >
-                {isEn ? 'Rx List' : 'قائمة Rx'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPLayout('table')}
-                className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${pLayout === 'table' ? 'bg-slate-200 text-slate-800' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
-              >
-                {isEn ? 'Ruled Table' : 'جدول مسطر'}
-              </button>
-            </div>
-          </div>
-          
+        <div className="lg:col-span-6 space-y-5">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 mb-1">{isEn ? 'Target Patient' : 'المريض المستهدف'} <span className="text-rose-500">*</span></label>
@@ -1185,12 +1148,14 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
             </div>
           </div>
 
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
           {/* Quick Dental Drug Badges */}
-          <div className="space-y-3 bg-emerald-50/20 p-4 rounded-xl border border-emerald-100/50">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-100/40 pb-2">
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
               <span className="text-[12px] font-bold text-slate-700 flex items-center gap-1.5">
                 <Sparkles className="h-4 w-4 text-emerald-600" />
-                {isEn ? 'Quick Clinic Pharmacy (1-Click Fill):' : 'صيدلية العيادة السريعة (تعبئة تلقائية بنقرة واحدة):'}
+                {isEn ? 'Quick Clinic Pharmacy' : 'صيدلية العيادة السريعة'}
               </span>
               <div className="flex gap-2">
                 <input
@@ -1279,14 +1244,135 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
             </div>
           </div>
 
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+          {/* List of currently drafted medications in form side */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                <Clipboard className="h-4 w-4 text-indigo-600" />
+                {isEn ? `Medications added to prescription (${medications.length})` : `الأدوية المضافة للروشتة (${medications.length})`}
+              </span>
+              {medications.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    dialogs.confirm(
+                      isEn ? 'Do you want to clear all current medications and start over?' : 'هل تريد مسح جميع الأدوية الحالية والبدء من جديد؟', 
+                      { severity: 'warning' }
+                    )
+                      .then((confirmed) => {
+                        if (confirmed) {
+                          setMedications([]);
+                          setEditingIndex(null);
+                        }
+                      });
+                  }}
+                  className="text-[10px] text-rose-500 hover:text-rose-700 font-extrabold flex items-center gap-0.5 hover:underline"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  {isEn ? 'Clear All' : 'حذف الكل'}
+                </button>
+              )}
+            </div>
+            
+            {medications.length === 0 ? (
+              <div className="text-center text-slate-400 text-xs py-6 border border-dashed border-slate-100 rounded-lg bg-slate-50/50">
+                {isEn 
+                  ? 'No medications added yet. Use the quick clinic pharmacy or write a new item above.' 
+                  : 'لم تقم بإدراج أي دواء للروشتة حتى الآن. استخدم صيدلية العيادة السريعة أو اكتب بنداً جديداً أعلاه.'}
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-56 overflow-y-auto">
+                {medications.map((med, index) => {
+                  const isBeingEdited = editingIndex === index;
+                  return (
+                    <div 
+                      key={index} 
+                      className={`flex flex-col sm:flex-row justify-between sm:items-center gap-2 p-3 rounded-xl transition border text-xs ${isBeingEdited ? 'bg-amber-50/50 border-amber-300 ring-2 ring-amber-100' : 'bg-slate-50 hover:bg-slate-100 border-slate-200/60'}`}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <span className="w-5 h-5 shrink-0 bg-slate-200 rounded-full flex items-center justify-center font-bold text-slate-600 text-[10px] mt-0.5">{index + 1}</span>
+                        <div>
+                          <strong className="text-slate-900 font-extrabold block text-sm">{med.name}</strong>
+                          <div className="text-slate-500 font-semibold mt-0.5 text-[10px]">
+                            {isEn ? 'Dose: ' : 'الجرعة: '}{med.dose} <span className="text-slate-300">•</span> {isEn ? 'Frequency: ' : 'التكرار: '}{med.frequency} <span className="text-slate-300">•</span> {isEn ? 'Duration: ' : 'المدة: '}{med.duration}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-end gap-1 shrink-0">
+                        {/* Move Up */}
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          onClick={() => {
+                            const updated = [...medications];
+                            const temp = updated[index];
+                            updated[index] = updated[index - 1];
+                            updated[index - 1] = temp;
+                            setMedications(updated);
+                            if (editingIndex === index) setEditingIndex(index - 1);
+                            else if (editingIndex === index - 1) setEditingIndex(index);
+                          }}
+                          className="text-slate-400 hover:text-slate-600 hover:bg-white p-1 rounded-md border border-transparent hover:border-slate-200 disabled:opacity-30 transition"
+                          title={isEn ? "Move Up" : "نقل لأعلى"}
+                        >
+                          ▲
+                        </button>
+                        {/* Move Down */}
+                        <button
+                          type="button"
+                          disabled={index === medications.length - 1}
+                          onClick={() => {
+                            const updated = [...medications];
+                            const temp = updated[index];
+                            updated[index] = updated[index + 1];
+                            updated[index + 1] = temp;
+                            setMedications(updated);
+                            if (editingIndex === index) setEditingIndex(index + 1);
+                            else if (editingIndex === index + 1) setEditingIndex(index);
+                          }}
+                          className="text-slate-400 hover:text-slate-600 hover:bg-white p-1 rounded-md border border-transparent hover:border-slate-200 disabled:opacity-30 transition"
+                          title={isEn ? "Move Down" : "نقل لأسفل"}
+                        >
+                          ▼
+                        </button>
+                        {/* Edit */}
+                        <button
+                          type="button"
+                          onClick={() => handleEditMedication(index)}
+                          className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 p-1.5 rounded-lg border border-transparent hover:border-emerald-100 transition"
+                          title={isEn ? "Edit item" : "تعديل هذا البند"}
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                        </button>
+                        {/* Remove */}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMedication(index)}
+                          className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded-lg border border-transparent hover:border-rose-100 transition"
+                          title={isEn ? "Delete" : "حذف"}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          </div>
+          <div className="bg-emerald-50/40 p-5 rounded-2xl border-2 border-dashed border-emerald-300/70">
           {/* Add Medicine form segments */}
-          <div className="p-5 bg-slate-50/80 rounded-xl border border-slate-200/60 space-y-4">
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-xs text-slate-700 flex items-center gap-1">
                 <Plus className="h-4 w-4 text-emerald-600" />
                 {editingIndex !== null 
                   ? (isEn ? 'Edit Current Medication:' : 'تعديل بند العلاج الحالي:') 
-                  : (isEn ? 'Custom Medication Formulation:' : 'صياغة علاج طبي مخصص:')}
+                  : (isEn ? 'Add custom medication (not in the pharmacy)' : 'إضافة علاج مخصص (دواء مش موجود في الصيدلية)')}
               </h4>
               {editingIndex !== null && (
                 <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">
@@ -1421,146 +1507,113 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
             </div>
           </div>
 
-          {/* Recommendations and Instructions */}
-          <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">
-              {isEn ? 'Patient Instructions & Recommendations:' : 'توصيات إرشادية وتنبيهات للمريض:'}
-            </label>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <h4 className="font-bold text-xs text-slate-700 flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-emerald-600" />
+                  {isEn ? 'Patient Recommendations' : 'توصيات للمريض'}
+                </h4>
+                <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">{isEn ? 'Optional' : 'اختياري'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-slate-500">{isEn ? 'Show on prescription' : 'تظهر في الروشتة'}</span>
+                <button
+                  type="button"
+                  onClick={() => setRecommendationsOn(!recommendationsOn)}
+                  className={`w-9 h-5 rounded-full transition relative shrink-0 cursor-pointer ${recommendationsOn ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                  title={isEn ? 'Toggle recommendations on the prescription' : 'تفعيل أو قفل التوصيات في الروشتة'}
+                >
+                  <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all" style={{ insetInlineStart: recommendationsOn ? 'calc(100% - 1.125rem)' : '0.125rem' }} />
+                </button>
+              </div>
+            </div>
             <textarea
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder={isEn ? "e.g., Warm salt water rinse, avoid hot foods and beverages..." : "مثال: المضمضة بماء وملح دافئ، الامتناع عن المشروبات الساخنة..."}
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-semibold"
+              disabled={!recommendationsOn}
+              placeholder={recommendationsOn
+                ? (isEn ? "e.g., Warm salt water rinse, avoid hot foods and beverages..." : "مثال: المضمضة بماء وملح دافئ، الامتناع عن المشروبات الساخنة...")
+                : (isEn ? "Recommendations are off and won't appear on the printed prescription. Turn on the switch to write them." : "التوصيات مقفولة، مش هتظهر في الروشتة المطبوعة. فعّل المفتاح لو عايز تكتب توصيات للمريض.")}
+              className={`w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-semibold ${!recommendationsOn ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : ''}`}
             />
-          </div>
-
-          {/* List of currently drafted medications in form side */}
-          <div className="space-y-3 bg-white p-4 rounded-xl border border-slate-200/60 shadow-2xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <span className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                <Clipboard className="h-4 w-4 text-indigo-600" />
-                {isEn ? `Approved Prescriptions List (${medications.length})` : `قائمة الأدوية المعتمدة بالروشتة (${medications.length})`}
-              </span>
-              {medications.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    dialogs.confirm(
-                      isEn ? 'Do you want to clear all current medications and start over?' : 'هل تريد مسح جميع الأدوية الحالية والبدء من جديد؟', 
-                      { severity: 'warning' }
-                    )
-                      .then((confirmed) => {
-                        if (confirmed) {
-                          setMedications([]);
-                          setEditingIndex(null);
-                        }
-                      });
-                  }}
-                  className="text-[10px] text-rose-500 hover:text-rose-700 font-extrabold flex items-center gap-0.5 hover:underline"
-                >
-                  <Trash2 className="h-3 w-3" />
-                  {isEn ? 'Clear All' : 'حذف الكل'}
-                </button>
-              )}
-            </div>
-            
-            {medications.length === 0 ? (
-              <div className="text-center text-slate-400 text-xs py-6 border border-dashed border-slate-100 rounded-lg bg-slate-50/50">
-                {isEn 
-                  ? 'No medications added yet. Use the quick clinic pharmacy or write a new item above.' 
-                  : 'لم تقم بإدراج أي دواء للروشتة حتى الآن. استخدم صيدلية العيادة السريعة أو اكتب بنداً جديداً أعلاه.'}
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-56 overflow-y-auto">
-                {medications.map((med, index) => {
-                  const isBeingEdited = editingIndex === index;
-                  return (
-                    <div 
-                      key={index} 
-                      className={`flex flex-col sm:flex-row justify-between sm:items-center gap-2 p-3 rounded-xl transition border text-xs ${isBeingEdited ? 'bg-amber-50/50 border-amber-300 ring-2 ring-amber-100' : 'bg-slate-50 hover:bg-slate-100 border-slate-200/60'}`}
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <span className="w-5 h-5 shrink-0 bg-slate-200 rounded-full flex items-center justify-center font-bold text-slate-600 text-[10px] mt-0.5">{index + 1}</span>
-                        <div>
-                          <strong className="text-slate-900 font-extrabold block text-sm">{med.name}</strong>
-                          <div className="text-slate-500 font-semibold mt-0.5 text-[10px]">
-                            {isEn ? 'Dose: ' : 'الجرعة: '}{med.dose} <span className="text-slate-300">•</span> {isEn ? 'Frequency: ' : 'التكرار: '}{med.frequency} <span className="text-slate-300">•</span> {isEn ? 'Duration: ' : 'المدة: '}{med.duration}
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center justify-end gap-1 shrink-0">
-                        {/* Move Up */}
-                        <button
-                          type="button"
-                          disabled={index === 0}
-                          onClick={() => {
-                            const updated = [...medications];
-                            const temp = updated[index];
-                            updated[index] = updated[index - 1];
-                            updated[index - 1] = temp;
-                            setMedications(updated);
-                            if (editingIndex === index) setEditingIndex(index - 1);
-                            else if (editingIndex === index - 1) setEditingIndex(index);
-                          }}
-                          className="text-slate-400 hover:text-slate-600 hover:bg-white p-1 rounded-md border border-transparent hover:border-slate-200 disabled:opacity-30 transition"
-                          title={isEn ? "Move Up" : "نقل لأعلى"}
-                        >
-                          ▲
-                        </button>
-                        {/* Move Down */}
-                        <button
-                          type="button"
-                          disabled={index === medications.length - 1}
-                          onClick={() => {
-                            const updated = [...medications];
-                            const temp = updated[index];
-                            updated[index] = updated[index + 1];
-                            updated[index + 1] = temp;
-                            setMedications(updated);
-                            if (editingIndex === index) setEditingIndex(index + 1);
-                            else if (editingIndex === index + 1) setEditingIndex(index);
-                          }}
-                          className="text-slate-400 hover:text-slate-600 hover:bg-white p-1 rounded-md border border-transparent hover:border-slate-200 disabled:opacity-30 transition"
-                          title={isEn ? "Move Down" : "نقل لأسفل"}
-                        >
-                          ▼
-                        </button>
-                        {/* Edit */}
-                        <button
-                          type="button"
-                          onClick={() => handleEditMedication(index)}
-                          className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 p-1.5 rounded-lg border border-transparent hover:border-emerald-100 transition"
-                          title={isEn ? "Edit item" : "تعديل هذا البند"}
-                        >
-                          <Edit className="h-3.5 w-3.5" />
-                        </button>
-                        {/* Remove */}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveMedication(index)}
-                          className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded-lg border border-transparent hover:border-rose-100 transition"
-                          title={isEn ? "Delete" : "حذف"}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
         </div>
 
         {/* Live WYSIWYG A4 Preview (Right block of layout) */}
         <div className="lg:col-span-6 space-y-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <Printer className="h-4 w-4 text-emerald-600" />
+                {isEn ? 'Preview & Print' : 'المعاينة والطباعة'}
+              </h3>
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">{isEn ? 'Live Update' : 'تحديث مباشر'}</span>
+            </div>
+            <div className="space-y-1">
+        {/* Style selection pill indicators */}
+        <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200/60 self-start sm:self-auto">
+          <span className="text-[10px] font-bold text-slate-400 px-2">{t('prescriptions.prescriptionIdentity')}:</span>
+          <button
+            onClick={() => setPStyle('classic')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${pStyle === 'classic' ? 'bg-cyan-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+          >
+            {t('prescriptions.classic')}
+          </button>
+          <button
+            onClick={() => setPStyle('modern')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${pStyle === 'modern' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+          >
+            {t('prescriptions.modern')}
+          </button>
+          <button
+            onClick={() => setPStyle('minimal')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${pStyle === 'minimal' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+          >
+            {t('prescriptions.minimal')}
+          </button>
+          <button
+            onClick={() => setPStyle('elegant')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${pStyle === 'elegant' ? 'bg-violet-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+          >
+            {t('prescriptions.elegant')}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPStyle('custom_pad');
+              setShowPadEditor(!showPadEditor);
+            }}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${pStyle === 'custom_pad' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+          >
+            🎨 {t('prescriptions.customPad')}
+          </button>
+        </div>
+            </div>
+            <div className="flex items-center gap-2 border-t border-slate-100 pt-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-slate-400">{isEn ? 'Format:' : 'التنسيق:'}</span>
+              <button
+                type="button"
+                onClick={() => setPLayout('traditional')}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${pLayout === 'traditional' ? 'bg-slate-200 text-slate-800' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+              >
+                {isEn ? 'Rx List' : 'قائمة Rx'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPLayout('table')}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${pLayout === 'table' ? 'bg-slate-200 text-slate-800' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
+              >
+                {isEn ? 'Ruled Table' : 'جدول مسطر'}
+              </button>
+            </div>
+            </div>
+          </div>
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <h4 className="text-sm font-bold text-slate-500 flex items-center gap-1.5">
-              <Clipboard className="h-4 w-4 text-cyan-600" />
-              {isEn ? 'Live A4 Print Preview (WYSIWYG):' : 'معاينة الروشتة الحية المطبوعة (A4 WYSIWYG Preview):'}
-            </h4>
+            <span />
             <div className="flex items-center gap-2">
               {pStyle === 'custom_pad' && (
                 <button
@@ -1578,9 +1631,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                     : (isEn ? 'Edit Positions & Background 🎨' : 'تعديل أماكن الخانات وصورة الروشتة 🎨')}
                 </button>
               )}
-              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100 animate-pulse">
-                {isEn ? 'Live Update' : 'تحديث مباشر'}
-              </span>
+
             </div>
           </div>
 
@@ -2136,6 +2187,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
               </div>
 
               {/* Recommendations/Notes block - Placed at the very bottom above footer */}
+              {recommendationsOn && (
               <div 
                 className={`mt-8 p-3 rounded-lg text-[11px] leading-relaxed z-10 ${isEn ? 'text-left' : 'text-right'}`} 
                 style={{ 
@@ -2151,6 +2203,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                 </strong>
                 <p className="text-slate-600 font-semibold">{notes || (isEn ? 'Strict adherence to prescribed instructions is required.' : 'يلتزم المريض بالمواعيد المحددة أعلاه بدقة تامة.')}</p>
               </div>
+              )}
 
               {/* Bottom stamp area & details footer */}
               <div className="border-t-2 mt-8 pt-4 flex justify-between items-end text-[9px] text-slate-500 z-10" style={{ borderColor: colors.primary + '30' }}>
