@@ -85,6 +85,36 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       assert.equal(await page.$eval(test.selector, el => el.value), test.value, 'saved field stays in editor');
       console.log('PASS ' + mode + ' ' + test.name + ': persisted edit, no reload/remount, same tab and visible confirmation after sync + 15s refresh');
     }
+    await click('الموقع التعريفي');
+    await page.waitForFunction(() => [...document.querySelectorAll('label')].some(el => el.textContent.trim() === 'سطر الحقوق في الفوتر'));
+    async function editCopyright(value) {
+      await page.evaluate(value => {
+        const el = [...document.querySelectorAll('label')].find(el => el.textContent.trim() === 'سطر الحقوق في الفوتر').parentElement.querySelector('input');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, value);
+        el.dispatchEvent(new Event('input', {bubbles: true}));
+      }, value);
+    }
+    const copyrightAr = 'حقوق النشر محفوظة لعيادة الاختبار © 2026';
+    const copyrightEn = "Test clinic copyright © 2026. All rights reserved.";
+    await editCopyright(copyrightAr);
+    await click('English');
+    await editCopyright(copyrightEn);
+    await click('حفظ التعديلات');
+    await page.waitForFunction(() => document.body.innerText.includes('تم حفظ محتوى الموقع'));
+    await click('حسناً');
+    const publicContext = await browser.createBrowserContext();
+    const visitor = await publicContext.newPage();
+    await visitor.setViewport({width: 1440, height: 1000});
+    await visitor.goto(base, {waitUntil: 'networkidle2'});
+    await visitor.waitForFunction(text => document.querySelector('footer')?.innerText.includes(text), {}, copyrightAr);
+    await visitor.$eval('footer', el => el.scrollIntoView({block: 'end'}));
+    await visitor.screenshot({path: '/downloads/admin-copyright-' + mode + '-ar.png'});
+    await visitor.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.includes('English')).click());
+    await visitor.waitForFunction(text => document.querySelector('footer')?.innerText.includes(text), {}, copyrightEn);
+    await visitor.$eval('footer', el => el.scrollIntoView({block: 'end'}));
+    await visitor.screenshot({path: '/downloads/admin-copyright-' + mode + '-en.png'});
+    await publicContext.close();
+    console.log('PASS ' + mode + ' copyright edited in Arabic and English from website tab, both render on unauthenticated public landing page');
     const extra = {id: 'custom_settings', nested: {text: "نص O'Brien\nمع سطر جديد", list: ['🦷', 0, false, null]}};
     const seeded = await fetch(base + '/api/db', {
       method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + auth.token},
@@ -108,6 +138,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const docs = JSON.parse(checked.stdout);
     assert.equal(docs.landing_page.ar.brandName, cases[0].value);
     assert.equal(docs.support.workingHoursNotice, cases[1].value);
+    assert.equal(docs.landing_page.ar.footerCopyright, copyrightAr);
+    assert.equal(docs.landing_page.en.footerCopyright, copyrightEn);
     assert.deepEqual(docs.custom_settings.nested, extra.nested);
     assert(!docs.auth_secret);
     assert(!sql.includes('auth_secret'));
