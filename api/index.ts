@@ -82,7 +82,12 @@ app.use(async (req, res, next) => {
   next();
 });
 
-app.get('/api/db-status', (req, res) => {
+app.get('/api/db-status', async (req, res) => {
+  // Superadmin-only: this endpoint exposes internal infrastructure details
+  const auth = await getRequestAuth(req);
+  if (!auth || auth.type !== 'admin') {
+    return res.status(403).json({ error: 'forbidden', message: 'غير مصرح بالوصول' });
+  }
   const isPostgres = dbClient.getIsPostgres();
   const hasEnv = !!(
     cleanEnvValue(process.env.DATABASE_URL) || 
@@ -121,6 +126,303 @@ function cleanEnvValue(val: any): string {
   }
   return str;
 }
+
+// ==================== AUTHENTICATION & AUTHORIZATION LAYER ====================
+// Server-side authentication: scrypt password hashing + HMAC-signed session tokens.
+// Passwords/PINs are NEVER returned from any endpoint, and every data endpoint
+// requires a valid token scoped to the requesting clinic (or the superadmin).
+import crypto from 'crypto';
+
+const SCRYPT_PREFIX = 'scrypt$';
+
+function hashPassword(plain: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(plain, salt, 64).toString('hex');
+  return `${SCRYPT_PREFIX}${salt}$${hash}`;
+}
+
+function isPasswordHashed(stored: any): boolean {
+  return typeof stored === 'string' && stored.startsWith(SCRYPT_PREFIX);
+}
+
+function verifyPassword(stored: any, plain: string): boolean {
+  if (typeof stored !== 'string' || !stored || !plain) return false;
+  try {
+    if (isPasswordHashed(stored)) {
+      const parts = stored.split('$');
+      if (parts.length !== 3) return false;
+      const candidate = crypto.scryptSync(plain, parts[1], 64);
+      const expected = Buffer.from(parts[2], 'hex');
+      return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
+    }
+    // Legacy plaintext row (pre-migration): constant-time comparison
+    const a = Buffer.from(stored, 'utf8');
+    const b = Buffer.from(plain, 'utf8');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch (e) {
+    return false;
+  }
+}
+
+// ---- Auth token signing (HMAC-SHA256, no external deps) ----
+interface AuthInfo {
+  type: 'manager' | 'staff' | 'admin';
+  clinicId?: string;
+  staffName?: string;
+  staffRole?: string;
+  allowedTabs?: string[];
+  exp?: number;
+}
+
+let cachedAuthSecret: string | null = null;
+
+async function getAuthSecret(): Promise<string> {
+  if (cachedAuthSecret) return cachedAuthSecret;
+  const envSecret = cleanEnvValue(process.env.AUTH_SECRET);
+  if (envSecret.length >= 16) {
+    cachedAuthSecret = envSecret;
+    return envSecret;
+  }
+  // Persist a generated secret so sessions survive restarts (never exposed via API)
+  try {
+    const result = await dbClient.execute({
+      sql: `SELECT data FROM system_settings WHERE id = ?`,
+      args: ['auth_secret']
+    });
+    if (result.rows.length > 0) {
+      const parsed = safeParseJson(result.rows[0].data);
+      if (parsed && typeof parsed.secret === 'string' && parsed.secret.length >= 32) {
+        cachedAuthSecret = parsed.secret;
+        return cachedAuthSecret;
+      }
+    }
+  } catch (e) {
+    console.error('[Auth] Could not read persisted auth secret:', e);
+  }
+  const generated = crypto.randomBytes(32).toString('hex');
+  try {
+    await dbClient.execute({
+      sql: `INSERT OR REPLACE INTO system_settings (id, data, createdAt) VALUES (?, ?, ?)`,
+      args: ['auth_secret', JSON.stringify({ secret: generated }), new Date().toISOString()]
+    });
+  } catch (e) {
+    console.error('[Auth] Could not persist generated auth secret:', e);
+  }
+  cachedAuthSecret = generated;
+  return generated;
+}
+
+function base64url(input: Buffer | string): string {
+  return Buffer.from(input).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function signAuthToken(payload: AuthInfo): Promise<string> {
+  const secret = await getAuthSecret();
+  const body = { ...payload, exp: Date.now() + 30 * 24 * 60 * 60 * 1000 }; // 30 days
+  const encoded = base64url(JSON.stringify(body));
+  const sig = base64url(crypto.createHmac('sha256', secret).update(encoded).digest());
+  return `v1.${encoded}.${sig}`;
+}
+
+async function verifyAuthToken(token: string): Promise<AuthInfo | null> {
+  try {
+    if (!token || typeof token !== 'string') return null;
+    const parts = token.split('.');
+    if (parts.length !== 3 || parts[0] !== 'v1') return null;
+    const secret = await getAuthSecret();
+    const expected = base64url(crypto.createHmac('sha256', secret).update(parts[1]).digest());
+    const a = Buffer.from(parts[2]);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+    if (!payload || typeof payload !== 'object') return null;
+    if (payload.exp && Number(payload.exp) < Date.now()) return null;
+    if (!['manager', 'staff', 'admin'].includes(payload.type)) return null;
+    return payload as AuthInfo;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function getRequestAuth(req: express.Request): Promise<AuthInfo | null> {
+  const header = (req.headers.authorization || '') as string;
+  let token = header.startsWith('Bearer ') ? header.substring(7).trim() : '';
+  if (!token && typeof req.query.token === 'string') token = req.query.token; // for <img>/WS URLs
+  if (!token) return null;
+  return verifyAuthToken(token);
+}
+
+// ---- Lightweight in-memory rate limiter for login endpoints ----
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+function isRateLimited(req: express.Request): boolean {
+  const ip = (req.headers['x-forwarded-for'] as string || req.socket.remoteAddress || 'unknown').split(',')[0].trim();
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || entry.resetAt < now) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + 10 * 60 * 1000 });
+    return false;
+  }
+  entry.count++;
+  return entry.count > 30; // 30 attempts per 10 minutes per IP
+}
+
+// ---- Response sanitization: secrets never leave the server ----
+function sanitizeClinicRecord(item: any): any {
+  if (!item || typeof item !== 'object') return item;
+  const c: any = { ...item };
+  delete c.password;
+  delete c.staffPin;
+  if (Array.isArray(c.staffMembers)) {
+    c.staffMembers = c.staffMembers.map((m: any) => {
+      if (!m || typeof m !== 'object') return m;
+      const { password, ...rest } = m;
+      return rest;
+    });
+  }
+  return c;
+}
+
+function sanitizeUserRecord(item: any): any {
+  if (!item || typeof item !== 'object') return item;
+  const u: any = { ...item };
+  delete u.password;
+  return u;
+}
+
+// ---- Write-time secret protection for the clinics table ----
+// Hashes any new plaintext password/PIN, and preserves existing stored secrets
+// when the client (which can no longer read them) writes a record without them.
+function secureClinicPayload(data: any, existing: any): any {
+  const out: any = { ...data };
+  const ex: any = existing || {};
+
+  if (typeof out.password === 'string' && out.password.trim()) {
+    if (!isPasswordHashed(out.password)) out.password = hashPassword(out.password.trim());
+  } else if (ex.password) {
+    out.password = ex.password;
+  } else {
+    delete out.password;
+  }
+
+  if (typeof out.staffPin === 'string' && out.staffPin.trim()) {
+    if (!isPasswordHashed(out.staffPin)) out.staffPin = hashPassword(out.staffPin.trim());
+  } else if (ex.staffPin) {
+    out.staffPin = ex.staffPin;
+  } else {
+    delete out.staffPin;
+  }
+
+  if (Array.isArray(out.staffMembers)) {
+    const exMembers: any[] = Array.isArray(ex.staffMembers) ? ex.staffMembers : [];
+    out.staffMembers = out.staffMembers.map((m: any) => {
+      if (!m || typeof m !== 'object') return m;
+      const member: any = { ...m };
+      const prev = exMembers.find((x: any) => x && x.id === member.id);
+      if (typeof member.password === 'string' && member.password.trim()) {
+        if (!isPasswordHashed(member.password)) member.password = hashPassword(member.password.trim());
+      } else if (prev && prev.password) {
+        member.password = prev.password;
+      } else {
+        delete member.password;
+      }
+      return member;
+    });
+  } else if (Array.isArray(ex.staffMembers)) {
+    out.staffMembers = ex.staffMembers;
+  }
+
+  return out;
+}
+
+async function getExistingClinicData(clinicRowId: string): Promise<any> {
+  try {
+    const result = await dbClient.execute({ sql: `SELECT data FROM clinics WHERE id = ?`, args: [clinicRowId] });
+    if (result.rows.length > 0) return safeParseJson(result.rows[0].data);
+  } catch (e) {}
+  return null;
+}
+
+// One-time migration: hash every plaintext secret inside a clinic record
+async function migrateClinicSecrets(clinicRowId: string, clinic: any): Promise<void> {
+  try {
+    let changed = false;
+    const updated: any = { ...clinic };
+    if (typeof updated.password === 'string' && updated.password && !isPasswordHashed(updated.password)) {
+      updated.password = hashPassword(updated.password);
+      changed = true;
+    }
+    if (typeof updated.staffPin === 'string' && updated.staffPin && !isPasswordHashed(updated.staffPin)) {
+      updated.staffPin = hashPassword(updated.staffPin);
+      changed = true;
+    }
+    if (Array.isArray(updated.staffMembers)) {
+      updated.staffMembers = updated.staffMembers.map((m: any) => {
+        if (m && typeof m.password === 'string' && m.password && !isPasswordHashed(m.password)) {
+          changed = true;
+          return { ...m, password: hashPassword(m.password) };
+        }
+        return m;
+      });
+    }
+    if (changed) {
+      await dbClient.execute({
+        sql: `UPDATE clinics SET data = ? WHERE id = ?`,
+        args: [JSON.stringify(updated), clinicRowId]
+      });
+      console.log(`[Auth Migration] Hashed plaintext credentials for clinic ${clinicRowId}`);
+    }
+  } catch (e) {
+    console.error('[Auth Migration] Failed to migrate clinic secrets:', e);
+  }
+}
+
+// ---- Per-request authorization for the generic /api/db router ----
+// Returns null when allowed, otherwise an HTTP status code to send.
+function authorizeDbAction(auth: AuthInfo | null, action: string, tableName: string, clinicId: string | null, docId: string | null): number | null {
+  if (!auth) return 401;
+
+  // The auth secret store is never readable or writable over HTTP
+  if (tableName === 'system_settings' && docId === 'auth_secret') return 403;
+
+  // Superadmin-only tables
+  if (tableName === 'superadmin_credentials') {
+    return auth.type === 'admin' ? null : 403;
+  }
+  if (tableName === 'announcements' && action !== 'getDocs' && action !== 'getDoc') {
+    return auth.type === 'admin' ? null : 403;
+  }
+
+  if (auth.type === 'admin') return null;
+
+  // Global tables without clinic scope: authenticated read-only for clinic users
+  const GLOBAL_TABLES = ['system_settings', 'announcements', 'files'];
+  const effectiveClinicId = clinicId || (tableName === 'clinics' ? docId : null);
+
+  if (!effectiveClinicId) {
+    if (GLOBAL_TABLES.includes(tableName)) {
+      if (action === 'getDocs' || action === 'getDoc') {
+        // Never dump the whole system_settings table (it holds the auth secret)
+        if (tableName === 'system_settings' && action === 'getDocs') return 403;
+        return null;
+      }
+      if (tableName === 'files' && (action === 'addDoc' || action === 'setDoc')) return null;
+      return 403;
+    }
+    // Listing every clinic or unscoped data is admin-only
+    return 403;
+  }
+
+  if (effectiveClinicId !== auth.clinicId) return 403;
+
+  // Only the manager (or superadmin) may modify the clinic's own record/settings
+  if (tableName === 'clinics') {
+    if (action === 'deleteDoc') return 403; // clinic deletion cascades - superadmin only
+    if (auth.type === 'staff' && action !== 'getDocs' && action !== 'getDoc') return 403;
+  }
+
+  return null;
+}
+// ================== END AUTHENTICATION & AUTHORIZATION LAYER ==================
 
 class LocalJsonDbEmulator {
   private filePath = path.join(process.cwd(), 'local_db.json');
@@ -785,12 +1087,26 @@ export function initWebSocketServer(server: any) {
   wss.on('connection', (ws: WebSocket, req: any) => {
     const url = new URL(req.url || '', 'http://localhost');
     const clinicId = url.searchParams.get('clinicId');
+    const token = url.searchParams.get('token') || '';
     
     if (!clinicId) {
       ws.close(4000, 'clinicId is required');
       return;
     }
 
+    // Verify the session token before streaming any clinic data
+    verifyAuthToken(token).then((auth) => {
+      if (!auth || (auth.type !== 'admin' && (clinicId === 'superadmin' || auth.clinicId !== clinicId))) {
+        ws.close(4401, 'unauthorized');
+        return;
+      }
+      registerWsClient(ws, clinicId);
+    }).catch(() => {
+      ws.close(4401, 'unauthorized');
+    });
+  });
+
+  function registerWsClient(ws: WebSocket, clinicId: string) {
     (ws as any).isAlive = true;
     ws.on('pong', () => {
       (ws as any).isAlive = true;
@@ -827,7 +1143,7 @@ export function initWebSocketServer(server: any) {
         // ignore parsing issues or custom client messages
       }
     });
-  });
+  }
 
   const interval = setInterval(() => {
     wss.clients.forEach((ws: any) => {
@@ -1413,6 +1729,13 @@ async function initDb() {
   // Execute Versioned Migration System
   await runMigrations();
 
+  // Warm the auth secret so token verification is ready before first request
+  try {
+    await getAuthSecret();
+  } catch (e) {
+    console.error('[Auth] Failed to initialize auth secret:', e);
+  }
+
   // Start background sync events daily cleanup scheduler
   startSyncEventsCleanupScheduler();
 
@@ -1946,7 +2269,21 @@ app.post('/api/db', async (req, res) => {
     return res.status(400).send(`Unauthorized table action for path: ${pathStr}`);
   }
 
-  // Determine actual column support
+  // ---- Authentication & per-clinic authorization ----
+  const auth = await getRequestAuth(req);
+  const requestedDocId = id || docId;
+  // Public exception: the login screen reads support contact info before login
+  const isPublicSupportRead = action === 'getDoc' && tableName === 'system_settings' && String(requestedDocId || '') === 'support';
+  if (!isPublicSupportRead) {
+    const authError = authorizeDbAction(auth, action, tableName, clinicId, requestedDocId ? String(requestedDocId) : null);
+    if (authError === 401) {
+      return res.status(401).json({ error: 'authentication_required', message: 'يلزم تسجيل الدخول للوصول إلى البيانات' });
+    }
+    if (authError === 403) {
+      return res.status(403).json({ error: 'forbidden', message: 'غير مصرح لك بالوصول إلى هذه البيانات' });
+    }
+  }
+
   const hasClinicId = !['files', 'system_settings', 'announcements', 'superadmin_credentials'].includes(tableName);
   const hasPatientId = ['records', 'appointments', 'prescriptions', 'xrays', 'teeth'].includes(tableName);
   const hasCreatedAt = tableName !== 'files';
@@ -2106,7 +2443,7 @@ app.post('/api/db', async (req, res) => {
       
       const sql = queryStr + orderByStr + limitStr;
       const dbResult = await dbClient.execute({ sql, args });
-      const items = dbResult.rows.map((row: any) => {
+      let items = dbResult.rows.map((row: any) => {
         try {
           const item = safeParseJson(row.data);
           const colData: any = {};
@@ -2126,6 +2463,9 @@ app.post('/api/db', async (req, res) => {
           return { ...colData, id: row.id };
         }
       });
+      // Never leak credentials to clients
+      if (tableName === 'clinics') items = items.map((it: any) => sanitizeClinicRecord(it));
+      if (tableName === 'users') items = items.map((it: any) => sanitizeUserRecord(it));
       return res.json(items);
     }
     
@@ -2149,7 +2489,7 @@ app.post('/api/db', async (req, res) => {
             colData[key] = row[key];
           }
         }
-        return res.json({ ...colData, ...item, id: finalId });
+        return res.json(sanitizeClinicRecord({ ...colData, ...item, id: finalId }));
       } catch (e) {
         return res.json(null);
       }
@@ -2161,7 +2501,11 @@ app.post('/api/db', async (req, res) => {
       const targetClinicId = clinicId || data?.clinicId || data?.clinic_id;
       const targetPatientId = patientId || data?.patientId || data?.patient_id;
 
-      const fullData = { ...data, id: finalId };
+      let fullData = { ...data, id: finalId };
+      if (tableName === 'clinics') {
+        const existingClinic = await getExistingClinicData(finalId);
+        fullData = secureClinicPayload(fullData, existingClinic);
+      }
       if (targetClinicId) fullData.clinicId = targetClinicId;
       if (targetPatientId) fullData.patientId = targetPatientId;
       
@@ -2191,13 +2535,13 @@ app.post('/api/db', async (req, res) => {
 
       if (targetClinicId) {
         const evId = 'ev_' + Math.random().toString(36).substring(2, 15);
-        broadcastSync(targetClinicId, { eventId: evId, table: tableName, action: 'add', id: finalId, payload: fullData });
-        publishSyncEvent(targetClinicId, tableName, 'add', finalId, fullData, evId).then((actualId) => {
+        broadcastSync(targetClinicId, { eventId: evId, table: tableName, action: 'add', id: finalId, payload: tableName === 'clinics' ? sanitizeClinicRecord(fullData) : fullData });
+        publishSyncEvent(targetClinicId, tableName, 'add', finalId, tableName === 'clinics' ? sanitizeClinicRecord(fullData) : fullData, evId).then((actualId) => {
           if (actualId) handledEvents.add(actualId);
         });
       }
 
-      return res.json(fullData);
+      return res.json(tableName === 'clinics' ? sanitizeClinicRecord(fullData) : fullData);
     }
     
     // 4. SET DOCUMENT (setDoc - Overwrite/Create)
@@ -2230,6 +2574,11 @@ app.post('/api/db', async (req, res) => {
       
       if (targetClinicId) finalData.clinicId = targetClinicId;
       if (targetPatientId) finalData.patientId = targetPatientId;
+
+      if (tableName === 'clinics') {
+        const existingClinic = await getExistingClinicData(finalId);
+        finalData = secureClinicPayload(finalData, existingClinic);
+      }
       
       const createdAt = finalData.createdAt || data?.createdAt || new Date().toISOString();
       const { cols, vals } = mapDataToColumns(tableName, finalId, finalData, targetClinicId, targetPatientId, createdAt);
@@ -2257,13 +2606,13 @@ app.post('/api/db', async (req, res) => {
 
       if (targetClinicId) {
         const evId = 'ev_' + Math.random().toString(36).substring(2, 15);
-        broadcastSync(targetClinicId, { eventId: evId, table: tableName, action: 'set', id: finalId, payload: finalData });
-        publishSyncEvent(targetClinicId, tableName, 'set', finalId, finalData, evId).then((actualId) => {
+        broadcastSync(targetClinicId, { eventId: evId, table: tableName, action: 'set', id: finalId, payload: tableName === 'clinics' ? sanitizeClinicRecord(finalData) : finalData });
+        publishSyncEvent(targetClinicId, tableName, 'set', finalId, tableName === 'clinics' ? sanitizeClinicRecord(finalData) : finalData, evId).then((actualId) => {
           if (actualId) handledEvents.add(actualId);
         });
       }
 
-      return res.json(finalData);
+      return res.json(tableName === 'clinics' ? sanitizeClinicRecord(finalData) : finalData);
     }
     
     // 5. UPDATE DOCUMENT (updateDoc)
@@ -2285,7 +2634,11 @@ app.post('/api/db', async (req, res) => {
         existing = { ...row, ...parsedData };
       }
       
-      const updated = { ...existing, ...data, id: finalId };
+      const updated0 = { ...existing, ...data, id: finalId };
+      let updated = updated0;
+      if (tableName === 'clinics') {
+        updated = secureClinicPayload(updated0, existing);
+      }
       const { cols, vals } = mapDataToColumns(tableName, finalId, updated, clinicId, patientId, updated.createdAt);
       
       const columns = tableSchemas[tableName] || [];
@@ -2308,13 +2661,13 @@ app.post('/api/db', async (req, res) => {
       const targetClinicId = clinicId || updated?.clinicId || updated?.clinic_id || data?.clinicId || data?.clinic_id;
       if (targetClinicId) {
         const evId = 'ev_' + Math.random().toString(36).substring(2, 15);
-        broadcastSync(targetClinicId, { eventId: evId, table: tableName, action: 'update', id: finalId, payload: updated });
-        publishSyncEvent(targetClinicId, tableName, 'update', finalId, updated, evId).then((actualId) => {
+        broadcastSync(targetClinicId, { eventId: evId, table: tableName, action: 'update', id: finalId, payload: tableName === 'clinics' ? sanitizeClinicRecord(updated) : updated });
+        publishSyncEvent(targetClinicId, tableName, 'update', finalId, tableName === 'clinics' ? sanitizeClinicRecord(updated) : updated, evId).then((actualId) => {
           if (actualId) handledEvents.add(actualId);
         });
       }
 
-      return res.json(updated);
+      return res.json(tableName === 'clinics' ? sanitizeClinicRecord(updated) : updated);
     }
     
     // 6. DELETE DOCUMENT (deleteDoc)
@@ -2379,7 +2732,7 @@ app.post('/api/db', async (req, res) => {
 
       const targetClinicId = clinicId;
       if (targetClinicId) {
-        const payloadData = { id: finalId, ...deletedData };
+        const payloadData = tableName === 'clinics' ? sanitizeClinicRecord({ id: finalId, ...deletedData }) : { id: finalId, ...deletedData };
         const evId = 'ev_' + Math.random().toString(36).substring(2, 15);
         broadcastSync(targetClinicId, { eventId: evId, table: tableName, action: 'delete', id: finalId, payload: payloadData });
         publishSyncEvent(targetClinicId, tableName, 'delete', finalId, payloadData, evId).then((actualId) => {
@@ -2404,6 +2757,11 @@ app.post('/api/db/batch', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid or empty batch items' });
   }
 
+  const auth = await getRequestAuth(req);
+  if (!auth) {
+    return res.status(401).json({ success: false, message: 'يلزم تسجيل الدخول للوصول إلى البيانات' });
+  }
+
   const processedIds: (number | string)[] = [];
   const errors: any[] = [];
 
@@ -2413,6 +2771,12 @@ app.post('/api/db/batch', async (req, res) => {
 
     if (!tableName || !ALLOWED_TABLES.includes(tableName)) {
       errors.push({ itemId, error: `Unauthorized table: ${tableName}` });
+      continue;
+    }
+
+    const itemAuthError = authorizeDbAction(auth, action, tableName, clinicId, (docId || parsedDocId || data?.id) ? String(docId || parsedDocId || data?.id) : null);
+    if (itemAuthError) {
+      errors.push({ itemId, error: itemAuthError === 401 ? 'authentication_required' : 'forbidden' });
       continue;
     }
 
@@ -2441,6 +2805,11 @@ app.post('/api/db/batch', async (req, res) => {
 
         if (clinicId) fullData.clinicId = clinicId;
         if (patientId) fullData.patientId = patientId;
+
+        if (tableName === 'clinics') {
+          const existingClinic = await getExistingClinicData(fullData.id);
+          fullData = secureClinicPayload(fullData, existingClinic);
+        }
 
         const createdAt = fullData.createdAt || new Date().toISOString();
         const { cols, vals } = mapDataToColumns(tableName, fullData.id, fullData, clinicId, patientId, createdAt);
@@ -2479,7 +2848,11 @@ app.post('/api/db/batch', async (req, res) => {
           }
           currentData = { ...row, ...parsedData };
         }
-        const updated = { ...currentData, ...data, id: finalId };
+        const updated0 = { ...currentData, ...data, id: finalId };
+        let updated = updated0;
+        if (tableName === 'clinics') {
+          updated = secureClinicPayload(updated0, currentData);
+        }
         if (clinicId) updated.clinicId = clinicId;
         if (patientId) updated.patientId = patientId;
 
@@ -2537,6 +2910,16 @@ app.get('/api/sync/updates', async (req, res) => {
     return res.status(400).send('clinicId query parameter is required');
   }
 
+  const auth = await getRequestAuth(req);
+  if (!auth) {
+    return res.status(401).json({ error: 'authentication_required' });
+  }
+  if (auth.type !== 'admin') {
+    if (clinicId === 'superadmin' || auth.clinicId !== clinicId) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+  }
+
   try {
     const isSuperAdmin = clinicId === 'superadmin';
     const result = isSuperAdmin
@@ -2562,6 +2945,88 @@ app.get('/api/sync/updates', async (req, res) => {
     res.json(events);
   } catch (err: any) {
     res.status(500).send(err.message || 'Error fetching sync updates');
+  }
+});
+
+// Server-side clinic login: verifies credentials on the server, migrates
+// legacy plaintext passwords to scrypt hashes, and issues a signed session token.
+app.post('/api/auth/clinic-login', async (req, res) => {
+  if (isRateLimited(req)) {
+    return res.status(429).json({ success: false, message: 'محاولات كثيرة جداً، يرجى المحاولة بعد قليل' });
+  }
+  const { email, password, role } = req.body || {};
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: 'يرجى كتابة البريد الإلكتروني وكلمة المرور/الرمز السري' });
+  }
+  const emailClean = String(email).trim().toLowerCase();
+  const passClean = String(password).trim();
+  const loginRole = role === 'staff' ? 'staff' : 'manager';
+
+  try {
+    const result = await dbClient.execute({
+      sql: `SELECT id, data FROM clinics WHERE json_extract(data, '$.email') = ?`,
+      args: [emailClean]
+    });
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'البريد الإلكتروني هذا غير مسجل أو غير صحيح' });
+    }
+
+    for (const row of result.rows) {
+      const clinic = safeParseJson(row.data);
+      if (!clinic) continue;
+      const clinicId = String(row.id || clinic.id || '');
+
+      if (loginRole === 'manager') {
+        if (clinic.password && verifyPassword(String(clinic.password), passClean)) {
+          await migrateClinicSecrets(clinicId, clinic);
+          const token = await signAuthToken({ type: 'manager', clinicId });
+          return res.json({
+            success: true,
+            token,
+            clinic: { id: clinicId, name: clinic.name || '', email: clinic.email || '' }
+          });
+        }
+      } else {
+        const staffList: any[] = Array.isArray(clinic.staffMembers) ? clinic.staffMembers : [];
+        let matchedStaff = staffList.find((m: any) => m && m.password && verifyPassword(String(m.password), passClean));
+        let viaPin = false;
+        if (!matchedStaff && clinic.staffPin && verifyPassword(String(clinic.staffPin), passClean)) {
+          viaPin = true;
+          matchedStaff = { name: 'طاقم العيادة', role: 'استقبال / مساعد' };
+        }
+        if (matchedStaff) {
+          await migrateClinicSecrets(clinicId, clinic);
+          const token = await signAuthToken({
+            type: 'staff',
+            clinicId,
+            staffName: matchedStaff.name,
+            staffRole: viaPin ? 'استقبال / مساعد' : matchedStaff.role,
+            allowedTabs: viaPin ? undefined : matchedStaff.allowedTabs
+          });
+          return res.json({
+            success: true,
+            token,
+            clinic: { id: clinicId, name: clinic.name || '', email: clinic.email || '' },
+            staff: {
+              name: matchedStaff.name,
+              role: viaPin ? 'استقبال / مساعد' : matchedStaff.role,
+              allowedTabs: viaPin ? undefined : matchedStaff.allowedTabs
+            }
+          });
+        }
+      }
+    }
+
+    return res.status(401).json({
+      success: false,
+      message: loginRole === 'manager'
+        ? 'كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى'
+        : 'كلمة المرور أو رمز دخول الموظف غير صحيح، يرجى التأكد من الطبيب'
+    });
+  } catch (e: any) {
+    console.error('Clinic login error:', e);
+    res.status(500).json({ success: false, message: 'حدث خطأ أثناء تسجيل الدخول' });
   }
 });
 
@@ -2619,7 +3084,8 @@ const uploadsFolder = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadsFolder)) {
   fs.mkdirSync(uploadsFolder, { recursive: true });
 }
-app.use('/uploads', express.static(uploadsFolder));
+// Local uploads are served through the authenticated /api/files endpoint only.
+// (Direct static serving of /uploads was removed so patient files are never public.)
 
 // Helper to construct R2 File Key according to standard structure: clinics/{clinicId}/{category}/{fileName}
 function buildR2FileKey(rawClinicId?: string, rawCategory?: string, rawFolder?: string, fileName?: string): string {
@@ -2646,8 +3112,13 @@ function buildR2FileKey(rawClinicId?: string, rawCategory?: string, rawFolder?: 
 
 // Cloudflare R2 Direct Upload Presigned URL Generator
 app.post('/api/get-upload-url', async (req, res) => {
+  const auth = await getRequestAuth(req);
+  if (!auth) return res.status(401).json({ error: 'authentication_required' });
   try {
     const { fileName, fileType, folder, category, clinicId } = req.body || {};
+    if (auth.type !== 'admin' && clinicId && auth.clinicId !== clinicId) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
     const contentType = fileType || 'application/octet-stream';
     const fileKey = buildR2FileKey(clinicId, category, folder, fileName);
     const { client, bucketName, publicUrlBase } = getR2ClientConfig();
@@ -2674,6 +3145,8 @@ app.post('/api/get-upload-url', async (req, res) => {
 });
 
 app.get('/api/get-upload-url', async (req, res) => {
+  const auth = await getRequestAuth(req);
+  if (!auth) return res.status(401).json({ error: 'authentication_required' });
   try {
     const fileName = req.query.fileName as string;
     const fileType = (req.query.fileType as string) || 'application/octet-stream';
@@ -2706,6 +3179,8 @@ app.get('/api/get-upload-url', async (req, res) => {
 
 // File Uploads Endpoint (Cloudflare R2 Upload with Automatic Local Disk Storage Fallback)
 app.post('/api/upload', async (req, res) => {
+  const auth = await getRequestAuth(req);
+  if (!auth) return res.status(401).json({ error: 'authentication_required' });
   if (!req.files || Object.keys(req.files).length === 0) {
     return res.status(400).send('No files uploaded');
   }
@@ -2782,6 +3257,8 @@ app.post('/api/upload', async (req, res) => {
 
 // Delete file endpoint (Preserves physical file on Cloudflare R2 to ensure DB backup durability and prevent broken image links)
 app.post('/api/delete-file', async (req, res) => {
+  const auth = await getRequestAuth(req);
+  if (!auth) return res.status(401).json({ error: 'authentication_required' });
   const { url, key } = req.body || {};
   let rawInput = key || url;
   
@@ -2802,6 +3279,8 @@ app.post('/api/delete-file', async (req, res) => {
 
 // Retrieve uploaded files endpoint (Serves directly from physical disk with database fallback for older entries)
 app.get('/api/files', async (req, res) => {
+  const auth = await getRequestAuth(req);
+  if (!auth) return res.status(401).json({ error: 'authentication_required' });
   const filePath = req.query.path as string;
   if (!filePath) {
     return res.status(400).send('File path is required');
@@ -2869,6 +3348,10 @@ app.get('/api/files', async (req, res) => {
 
 // GET /api/superadmin/analytics - Global and Clinic-level Usage Stats
 app.get('/api/superadmin/analytics', async (req, res) => {
+  const auth = await getRequestAuth(req);
+  if (!auth || auth.type !== 'admin') {
+    return res.status(403).json({ error: 'forbidden', message: 'غير مصرح بالوصول' });
+  }
   try {
     const todayStr = (req.query.today as string) || new Date().toISOString().split('T')[0];
     
@@ -2995,6 +3478,10 @@ app.get('/api/superadmin/analytics', async (req, res) => {
 
 // GET /api/superadmin/income-stats - Income analytics for SuperAdmin based on clinic subscriptions and renewals
 app.get('/api/superadmin/income-stats', async (req, res) => {
+  const auth = await getRequestAuth(req);
+  if (!auth || auth.type !== 'admin') {
+    return res.status(403).json({ error: 'forbidden', message: 'غير مصرح بالوصول' });
+  }
   try {
     const period = (req.query.period as string) || 'daily';
     const targetDate = (req.query.date as string) || new Date().toISOString().split('T')[0];
@@ -3219,6 +3706,10 @@ app.get('/api/broadcasts/active', async (req, res) => {
 
 // POST /api/broadcasts - Set/Clear system-wide alert/announcement
 app.post('/api/broadcasts', async (req, res) => {
+  const auth = await getRequestAuth(req);
+  if (!auth || auth.type !== 'admin') {
+    return res.status(403).json({ error: 'forbidden', message: 'غير مصرح بالوصول' });
+  }
   const { content, bgColor, textColor } = req.body;
   try {
     // Disable any current active announcements
@@ -3231,10 +3722,10 @@ app.post('/api/broadcasts', async (req, res) => {
       const text = (textColor && typeof textColor === 'string' ? textColor.trim() : '') || '#ffffff';
 
       try {
-        await dbClient.execute("ALTER TABLE announcements ADD COLUMN bgColor TEXT");
+        await dbClient.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS bgColor TEXT");
       } catch (e) {}
       try {
-        await dbClient.execute("ALTER TABLE announcements ADD COLUMN textColor TEXT");
+        await dbClient.execute("ALTER TABLE announcements ADD COLUMN IF NOT EXISTS textColor TEXT");
       } catch (e) {}
 
       await dbClient.execute({
@@ -3253,6 +3744,9 @@ app.post('/api/broadcasts', async (req, res) => {
 
 // POST /api/superadmin/login - Verify superadmin login credentials
 app.post('/api/superadmin/login', async (req, res) => {
+  if (isRateLimited(req)) {
+    return res.status(429).json({ success: false, message: 'محاولات كثيرة جداً، يرجى المحاولة بعد قليل' });
+  }
   const { email, password } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ success: false, message: 'يرجى تقديم البريد الإلكتروني وكلمة المرور' });
@@ -3270,15 +3764,27 @@ app.post('/api/superadmin/login', async (req, res) => {
     if (result.rows.length > 0) {
       const storedEmail = String(result.rows[0].email || '').trim().toLowerCase();
       const storedPass = String(result.rows[0].password || '').trim();
-      if (cleanEmail === storedEmail && cleanPass === storedPass) {
-        return res.json({ success: true });
+      if (cleanEmail === storedEmail && verifyPassword(storedPass, cleanPass)) {
+        // Migrate legacy plaintext superadmin password to a scrypt hash
+        if (!isPasswordHashed(storedPass)) {
+          try {
+            await dbClient.execute({
+              sql: "UPDATE superadmin_credentials SET password = ?, updatedAt = ? WHERE id = 'main'",
+              args: [hashPassword(cleanPass), new Date().toISOString()]
+            });
+            console.log('[Auth Migration] Hashed plaintext superadmin password');
+          } catch (e) {}
+        }
+        const token = await signAuthToken({ type: 'admin' });
+        return res.json({ success: true, token });
       } else {
         return res.json({ success: false, message: 'بيانات اعتماد مدير النظام غير صحيحة' });
       }
     } else {
       // Default credentials before admin ever changes them
       if (cleanEmail === 'admin@crowndent.com' && cleanPass === 'admin123') {
-        return res.json({ success: true });
+        const token = await signAuthToken({ type: 'admin' });
+        return res.json({ success: true, token, usingDefaultCredentials: true });
       } else {
         return res.json({ success: false, message: 'بيانات اعتماد مدير النظام غير صحيحة' });
       }
@@ -3291,6 +3797,10 @@ app.post('/api/superadmin/login', async (req, res) => {
 
 // GET /api/superadmin/credentials - Get current superadmin email
 app.get('/api/superadmin/credentials', async (req, res) => {
+  const auth = await getRequestAuth(req);
+  if (!auth || auth.type !== 'admin') {
+    return res.status(403).json({ message: 'غير مصرح بالوصول' });
+  }
   try {
     const result = await dbClient.execute("SELECT email FROM superadmin_credentials WHERE id = 'main'");
     if (result.rows.length > 0) {
@@ -3304,6 +3814,10 @@ app.get('/api/superadmin/credentials', async (req, res) => {
 
 // POST /api/superadmin/credentials - Change superadmin email & password
 app.post('/api/superadmin/credentials', async (req, res) => {
+  const auth = await getRequestAuth(req);
+  if (!auth || auth.type !== 'admin') {
+    return res.status(403).json({ success: false, message: 'غير مصرح بالوصول' });
+  }
   const { currentPassword, newEmail, newPassword } = req.body || {};
   if (!currentPassword || !newEmail || !newPassword) {
     return res.status(400).json({ success: false, message: 'جميع الحقول مطلوبة (كلمة المرور الحالية، البريد الجديد، كلمة المرور الجديدة)' });
@@ -3324,14 +3838,14 @@ app.post('/api/superadmin/credentials', async (req, res) => {
       expectedPass = String(checkRes.rows[0].password).trim();
     }
 
-    if (cleanCurrentPass !== expectedPass) {
+    if (!verifyPassword(expectedPass, cleanCurrentPass)) {
       return res.status(400).json({ success: false, message: 'كلمة المرور الحالية غير صحيحة!' });
     }
 
     const updatedAt = new Date().toISOString();
     await dbClient.execute({
       sql: `INSERT OR REPLACE INTO superadmin_credentials (id, email, password, updatedAt) VALUES ('main', ?, ?, ?)`,
-      args: [cleanNewEmail, cleanNewPass, updatedAt]
+      args: [cleanNewEmail, hashPassword(cleanNewPass), updatedAt]
     });
 
     return res.json({ success: true, email: cleanNewEmail, message: 'تم تحديث بيانات اعتماد مدير النظام بنجاح!' });

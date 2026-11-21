@@ -1,4 +1,5 @@
 import { compressImage } from './imageCompressor';
+import { authHeaders } from '../dbClient';
 
 /**
  * Uploads a file directly to Cloudflare R2 using the standardized key structure:
@@ -62,6 +63,7 @@ export async function uploadFileToR2(
 
   const res = await fetch('/api/upload', {
     method: 'POST',
+    headers: { ...authHeaders() },
     body: formData,
   });
 
@@ -130,6 +132,7 @@ export async function deleteFileFromR2(fileUrlOrKey: string): Promise<boolean> {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders(),
       },
       body: JSON.stringify({ url: trimmed, key: trimmed }),
     });

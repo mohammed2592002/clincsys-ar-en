@@ -11,6 +11,7 @@ import {
   Save 
 } from 'lucide-react';
 import { useDialogs } from '../DialogContext';
+import { authHeaders } from '../../dbClient';
 
 interface AdminSecurityTabProps {}
 
@@ -29,7 +30,7 @@ export default function AdminSecurityTab({}: AdminSecurityTabProps) {
 
   const fetchCredentials = async () => {
     try {
-      const res = await fetch('/api/superadmin/credentials');
+      const res = await fetch('/api/superadmin/credentials', { headers: { ...authHeaders() } });
       if (res.ok) {
         const data = await res.json();
         if (data.email) {
@@ -75,7 +76,7 @@ export default function AdminSecurityTab({}: AdminSecurityTabProps) {
     try {
       const res = await fetch('/api/superadmin/credentials', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
           currentPassword: currentPassword.trim(),
           newEmail: emailInput.trim().toLowerCase(),

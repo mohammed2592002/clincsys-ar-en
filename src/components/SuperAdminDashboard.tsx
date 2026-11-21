@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db, doc, collection, getDocsSmart as getDocs, getDocSmart, setDoc } from '../dbClient';
+import { db, doc, collection, getDocsSmart as getDocs, getDocSmart, setDoc , authHeaders } from '../dbClient';
 import { Clinic, SupportSettings, DEFAULT_SUPPORT_SETTINGS } from '../types';
 import { useDialogs } from './DialogContext';
 import AdminRenewals from './AdminRenewals';
@@ -219,7 +219,7 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
   const fetchAnalyticsAndBroadcast = async () => {
     try {
       const todayStr = new Date().toISOString().split('T')[0];
-      const res = await fetch(`/api/superadmin/analytics?today=${todayStr}`);
+      const res = await fetch(`/api/superadmin/analytics?today=${todayStr}`, { headers: { ...authHeaders() } });
       if (res.ok) {
         const data = await res.json();
         if (data && data.globalStats) {
@@ -385,7 +385,7 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
     try {
       const res = await fetch('/api/broadcasts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ 
           content: broadcastMessage,
           bgColor: broadcastBgColor,
@@ -422,7 +422,7 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
     try {
       const res = await fetch('/api/broadcasts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ content: '' })
       });
       if (res.ok) {

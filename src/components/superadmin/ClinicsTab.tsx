@@ -392,7 +392,7 @@ export default function ClinicsTab({
     setEditAddress(clinic.address || '');
     setEditPrescriptionStyle(clinic.prescriptionStyle || 'classic');
     setEditEmail(clinic.email || '');
-    setEditPassword(clinic.password || '');
+    setEditPassword(''); // passwords are never returned by the server; empty keeps the current one
     setEditAllowedFeatures(clinic.allowedFeatures || ['patients', 'calendar', 'prescriptions', 'laboratory', 'financials']);
     setModalError('');
   };
@@ -403,7 +403,7 @@ export default function ClinicsTab({
     if (!editingClinic) return;
     setModalError('');
 
-    if (!editName.trim() || !editEmail.trim() || !editPassword.trim()) {
+    if (!editName.trim() || !editEmail.trim()) {
       setModalError('يرجى ملء كافة الحقول الأساسية المطلوبة.');
       return;
     }
@@ -419,7 +419,7 @@ export default function ClinicsTab({
 
     setActionLoading(true);
     try {
-      await updateDoc(doc(db, 'clinics', editingClinic.id), {
+      const clinicUpdate: any = {
         name: editName.trim(),
         nameAr: editNameAr.trim(),
         nameEn: editNameEn.trim(),
@@ -429,11 +429,15 @@ export default function ClinicsTab({
         address: editAddress.trim(),
         prescriptionStyle: editPrescriptionStyle,
         email: editEmail.trim().toLowerCase(),
-        password: editPassword.trim(),
         subscriptionExpiresAt: editingClinic.subscriptionExpiresAt || '',
         allowedFeatures: editAllowedFeatures,
         updatedAt: new Date().toISOString()
-      });
+      };
+      // Only send a new password when the admin explicitly sets one
+      if (editPassword.trim()) {
+        clinicUpdate.password = editPassword.trim();
+      }
+      await updateDoc(doc(db, 'clinics', editingClinic.id), clinicUpdate);
 
       dialogs.alert('تم تحديث بيانات العيادة بنجاح!', { severity: 'success' });
       setEditingClinic(null);
@@ -730,7 +734,7 @@ export default function ClinicsTab({
                           <div className="text-slate-700 text-xs select-all">{clinic.email}</div>
                           <div className="flex items-center gap-2">
                             <span className="text-slate-900 font-bold bg-slate-100 px-2 py-0.5 rounded text-[11px]">
-                              {isPasswordVisible ? clinic.password : '••••••••'}
+                              {isPasswordVisible && clinic.password ? clinic.password : '••••••••'}
                             </span>
                             <button
                               onClick={() => togglePasswordVisibility(clinic.id)}

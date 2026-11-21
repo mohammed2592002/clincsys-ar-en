@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
-import { db, OperationType, handleDbError, getDocsSmart as getDocs, collection, addDoc, updateDoc, deleteDoc, doc, query, where, setDoc, clearQueryCache, clearTableCache } from './dbClient';
+import { db, OperationType, handleDbError, getDocsSmart as getDocs, collection, addDoc, updateDoc, deleteDoc, doc, query, where, setDoc, clearQueryCache, clearTableCache, getAuthToken, setAuthToken, clearAuthToken, authHeaders } from './dbClient';
 import { Clinic, StaffMember, Appointment } from './types';
 import { getEgyptTodayStr, normalizeDateStr } from './utils/timeUtils';
 import { useDialogs } from './components/DialogContext';
@@ -172,10 +172,13 @@ export default function App() {
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    const handleAuthExpired = () => handleLogout();
+    window.addEventListener('clinic-auth-expired', handleAuthExpired);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('clinic-auth-expired', handleAuthExpired);
     };
   }, []);
 
@@ -710,7 +713,7 @@ export default function App() {
       const pollForUpdates = async () => {
         if (!effectiveSyncClinicId || isUnmounted) return;
         try {
-          const res = await fetch(`/api/sync/updates?clinicId=${encodeURIComponent(effectiveSyncClinicId)}&since=${lastFetchedTimestamp}`);
+          const res = await fetch(`/api/sync/updates?clinicId=${encodeURIComponent(effectiveSyncClinicId)}&since=${lastFetchedTimestamp}`, { headers: { ...authHeaders() } });
           if (!res.ok) return;
           const contentType = res.headers.get('content-type') || '';
           if (!contentType.includes('application/json')) return;
@@ -765,7 +768,7 @@ export default function App() {
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
-        const wsUrl = `${protocol}//${host}/api/sync/ws?clinicId=${effectiveSyncClinicId}`;
+        const wsUrl = `${protocol}//${host}/api/sync/ws?clinicId=${effectiveSyncClinicId}&token=${encodeURIComponent(getAuthToken())}`;
 
         console.log('[Sync Engine] Connecting to WebSocket:', wsUrl);
         try {
@@ -1095,13 +1098,16 @@ export default function App() {
   const handleLogout = () => {
     setSession({ type: 'logged_out' });
     safeStorage.removeItem('dental_saas_session');
+    clearAuthToken();
     // Clear forms
     setLoginEmail('');
     setLoginPassword('');
     setLoginError('');
   };
 
-  // Handle custom login flow
+  // Handle custom login flow - credentials are verified on the SERVER only.
+  // The server checks the (hashed) password and returns a signed session token;
+  // passwords and PINs are never downloaded to the browser.
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
@@ -1127,7 +1133,8 @@ export default function App() {
           });
           if (adminCheckRes.ok) {
             const adminData = await adminCheckRes.json();
-            if (adminData.success) {
+            if (adminData.success && adminData.token) {
+              setAuthToken(adminData.token);
               saveSession({ type: 'admin' });
               setLoginLoading(false);
               return;
@@ -1138,96 +1145,56 @@ export default function App() {
         }
       }
 
-      // 2. Check Clinic credentials in Firestore
-      const clinicsRef = collection(db, 'clinics');
-      const q = query(clinicsRef, where('email', '==', emailClean));
-      let snap;
+      // 2. Server-side clinic login (manager password or staff password/PIN)
+      let loginRes: Response;
       try {
-        snap = await getDocs(q);
+        loginRes = await fetch('/api/auth/clinic-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailClean, password: passClean, role: loginRole === 'staff' ? 'staff' : 'manager' })
+        });
       } catch (err: any) {
-        handleDbError(err, OperationType.LIST, 'clinics');
-      }
-
-      if (snap.empty) {
-        setLoginError('البريد الإلكتروني هذا غير مسجل أو غير صحيح');
+        setLoginError('تعذر الاتصال بالخادم، يرجى التحقق من الإنترنت والمحاولة مرة أخرى');
         setLoginLoading(false);
         return;
       }
 
-      let matchedClinic: Clinic | null = null;
-      let matchedStaffName: string | undefined = undefined;
-      let matchedStaffRole: string | undefined = undefined;
-      let matchedStaffAllowedTabs: string[] | undefined = undefined;
-      let credentialMatched = false;
+      const loginData = await loginRes.json().catch(() => null);
 
-      snap.forEach((docSnap) => {
-        const data = docSnap.data();
-        const staffList: StaffMember[] = data.staffMembers || [];
-        const clinicData: Clinic = {
-          id: docSnap.id,
-          name: data.name || '',
-          email: data.email || '',
-          password: data.password || '',
-          createdAt: data.createdAt || '',
-          isActive: data.isActive !== false,
-          subscriptionExpiresAt: data.subscriptionExpiresAt || '',
-          staffPin: data.staffPin || '1234',
-          staffMembers: staffList
-        };
+      if (!loginRes.ok || !loginData?.success || !loginData?.token) {
+        setLoginError(loginData?.message || (loginRole === 'manager' ? 'كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى' : 'كلمة المرور أو رمز دخول الموظف غير صحيح، يرجى التأكد من الطبيب'));
+        setLoginLoading(false);
+        return;
+      }
 
-        if (loginRole === 'manager' && data.password === passClean) {
-          matchedClinic = clinicData;
-          credentialMatched = true;
-        } else if (loginRole === 'staff') {
-          // First check staffMembers array for individual staff login
-          const foundStaff = staffList.find(m => m.password === passClean);
-          if (foundStaff) {
-            matchedClinic = clinicData;
-            matchedStaffName = foundStaff.name;
-            matchedStaffRole = foundStaff.role;
-            matchedStaffAllowedTabs = foundStaff.allowedTabs;
-            credentialMatched = true;
-          } else if (clinicData.staffPin === passClean) {
-            // Backward compatibility fallback
-            matchedClinic = clinicData;
-            matchedStaffName = 'طاقم العيادة';
-            matchedStaffRole = 'استقبال / مساعد';
-            credentialMatched = true;
-          }
-        }
-      });
+      // Fetch fresh network time right before authentication to prevent client clock tampering
+      try {
+        await fetchNetworkTime();
+      } catch (e) {
+        console.warn('Could not sync network time before login, using offset.', e);
+      }
 
-      if (credentialMatched && matchedClinic) {
-        const clinicObj = matchedClinic;
-        
-        // Fetch fresh network time right before authentication to prevent client clock tampering
-        try {
-          await fetchNetworkTime();
-        } catch (e) {
-          console.warn('Could not sync network time before login, using offset.', e);
-        }
+      setAuthToken(loginData.token);
+      const clinicObj = loginData.clinic || {};
 
-        if (loginRole === 'manager') {
-          saveSession({
-            type: 'clinic',
-            clinicId: clinicObj.id,
-            clinicName: clinicObj.name
-          });
-          setStaffPinInput(clinicObj.staffPin || '1234');
-          setShowWelcomeLoader(true);
-        } else {
-          saveSession({
-            type: 'clinic_staff',
-            clinicId: clinicObj.id,
-            clinicName: clinicObj.name,
-            staffName: matchedStaffName,
-            staffRole: matchedStaffRole,
-            allowedTabs: matchedStaffAllowedTabs
-          });
-          setShowWelcomeLoader(true);
-        }
+      if (loginRole === 'manager') {
+        saveSession({
+          type: 'clinic',
+          clinicId: clinicObj.id,
+          clinicName: clinicObj.name || ''
+        });
+        setShowWelcomeLoader(true);
       } else {
-        setLoginError(loginRole === 'manager' ? 'كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى' : 'كلمة المرور أو رمز دخول الموظف غير صحيح، يرجى التأكد من الطبيب');
+        const staff = loginData.staff || {};
+        saveSession({
+          type: 'clinic_staff',
+          clinicId: clinicObj.id,
+          clinicName: clinicObj.name || '',
+          staffName: staff.name,
+          staffRole: staff.role,
+          allowedTabs: staff.allowedTabs
+        });
+        setShowWelcomeLoader(true);
       }
     } catch (err: any) {
       console.error(err);
@@ -1255,11 +1222,6 @@ export default function App() {
   if (session.type === 'logged_out') {
     return (
       <>
-        <DatabaseNoticeModal 
-          isOpen={isDbModalOpen ? true : undefined} 
-          onClose={() => setIsDbModalOpen(false)} 
-          autoCheckOnMount={true} 
-        />
         <LoginScreen
           loginRole={loginRole}
           setLoginRole={setLoginRole}
@@ -1273,7 +1235,6 @@ export default function App() {
           showPassword={showPassword}
           setShowPassword={setShowPassword}
           handleLoginSubmit={handleLoginSubmit}
-          onOpenDbNotice={() => setIsDbModalOpen(true)}
         />
       </>
     );

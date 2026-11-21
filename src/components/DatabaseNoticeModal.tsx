@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
+import {
   Database, 
   AlertTriangle, 
   RefreshCw, 
@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   CheckCircle2
 } from 'lucide-react';
+import { authHeaders } from '../dbClient';
 
 interface DbStatusResponse {
   isPostgres: boolean;
@@ -59,7 +60,7 @@ export const DatabaseNoticeModal: React.FC<DatabaseNoticeModalProps> = ({
   const checkDbStatus = async (isManual = false) => {
     setIsChecking(true);
     try {
-      const res = await fetch('/api/db-status', { cache: 'no-store' });
+      const res = await fetch('/api/db-status', { cache: 'no-store', headers: { ...authHeaders() } });
       if (res.ok) {
         const data: DbStatusResponse = await res.json();
         setDbStatus(data);
