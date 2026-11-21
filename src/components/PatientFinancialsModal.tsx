@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from 'react-i18next';
 import { db, query, where, setDoc, doc, getAppointmentsRef, cleanDbData, getDocsSmart as getDocs, getDocSmart } from '../dbClient';
 import { Appointment, Clinic, Patient } from '../types';
-import { Coins, DollarSign, Receipt, Check, RefreshCw, X, Printer, Wallet, Plus, Gift, Sparkles, ChevronDown, ChevronUp, History, Calendar, CreditCard, ArrowLeft, Award, Tag, AlertTriangle } from 'lucide-react';
+import { Coins, DollarSign, Receipt, Check, RefreshCw, X, Printer, Wallet, Plus, Gift, Sparkles, ChevronDown, ChevronUp, History, Calendar, CreditCard, ArrowLeft, Award, Tag, AlertTriangle, Info } from 'lucide-react';
 import { calculateEarnedPoints, calculatePointsRedemption, awardLoyaltyPoints, redeemLoyaltyPoints } from '../utils/loyaltyUtils';
 import { formatTimeTo12Hour } from './InteractiveCalendar';
 import { useDialogs } from './DialogContext';
@@ -369,6 +369,26 @@ export default function PatientFinancialsModal({
 
   const selectedAppointmentObj = appointments.find(a => a.id === selectedAppId);
 
+  const allPayments = React.useMemo(() => {
+    const flat: any[] = [];
+    appointments.forEach(app => {
+      getAppointmentPayments(app).forEach((pay: any) => {
+        flat.push({ ...pay, appId: app.id });
+      });
+    });
+    const ts = (pay: any) => {
+      const t = new Date(pay.createdAt || pay.date || '').getTime();
+      return isNaN(t) ? 0 : t;
+    };
+    const asc = [...flat].sort((a, b) => ts(a) - ts(b));
+    let cum = 0;
+    const withRem = asc.map(pay => {
+      cum += Number(pay.amount) || 0;
+      return { ...pay, remainingAfter: Math.max(0, totalCost - cum) };
+    });
+    return withRem.reverse();
+  }, [appointments, totalCost]);
+
   const handleConfirmPointsPayment = async () => {
     const pts = Number(pointsInput);
     const egp = Number(egpInput);
@@ -686,16 +706,16 @@ export default function PatientFinancialsModal({
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white shrink-0">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30">
-                  <Coins className="h-5 w-5" />
+                <div className="w-11 h-11 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/30 shrink-0">
+                  <Info className="h-5 w-5" />
                 </div>
                 <div>
                   <h3 className="font-bold text-base text-white flex items-center gap-2">
                     {isEn ? 'Patient Account Statement & Installments' : 'كشف الحساب والأقساط'}
                   </h3>
-                  <p className="text-xs text-slate-400 font-medium flex items-center gap-2 mt-0.5">
-                    <span>{isEn ? 'Patient:' : 'المريض:'} <strong className="text-slate-200">{patientName}</strong></span>
-                    {patientPhone && <span className="font-mono text-slate-400" dir="ltr">• {patientPhone}</span>}
+                  <p className="text-xs text-slate-400 font-medium mt-0.5">
+                    <strong className="text-slate-300">{patientName}</strong>
+                    {patientPhone && <span className="font-mono text-slate-500" dir="ltr"> • {patientPhone}</span>}
                   </p>
                 </div>
               </div>
@@ -734,90 +754,53 @@ export default function PatientFinancialsModal({
                 </div>
               ) : (
                 <>
-                  {/* Financial Metrics Bar */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* Total Cost */}
-                    <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
-                      <div>
-                        <span className="text-xs text-slate-500 font-bold block mb-1">{isEn ? 'Total Bill (Cost)' : 'إجمالي الحساب (التكلفة)'}</span>
-                        <span className="text-lg font-black text-slate-900 font-mono">
-                          {totalCost.toLocaleString()} <span className="text-xs font-normal text-slate-500">{isEn ? 'EGP' : 'ج.م'}</span>
-                        </span>
+                  {/* Remaining Balance Card */}
+                  {(() => {
+                    const paidPct = totalCost > 0 ? Math.min(100, Math.round((totalPaid / totalCost) * 100)) : (totalPaid > 0 ? 100 : 0);
+                    return (
+                      <div className={`rounded-3xl border p-5 sm:p-6 space-y-3.5 shadow-2xs ${totalRemaining > 0 ? 'bg-red-50/70 border-red-200' : 'bg-emerald-50/60 border-emerald-200'}`}>
+                        <div className={`text-sm font-bold ${totalRemaining > 0 ? 'text-red-500' : 'text-emerald-700'}`}>
+                          {isEn ? 'Remaining balance on patient' : 'المتبقي على المريض'}
+                        </div>
+                        <div className={`text-4xl font-black font-mono tracking-tight ${totalRemaining > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {totalRemaining.toLocaleString()} <span className="text-lg font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
+                        </div>
+                        <div className="h-2.5 w-full bg-slate-200/80 rounded-full overflow-hidden">
+                          <div className="h-full bg-gradient-to-l from-emerald-500 to-teal-500 rounded-full transition-all" style={{ width: `${paidPct}%` }} />
+                        </div>
+                        <div className="flex items-center justify-between text-xs font-bold">
+                          <span className="text-emerald-700">{isEn ? 'Paid' : 'المدفوع'} <span className="font-mono">{totalPaid.toLocaleString()}</span> {isEn ? 'EGP' : 'ج.م'}</span>
+                          <span className="text-slate-500">{isEn ? 'Total bill' : 'إجمالي الحساب'} <span className="font-mono">{totalCost.toLocaleString()}</span> {isEn ? 'EGP' : 'ج.م'}</span>
+                        </div>
                       </div>
-                      <div className="p-2.5 bg-slate-100 rounded-xl text-slate-600">
-                        <Receipt className="h-5 w-5" />
-                      </div>
-                    </div>
-
-                    {/* Paid */}
-                    <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200 shadow-2xs flex items-center justify-between">
-                      <div>
-                        <span className="text-xs text-emerald-800 font-bold block mb-1">{isEn ? 'Total Paid' : 'المحّصل الفعلي (المدفوع)'}</span>
-                        <span className="text-lg font-black text-emerald-700 font-mono">
-                          {totalPaid.toLocaleString()} <span className="text-xs font-normal text-emerald-600">{isEn ? 'EGP' : 'ج.م'}</span>
-                        </span>
-                      </div>
-                      <div className="p-2.5 bg-emerald-100 text-emerald-700 rounded-xl">
-                        <Check className="h-5 w-5" />
-                      </div>
-                    </div>
-
-                    {/* Remaining */}
-                    <div className={`p-4 rounded-2xl border shadow-2xs flex items-center justify-between ${
-                      totalRemaining > 0
-                        ? 'bg-red-50/90 border-red-200 text-red-950'
-                        : 'bg-slate-50 border-slate-200 text-slate-700'
-                    }`}>
-                      <div>
-                        <span className={`text-xs font-bold block mb-1 ${totalRemaining > 0 ? 'text-red-800' : 'text-slate-700'}`}>{isEn ? 'Remaining Balance' : 'المتبقي (الأقساط المستحقة)'}</span>
-                        <span className={`text-lg font-black font-mono ${totalRemaining > 0 ? 'text-red-600' : 'text-slate-600'}`}>
-                          {totalRemaining.toLocaleString()} <span className="text-xs font-normal">{isEn ? 'EGP' : 'ج.م'}</span>
-                        </span>
-                      </div>
-                      <div className={`p-2.5 rounded-xl ${totalRemaining > 0 ? 'bg-red-100 text-red-600' : 'bg-slate-200 text-slate-600'}`}>
-                        <Wallet className="h-5 w-5" />
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                   {/* Payment Collector Panel */}
                   {!showPaymentBox ? (
-                    <div className="flex items-center justify-between bg-white border border-slate-200 p-4 rounded-2xl shadow-2xs hover:border-slate-300 transition">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-emerald-600 text-white rounded-xl shadow-2xs">
-                          <Plus className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <span className="font-bold text-slate-900 text-sm block">
-                            {isEn ? 'Collect New Payment / Installment' : 'تحصيل دفعة أو قسط جديد'}
-                          </span>
-                          <p className="text-xs text-slate-500 font-medium mt-0.5">
-                            {isEn ? 'Record due installment payments for patient sessions instantly.' : 'سجل الدفعات المستحقة على جلسات المريض فوراً بكل سهولة.'}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowPaymentBox(true);
-                          if (!selectedAppId && appointments.length > 0) {
-                            const firstPending = appointments.find(a => (a.remainingAmount !== undefined ? a.remainingAmount : 0) > 0) || appointments[0];
-                            if (firstPending) {
-                              setSelectedAppId(firstPending.id);
-                              const rem = firstPending.remainingAmount !== undefined ? firstPending.remainingAmount : 0;
-                              if (rem > 0) setPaymentAmount(rem);
-                            }
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPaymentBox(true);
+                        if (!selectedAppId && appointments.length > 0) {
+                          const firstPending = appointments.find(a => (a.remainingAmount !== undefined ? a.remainingAmount : 0) > 0) || appointments[0];
+                          if (firstPending) {
+                            setSelectedAppId(firstPending.id);
+                            const rem = firstPending.remainingAmount !== undefined ? firstPending.remainingAmount : 0;
+                            if (rem > 0) setPaymentAmount(rem);
                           }
-                          setTimeout(() => {
-                            paymentBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                          }, 50);
-                        }}
-                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 shrink-0 cursor-pointer"
-                      >
-                        <Wallet className="h-4 w-4" />
-                        {isEn ? 'New Payment' : 'سداد دفعة جديدة'}
-                      </button>
-                    </div>
+                        }
+                        setTimeout(() => {
+                          paymentBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 50);
+                      }}
+                      className="w-full py-4 bg-gradient-to-l from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-base rounded-2xl shadow-lg shadow-emerald-500/25 transition flex items-center justify-center gap-2.5 cursor-pointer"
+                    >
+                      <span className="w-6 h-6 rounded-full bg-white/25 flex items-center justify-center">
+                        <Plus className="h-4 w-4" />
+                      </span>
+                      {isEn ? 'Collect New Payment / Installment' : 'تحصيل دفعة أو قسط جديد'}
+                    </button>
                   ) : (
                     <div ref={paymentBoxRef} className="bg-white p-5 rounded-2xl border-2 border-emerald-500 shadow-sm space-y-4">
                       {/* Form Header */}
@@ -974,6 +957,61 @@ export default function PatientFinancialsModal({
                       )}
                     </div>
                   )}
+
+                  {/* Payments Log (flat, newest first) */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                        <span>{isEn ? 'Payments Log' : 'سجل الدفعات'}</span>
+                        <span className="text-[11px] font-black text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full font-mono">{allPayments.length}</span>
+                      </h4>
+                      <span className="text-xs font-bold text-emerald-700">
+                        {isEn ? 'Total paid' : 'إجمالي المدفوع'} <span className="font-mono">{totalPaid.toLocaleString()}</span> {isEn ? 'EGP' : 'ج.م'}
+                      </span>
+                    </div>
+
+                    {allPayments.length === 0 ? (
+                      <div className="p-8 text-center bg-white border border-slate-200 rounded-2xl text-slate-400 font-medium text-xs">
+                        {isEn ? 'No payments recorded yet.' : 'لا توجد دفعات مسجلة بعد.'}
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <div className="space-y-2.5 max-h-[240px] overflow-y-auto pr-1">
+                          {allPayments.map((pay, idx) => {
+                            const norm = normalizePaymentMethod(pay.paymentMethod);
+                            const title = isEn
+                              ? `${getPaymentMethodLabel(pay.paymentMethod)} payment`
+                              : norm === 'كاش' ? 'دفعة نقدية' : `دفعة ${getPaymentMethodLabel(pay.paymentMethod)}`;
+                            let dateLabel = pay.date || '';
+                            const parsed = new Date(pay.createdAt || pay.date || '');
+                            if (!isNaN(parsed.getTime())) {
+                              dateLabel = parsed.toLocaleDateString(isEn ? 'en-US' : 'ar-EG', { day: 'numeric', month: 'long', year: 'numeric' });
+                            }
+                            return (
+                              <div key={pay.id || idx} className="flex items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <span className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                                    <Check className="h-3.5 w-3.5" />
+                                  </span>
+                                  <div className="min-w-0">
+                                    <div className="text-sm font-bold text-slate-900 truncate">{title}</div>
+                                    <div className="text-[11px] text-slate-400 font-medium">{dateLabel}</div>
+                                  </div>
+                                </div>
+                                <div className="text-end shrink-0">
+                                  <div className="text-base font-black text-emerald-600 font-mono">{Number(pay.amount).toLocaleString()} <span className="text-[11px] font-bold">{isEn ? 'EGP' : 'ج.م'}</span></div>
+                                  <div className="text-[10px] text-slate-400 font-medium">{isEn ? 'Remaining after' : 'متبقي بعدها'} <span className="font-mono">{Number(pay.remainingAfter).toLocaleString()}</span> {isEn ? 'EGP' : 'ج.م'}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {allPayments.length > 3 && (
+                          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-slate-50 to-transparent rounded-b-2xl" />
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Sessions & Invoices Breakdown */}
                   <div className="space-y-3">
@@ -1142,9 +1180,9 @@ export default function PatientFinancialsModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold rounded-2xl text-xs transition cursor-pointer"
+                className="flex-1 px-5 py-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-2xl text-sm transition cursor-pointer"
               >
-                {isEn ? 'Close Window' : 'إغلاق النافذة'}
+                {isEn ? 'Close' : 'إغلاق'}
               </button>
 
               {onNavigateToFullFile && patientId && (
