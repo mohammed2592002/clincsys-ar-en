@@ -4345,28 +4345,24 @@ export default function ClinicSettings({
               </div>
 
               {/* Loyalty Enable/Disable Switch */}
-              <label className="relative inline-flex items-center cursor-pointer select-none px-2 self-end sm:self-auto gap-2.5">
-                <input
-                  type="checkbox"
-                  checked={loyaltyEnabledInput}
-                  onChange={(e) => setLoyaltyEnabledInput(e.target.checked)}
-                  className="sr-only"
-                />
-                <div
+              <div className="inline-flex items-center select-none px-2 self-end sm:self-auto gap-2.5">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={loyaltyEnabledInput}
+                  aria-label={isEn ? 'Loyalty Program' : 'نظام الولاء'}
                   dir="ltr"
-                  onClick={() => setLoyaltyEnabledInput(!loyaltyEnabledInput)}
-                  className={`flex items-center h-7 w-12 shrink-0 cursor-pointer rounded-full p-1 transition-all duration-200 ease-in-out ${
+                  onClick={() => setLoyaltyEnabledInput((enabled) => !enabled)}
+                  className={`inline-flex items-center h-7 w-12 shrink-0 cursor-pointer rounded-full p-1 transition-all duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 ${
                     loyaltyEnabledInput ? 'bg-amber-500 justify-end' : 'bg-slate-300 justify-start'
                   }`}
                 >
-                  <span
-                    className="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-md ring-0"
-                  />
-                </div>
+                  <span className="pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-md ring-0" />
+                </button>
                 <span className="text-xs font-black text-slate-800">
                   {loyaltyEnabledInput ? (isEn ? 'Loyalty Program Enabled' : 'تفعيل نظام الولاء') : (isEn ? 'Loyalty Program Disabled' : 'تعطيل نظام الولاء')}
                 </span>
-              </label>
+              </div>
             </div>
 
             {/* View 1: Rules & Settings Form */}
