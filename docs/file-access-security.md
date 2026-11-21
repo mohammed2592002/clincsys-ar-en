@@ -69,3 +69,30 @@ covers: owner manager/staff read, cross-clinic manager/staff 404, unauthenticate
 key segment, and backward compatibility for legacy disk- and database-stored
 files. Before the fix 5/10 checks passed; after it 10/10 pass. The finance,
 offline, and live-bugs suites were re-run and pass unchanged.
+
+## Existing PostgreSQL databases (2026-11-21)
+
+`20261121_001_ensure_files_clinic_id` adds the ownership column separately
+from the original base-schema migration. Databases that already applied the
+base migration must not depend on edits to that historical migration. Fresh
+installs safely skip the existing column. File reads accept both PostgreSQL's
+lowercase `clinicid` result key and the local adapter's `clinicId` key.
+
+Real-schema regression (requires local PostgreSQL server binaries):
+
+```sh
+PG_TEST_BIN=/path/to/postgresql/bin npm run test:file-migrations
+```
+
+This creates and destroys its own temporary PostgreSQL cluster. It never
+connects to an existing database. It covers an already-migrated legacy schema
+without the files ownership column, a fresh database, actual file upload and
+byte-for-byte readback, cross-clinic manager/staff rejection, spoofed upload
+rejection, legacy file preservation, and clean restart without replaying the
+new migration. R2 credentials are explicitly stripped; upload coverage uses
+the supported local fallback, not a real cloud bucket.
+
+Before the migration, the legacy-schema upload returns HTTP 500 because
+`clinicid` does not exist. With only the migration applied, real PostgreSQL
+exposes the lowercase-result-key bug (three isolation checks fail). With both
+fixes, all ten access checks pass on both legacy and fresh PostgreSQL schemas.

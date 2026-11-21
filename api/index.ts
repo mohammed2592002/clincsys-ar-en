@@ -1728,6 +1728,16 @@ async function runMigrations() {
           } catch (e) {}
           await loadTableSchemas();
         }
+      },
+      {
+        id: '20261121_001_ensure_files_clinic_id',
+        up: async () => {
+          // Existing installations already recorded the base-schema migration.
+          // Keep this separate so they receive file ownership without replaying it.
+          // IF NOT EXISTS also makes fresh installs and interrupted retries safe.
+          await dbClient.execute(`ALTER TABLE files ADD COLUMN IF NOT EXISTS clinicId TEXT;`);
+          await loadTableSchemas();
+        }
       }
     ];
 
@@ -3437,7 +3447,9 @@ app.get('/api/files', async (req, res) => {
       // log loudly; the startup migration adds the column.
       console.warn('[File Access] Ownership lookup failed (pre-migration schema?), serving without clinic check:', ownerErr);
     }
-    const ownerClinicId = ownerRow && ownerRow.clinicId ? String(ownerRow.clinicId) : '';
+    // PostgreSQL folds unquoted column names to lowercase; the local adapter
+    // preserves camelCase. Honor ownership from either backend.
+    const ownerClinicId = String(ownerRow?.clinicId || ownerRow?.clinicid || '');
     if (ownerClinicId && ownerClinicId !== 'global' && auth.type !== 'admin' && auth.clinicId !== ownerClinicId) {
       return res.status(404).send('File not found');
     }
