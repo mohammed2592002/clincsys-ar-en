@@ -267,11 +267,21 @@ function isRateLimited(req: express.Request): boolean {
 }
 
 // ---- Response sanitization: secrets never leave the server ----
+// Legacy records may carry a nested `data` snapshot (old clients wrote the
+// whole API row back, embedding a full copy of the clinic inside itself).
+// That snapshot holds plaintext secrets, so it is stripped from responses too.
+function stripLegacyNestedData(record: any): void {
+  if (record && typeof record === 'object' && record.data && typeof record.data === 'object') {
+    delete record.data;
+  }
+}
+
 function sanitizeClinicRecord(item: any): any {
   if (!item || typeof item !== 'object') return item;
   const c: any = { ...item };
   delete c.password;
   delete c.staffPin;
+  stripLegacyNestedData(c);
   if (Array.isArray(c.staffMembers)) {
     c.staffMembers = c.staffMembers.map((m: any) => {
       if (!m || typeof m !== 'object') return m;
@@ -286,6 +296,7 @@ function sanitizeUserRecord(item: any): any {
   if (!item || typeof item !== 'object') return item;
   const u: any = { ...item };
   delete u.password;
+  stripLegacyNestedData(u);
   return u;
 }
 
@@ -300,6 +311,9 @@ function isSafeFieldName(field: any): boolean {
 function secureClinicPayload(data: any, existing: any): any {
   const out: any = { ...data };
   const ex: any = existing || {};
+
+  // Drop legacy nested `data` snapshots so stored records get cleaned on write
+  stripLegacyNestedData(out);
 
   if (typeof out.password === 'string' && out.password.trim()) {
     if (!isPasswordHashed(out.password)) out.password = hashPassword(out.password.trim());
@@ -352,6 +366,10 @@ async function migrateClinicSecrets(clinicRowId: string, clinic: any): Promise<v
   try {
     let changed = false;
     const updated: any = { ...clinic };
+    if (updated.data && typeof updated.data === 'object') {
+      delete updated.data; // legacy nested snapshot may hold plaintext secrets
+      changed = true;
+    }
     if (typeof updated.password === 'string' && updated.password && !isPasswordHashed(updated.password)) {
       updated.password = hashPassword(updated.password);
       changed = true;
