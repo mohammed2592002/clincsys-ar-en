@@ -62,8 +62,7 @@
     "download": "Download",
     "upload": "Upload",
     "sync": "Sync",
-    "refresh": "Refresh",
-    "footerNote": "Clinic Management System Multi-Tenant SaaS Platform • Each clinic data is securely and independently isolated"
+    "refresh": "Refresh"
   },
   "nav": {
     "patients": "Patients Manager",

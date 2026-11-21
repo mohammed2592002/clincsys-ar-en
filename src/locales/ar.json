@@ -62,8 +62,7 @@
     "download": "تحميل",
     "upload": "رفع",
     "sync": "مزامنة",
-    "refresh": "تحديث",
-    "footerNote": "Clinic Management System Multi-Tenant SaaS Platform • كل عيادة بياناتها معزولة بشكل آمن ومستقل"
+    "refresh": "تحديث"
   },
   "nav": {
     "patients": "إدارة المرضى",
