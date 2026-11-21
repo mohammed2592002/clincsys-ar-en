@@ -2537,14 +2537,43 @@ export default function InteractiveCalendar({
                               {app.patientName}
                             </h4>
                             {app.status !== 'cancelled' && (
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); handleOpenEditPatientModal(app); }}
-                                className="p-1 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition shrink-0 cursor-pointer"
-                                title={isEn ? 'Edit Patient Data' : 'تعديل بيانات المريض'}
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </button>
+                              <div className="flex items-center gap-1 shrink-0 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleOpenEditPatientModal(app); }}
+                                  className="p-1 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition cursor-pointer"
+                                  title={isEn ? 'Edit Patient Data' : 'تعديل بيانات المريض'}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFinancialModalPatient({
+                                      id: app.patientId,
+                                      name: app.patientName,
+                                      phone: app.patientPhone
+                                    });
+                                  }}
+                                  className="text-[10px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg transition cursor-pointer flex items-center gap-1"
+                                  title={isEn ? 'Patient Financials & Accounts' : 'المالية والحسابات التابعة للمريض'}
+                                >
+                                  <Coins className="h-3 w-3" />
+                                  {isEn ? 'Financials' : 'الماليات'}
+                                </button>
+                                {onOpenMedicalFile && app.patientId && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onOpenMedicalFile(app.patientId); }}
+                                    className="text-[10px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg transition cursor-pointer flex items-center gap-1"
+                                    title={isEn ? 'Patient Medical File' : 'الملف الطبي للمريض'}
+                                  >
+                                    <FileText className="h-3 w-3" />
+                                    {isEn ? 'File' : 'الملف'}
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
                           <p className="text-[11px] text-slate-400 mt-0.5 font-medium truncate">
@@ -2719,42 +2748,6 @@ export default function InteractiveCalendar({
                             <Send className="h-3 w-3" />
                             {isEn ? 'Reminder' : 'تذكير'}
                           </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFinancialModalPatient({
-                                id: app.patientId,
-                                name: app.patientName,
-                                phone: app.patientPhone
-                              });
-                            }}
-                            className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-xl font-bold transition cursor-pointer flex items-center gap-1"
-                            title={isEn ? 'Patient Financials & Accounts' : 'المالية والحسابات التابعة للمريض'}
-                          >
-                            <Coins className="h-3 w-3" />
-                            {isEn ? 'Financials' : 'الماليات'}
-                          </button>
-                          {onOpenMedicalFile && app.patientId && (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); onOpenMedicalFile(app.patientId); }}
-                              className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-xl font-bold transition cursor-pointer flex items-center gap-1"
-                              title={isEn ? 'Patient Medical File' : 'الملف الطبي للمريض'}
-                            >
-                              <FileText className="h-3 w-3" />
-                              {isEn ? 'File' : 'الملف'}
-                            </button>
-                          )}
-                          {app.status === 'waiting' && (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); handleOpenEditPatientModal(app); }}
-                              className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-xl font-bold transition cursor-pointer"
-                            >
-                              {isEn ? 'Edit' : 'تعديل'}
-                            </button>
-                          )}
                         </>
                       )}
 
