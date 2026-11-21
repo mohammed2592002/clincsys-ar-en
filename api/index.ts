@@ -644,125 +644,153 @@ class LocalJsonDbEmulator {
       const whereMatch = cleanSql.match(/where\s+(.+?)(?:\s+(?:order\s+by|limit|group\s+by)|$)/i);
       if (whereMatch) {
         const whereClause = whereMatch[1].trim();
-        const splitRegex = whereClause.toLowerCase().includes(' or ') ? /\s+or\s+/i : /\s+and\s+/i;
-        const conditions = whereClause.split(splitRegex);
-        
         let argIdx = 0;
-        const filters: ((r: any) => boolean)[] = [];
 
-        for (const condition of conditions) {
-          const cond = condition.trim();
-          if (cond === '1=1' || !cond) {
-            continue;
+        // Split a clause on a top-level logical keyword, ignoring anything inside parentheses
+        const splitTopLevel = (clause: string, keyword: 'and' | 'or'): string[] => {
+          const parts: string[] = [];
+          const lower = clause.toLowerCase();
+          const needle = ` ${keyword} `;
+          let depth = 0;
+          let current = '';
+          let i = 0;
+          while (i < clause.length) {
+            const ch = clause[i];
+            if (ch === '(') depth++;
+            else if (ch === ')') depth--;
+            if (depth === 0 && lower.startsWith(needle, i)) {
+              parts.push(current);
+              current = '';
+              i += needle.length;
+              continue;
+            }
+            current += ch;
+            i++;
           }
+          parts.push(current);
+          return parts;
+        };
 
-          // Check for json_extract
+        // Strip parentheses only when they wrap the entire expression
+        const stripParens = (condRaw: string): string => {
+          let c = condRaw.trim();
+          while (c.startsWith('(') && c.endsWith(')')) {
+            let depth = 0;
+            let wraps = true;
+            for (let i = 0; i < c.length; i++) {
+              if (c[i] === '(') depth++;
+              else if (c[i] === ')') {
+                depth--;
+                if (depth === 0 && i < c.length - 1) { wraps = false; break; }
+              }
+            }
+            if (!wraps) break;
+            c = c.slice(1, -1).trim();
+          }
+          return c;
+        };
+
+        const compareValues = (fieldVal: any, op: string, val: any): boolean => {
+          if (fieldVal === undefined || fieldVal === null) return false;
+          if (op === '=') return String(fieldVal) === String(val);
+          if (op === '!=') return String(fieldVal) !== String(val);
+          if (op === 'like') {
+            const searchStr = String(val).replace(/%/g, '');
+            return String(fieldVal).toLowerCase().includes(searchStr.toLowerCase());
+          }
+          const numVal = Number(val);
+          const numFieldVal = Number(fieldVal);
+          const isNum = !isNaN(numVal) && !isNaN(numFieldVal);
+          if (op === '<') return isNum ? numFieldVal < numVal : String(fieldVal) < String(val);
+          if (op === '>') return isNum ? numFieldVal > numVal : String(fieldVal) > String(val);
+          if (op === '<=') return isNum ? numFieldVal <= numVal : String(fieldVal) <= String(val);
+          if (op === '>=') return isNum ? numFieldVal >= numVal : String(fieldVal) >= String(val);
+          return false;
+        };
+
+        // Parse a single comparison condition into a row filter.
+        // Always consumes one arg per `?` in the condition, even when the
+        // shape is unknown, so later conditions stay aligned with their args.
+        const parseCondition = (condRaw: string): ((r: any) => boolean) | null => {
+          const cond = stripParens(condRaw);
+          if (cond === '1=1' || !cond) return null;
+
+          // json_extract(data, '$.field') op ?
           const jsonMatch = cond.match(/json_extract\(data,\s*'\$\.([^']+)'\)\s*(=|!=|<|>|<=|>=|like)\s*\?/i);
           if (jsonMatch) {
             const fieldName = jsonMatch[1];
             const op = jsonMatch[2].toLowerCase();
             const val = args[argIdx++];
-
-            filters.push((r) => {
+            return (r) => {
               try {
                 const parsed = safeParseJson(r.data);
-                const fieldVal = parsed[fieldName];
-                if (fieldVal === undefined || fieldVal === null) return false;
-
-                if (op === '=') return String(fieldVal) === String(val);
-                if (op === '!=') return String(fieldVal) !== String(val);
-                if (op === 'like') {
-                  const searchStr = String(val).replace(/%/g, '');
-                  return String(fieldVal).toLowerCase().includes(searchStr.toLowerCase());
-                }
-
-                const numVal = Number(val);
-                const numFieldVal = Number(fieldVal);
-                const isNum = !isNaN(numVal) && !isNaN(numFieldVal);
-
-                if (op === '<') return isNum ? numFieldVal < numVal : String(fieldVal) < String(val);
-                if (op === '>') return isNum ? numFieldVal > numVal : String(fieldVal) > String(val);
-                if (op === '<=') return isNum ? numFieldVal <= numVal : String(fieldVal) <= String(val);
-                if (op === '>=') return isNum ? numFieldVal >= numVal : String(fieldVal) >= String(val);
+                return compareValues(parsed[fieldName], op, val);
               } catch (e) {}
               return false;
-            });
-            continue;
+            };
           }
 
-          // Check for standard column operators with ?
+          // column op ?
           const colParamMatch = cond.match(/^([a-zA-Z0-9_]+)\s*(=|!=|<|>|<=|>=|like)\s*\?$/i);
           if (colParamMatch) {
             const colName = colParamMatch[1];
             const op = colParamMatch[2].toLowerCase();
             const val = args[argIdx++];
-
-            filters.push((r) => {
+            return (r) => {
               const keys = Object.keys(r);
               const matchedKey = keys.find(k => k.toLowerCase() === colName.toLowerCase());
               if (!matchedKey) return false;
-
-              const fieldVal = r[matchedKey];
-              if (fieldVal === undefined || fieldVal === null) return false;
-
-              if (op === '=') return String(fieldVal) === String(val);
-              if (op === '!=') return String(fieldVal) !== String(val);
-              if (op === 'like') {
-                const searchStr = String(val).replace(/%/g, '');
-                return String(fieldVal).toLowerCase().includes(searchStr.toLowerCase());
-              }
-
-              const numVal = Number(val);
-              const numFieldVal = Number(fieldVal);
-              const isNum = !isNaN(numVal) && !isNaN(numFieldVal);
-
-              if (op === '<') return isNum ? numFieldVal < numVal : String(fieldVal) < String(val);
-              if (op === '>') return isNum ? numFieldVal > numVal : String(fieldVal) > String(val);
-              if (op === '<=') return isNum ? numFieldVal <= numVal : String(fieldVal) <= String(val);
-              if (op === '>=') return isNum ? numFieldVal >= numVal : String(fieldVal) >= String(val);
-              return false;
-            });
-            continue;
+              return compareValues(r[matchedKey], op, val);
+            };
           }
 
-          // Check for standard column with static values (e.g., isActive = 1 or isactive = 1)
+          // column op static value (e.g. isActive = 1)
           const colStaticMatch = cond.match(/^([a-zA-Z0-9_]+)\s*(=|!=|<|>|<=|>=)\s*(.+)$/i);
           if (colStaticMatch) {
             const colName = colStaticMatch[1];
             const op = colStaticMatch[2].toLowerCase();
             const valStr = colStaticMatch[3].trim().replace(/['"`]/g, '');
-
-            filters.push((r) => {
+            return (r) => {
               const keys = Object.keys(r);
               const matchedKey = keys.find(k => k.toLowerCase() === colName.toLowerCase());
               if (!matchedKey) return false;
-
-              const fieldVal = r[matchedKey];
-              if (fieldVal === undefined || fieldVal === null) return false;
-
-              if (op === '=') return String(fieldVal) === valStr;
-              if (op === '!=') return String(fieldVal) !== valStr;
-
-              const numVal = Number(valStr);
-              const numFieldVal = Number(fieldVal);
-              const isNum = !isNaN(numVal) && !isNaN(numFieldVal);
-
-              if (op === '<') return isNum ? numFieldVal < numVal : String(fieldVal) < valStr;
-              if (op === '>') return isNum ? numFieldVal > numVal : String(fieldVal) > valStr;
-              if (op === '<=') return isNum ? numFieldVal <= numVal : String(fieldVal) <= valStr;
-              if (op === '>=') return isNum ? numFieldVal >= numVal : String(fieldVal) >= valStr;
-              return false;
-            });
-            continue;
+              return compareValues(r[matchedKey], op, valStr);
+            };
           }
+
+          // Unknown condition shape: consume its placeholders to keep arg
+          // alignment, but do not filter rows on it.
+          const placeholderCount = (cond.match(/\?/g) || []).length;
+          argIdx += placeholderCount;
+          return null;
+        };
+
+        // Build a filter for a condition that may itself be an AND/OR group
+        const buildFilter = (condRaw: string): ((r: any) => boolean) | null => {
+          const cond = stripParens(condRaw);
+          const orParts = splitTopLevel(cond, 'or');
+          if (orParts.length > 1) {
+            const subs = orParts.map(buildFilter).filter((f): f is (r: any) => boolean => f !== null);
+            if (subs.length === 0) return null;
+            return (r) => subs.some(f => f(r));
+          }
+          const andParts = splitTopLevel(cond, 'and');
+          if (andParts.length > 1) {
+            const subs = andParts.map(buildFilter).filter((f): f is (r: any) => boolean => f !== null);
+            if (subs.length === 0) return null;
+            return (r) => subs.every(f => f(r));
+          }
+          return parseCondition(cond);
+        };
+
+        const filters: ((r: any) => boolean)[] = [];
+        for (const cond of splitTopLevel(whereClause, 'and')) {
+          const f = buildFilter(cond);
+          if (f) filters.push(f);
         }
 
         if (filters.length > 0) {
-          if (whereClause.toLowerCase().includes(' or ')) {
-            table = table.filter(r => filters.some(f => f(r)));
-          } else {
-            table = table.filter(r => filters.every(f => f(r)));
-          }
+          table = table.filter(r => filters.every(f => f(r)));
         }
       }
 
@@ -2595,7 +2623,10 @@ app.post('/api/db', async (req, res) => {
             if (row.data) {
               existing = safeParseJson(row.data);
             }
-            finalData = { ...row, ...existing, ...data, id: finalId };
+            // Never merge the raw `data` JSON column back into the document,
+            // otherwise it gets re-serialized as a stale nested `data` key.
+            const { data: _rawDataColumn, ...rowColumns } = row;
+            finalData = { ...rowColumns, ...existing, ...data, id: finalId };
           }
         } catch (e) {
           // ignore parsing errors
@@ -2664,7 +2695,10 @@ app.post('/api/db', async (req, res) => {
         if (row.data) {
           parsedData = safeParseJson(row.data);
         }
-        existing = { ...row, ...parsedData };
+        // Never merge the raw `data` JSON column back into the document,
+        // otherwise it gets re-serialized as a stale nested `data` key.
+        const { data: _rawDataColumn, ...rowColumns } = row;
+        existing = { ...rowColumns, ...parsedData };
       }
       
       const updated0 = { ...existing, ...data, id: finalId };
@@ -2879,7 +2913,10 @@ app.post('/api/db/batch', async (req, res) => {
           if (row.data) {
             parsedData = safeParseJson(row.data);
           }
-          currentData = { ...row, ...parsedData };
+          // Never merge the raw `data` JSON column back into the document,
+          // otherwise it gets re-serialized as a stale nested `data` key.
+          const { data: _rawDataColumn, ...rowColumns } = row;
+          currentData = { ...rowColumns, ...parsedData };
         }
         const updated0 = { ...currentData, ...data, id: finalId };
         let updated = updated0;
