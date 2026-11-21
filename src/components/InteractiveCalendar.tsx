@@ -2191,7 +2191,7 @@ export default function InteractiveCalendar({
       {/* Main Grid: Day list (right in RTL) + Sidebar (calendar & revenue) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* Day List Column */}
-        <div className="lg:col-span-8 flex flex-col space-y-4 min-w-0">
+        <div className="lg:col-span-8 flex flex-col space-y-4 min-w-0 order-2 lg:order-1">
           <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
             {/* List Header: title + quick date pills */}
             <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-slate-100">
@@ -2692,8 +2692,8 @@ export default function InteractiveCalendar({
           </div>
         </div>
 
-        {/* Sidebar Column: Mini Calendar + Daily Revenue */}
-        <div className="lg:col-span-4 space-y-5">
+        {/* Sidebar Column: Mini Calendar + Daily Revenue (pinned on top on mobile) */}
+        <div className="lg:col-span-4 space-y-5 order-1 lg:order-2">
           {/* Mini Calendar Card */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
             <div className="flex items-center justify-between mb-3 gap-2">
