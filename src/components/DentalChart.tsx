@@ -2036,74 +2036,73 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
 
       {/* Active Multi-Tooth Selection Mode Banner */}
       {isMultiSelectMode && !readOnly && (
-        <div className="w-full max-w-[720px] mx-auto bg-slate-900 border-2 border-sky-500/90 rounded-2xl p-3.5 shadow-2xl space-y-2.5 animate-fade-in text-white my-2">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-sky-500"></span>
+        <div className="w-full max-w-[720px] mx-auto bg-white border border-[#e4e9f3] rounded-[24px] p-4 shadow-[0_10px_34px_rgba(28,43,74,0.08)] space-y-3 animate-fade-in text-[#1c2b4a] my-2">
+          {/* Header: title + on/off switch (switch off = cancel selection mode) */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-xl bg-[#4d9484]/10 flex items-center justify-center shrink-0">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 3C4.5 3 3 5 3 7.5c0 2 .8 3.4 1.4 5.2.7 2 .9 4.3 1.2 6.3.2 1.2 1.8 1.3 2.2.2.6-1.9.9-4.6 2.2-4.6s1.6 2.7 2.2 4.6c.4 1.1 2 1 2.2-.2.3-2 .5-4.3 1.2-6.3.6-1.8 1.4-3.2 1.4-5.2C21 5 19.5 3 17 3c-1.9 0-2.9 1-5 1s-3.1-1-5-1z" fill="#3f8577"/></svg>
               </span>
-              <span className="font-black text-xs sm:text-sm text-sky-300">
-                {isEn ? 'Multi-Tooth Selection Mode Active' : 'وضع تحديد الأسنان المتعددة مفعّل'}
-              </span>
-              <span className="bg-sky-500/20 text-sky-200 text-xs font-bold px-2.5 py-0.5 rounded-full border border-sky-400/40 font-mono">
-                {multiSelectedTeeth.length} {isEn ? 'teeth selected' : 'أسنان محددة'}
+              <span className="font-extrabold text-sm">
+                {isEn ? 'Multi-Tooth Selection' : 'وضع تحديد الأسنان المتعددة'}
               </span>
             </div>
 
             <button
               type="button"
+              role="switch"
+              aria-checked="true"
+              title={isEn ? 'Cancel selection mode' : 'إلغاء وضع التحديد'}
               onClick={() => {
                 setIsMultiSelectMode(false);
                 setMultiSelectedTeeth([]);
               }}
-              className="text-slate-400 hover:text-rose-400 text-xs font-extrabold transition flex items-center gap-1 cursor-pointer bg-slate-800 px-2.5 py-1 rounded-xl border border-slate-700"
+              className="relative w-11 h-6 rounded-full bg-[#4d9484] transition cursor-pointer shrink-0"
             >
-              <X className="h-3.5 w-3.5" />
-              <span>{isEn ? 'Cancel Selection' : 'إلغاء وضع التحديد'}</span>
+              <span className="absolute top-[3px] right-[3px] w-[18px] h-[18px] rounded-full bg-white shadow" />
             </button>
           </div>
 
-          <p className="text-xs text-slate-300 font-medium leading-relaxed">
-            👆 <strong>{isEn ? 'Selection Instructions:' : 'تعليمات التحديد:'}</strong> {isEn ? 'Click teeth directly on the anatomical chart below to select/deselect, then click "Apply Procedure".' : 'اضغط مباشرة على الأسنان في الرسم البياني للفك بالأسفل لتحديدها أو إلغاء تحديدها، ثم اضغط زر "اختيار وتطبيق الإجراء الطبي".'}
+          <p className="text-[12.5px] text-[#67779a]">
+            {isEn ? 'Tap teeth on the chart to select them, then apply the procedure.' : 'اضغط على الأسنان في الخريطة لتحديدها، ثم طبّق الإجراء.'}
           </p>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
-            {/* Quick preset buttons */}
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="text-slate-400 font-bold ml-1 text-[11px]">{isEn ? 'Quick Select:' : 'تحديد سريع:'}</span>
+          {/* Quick preset chips, single scrollable row */}
+          <div>
+            <div className="text-[11.5px] font-bold text-[#96a4bf] mb-1.5">{isEn ? 'Quick select' : 'تحديد سريع'}</div>
+            <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <button
                 type="button"
                 onClick={selectBothArchesMulti}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-750 text-sky-300 rounded-lg font-bold border border-slate-700 text-[11px] transition cursor-pointer"
+                className="shrink-0 px-3.5 py-1.5 bg-[#f0f3f9] hover:bg-[#e7edf7] text-[#4a5b7d] rounded-full font-semibold border border-[#dfe6f1] text-[12.5px] transition cursor-pointer whitespace-nowrap"
               >
                 {isEn ? 'Both Arches (32)' : 'الفكين معاً (32 سن)'}
               </button>
               <button
                 type="button"
                 onClick={selectUpperArchMulti}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-750 text-sky-300 rounded-lg font-bold border border-slate-700 text-[11px] transition cursor-pointer"
+                className="shrink-0 px-3.5 py-1.5 bg-[#f0f3f9] hover:bg-[#e7edf7] text-[#4a5b7d] rounded-full font-semibold border border-[#dfe6f1] text-[12.5px] transition cursor-pointer whitespace-nowrap"
               >
                 {isEn ? 'Upper Arch' : 'الفك العلوي'}
               </button>
               <button
                 type="button"
                 onClick={selectLowerArchMulti}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-750 text-sky-300 rounded-lg font-bold border border-slate-700 text-[11px] transition cursor-pointer"
+                className="shrink-0 px-3.5 py-1.5 bg-[#f0f3f9] hover:bg-[#e7edf7] text-[#4a5b7d] rounded-full font-semibold border border-[#dfe6f1] text-[12.5px] transition cursor-pointer whitespace-nowrap"
               >
                 {isEn ? 'Lower Arch' : 'الفك السفلي'}
               </button>
               <button
                 type="button"
                 onClick={selectAnteriorsMulti}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-750 text-indigo-300 rounded-lg font-bold border border-slate-700 text-[11px] transition cursor-pointer"
+                className="shrink-0 px-3.5 py-1.5 bg-[#f0f3f9] hover:bg-[#e7edf7] text-[#4a5b7d] rounded-full font-semibold border border-[#dfe6f1] text-[12.5px] transition cursor-pointer whitespace-nowrap"
               >
                 {isEn ? 'Anteriors' : 'الأمامية'}
               </button>
               <button
                 type="button"
                 onClick={selectPosteriorsMulti}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-750 text-amber-300 rounded-lg font-bold border border-slate-700 text-[11px] transition cursor-pointer"
+                className="shrink-0 px-3.5 py-1.5 bg-[#f0f3f9] hover:bg-[#e7edf7] text-[#4a5b7d] rounded-full font-semibold border border-[#dfe6f1] text-[12.5px] transition cursor-pointer whitespace-nowrap"
               >
                 {isEn ? 'Posteriors' : 'الأضراس'}
               </button>
@@ -2111,14 +2110,28 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
                 <button
                   type="button"
                   onClick={() => setMultiSelectedTeeth([])}
-                  className="px-2.5 py-1 bg-rose-950/70 hover:bg-rose-900/90 text-rose-300 rounded-lg font-bold border border-rose-800/80 text-[11px] transition cursor-pointer"
+                  className="shrink-0 px-3.5 py-1.5 bg-[#faf1f2] hover:bg-[#f5e6e8] text-[#b0767d] rounded-full font-semibold border border-[#ecd9db] text-[12.5px] transition cursor-pointer whitespace-nowrap"
                 >
                   {isEn ? 'Clear All' : 'مسح الكل'}
                 </button>
               )}
             </div>
+          </div>
 
-            {/* Main Action Button */}
+          {/* Selected count strip, directly above the apply button */}
+          {multiSelectedTeeth.length > 0 ? (
+            <div className="flex items-center justify-center gap-2 bg-[#4d9484]/10 border border-[#4d9484] rounded-[14px] px-3 py-2 text-[13px] font-bold text-[#3f8577]">
+              <span>{isEn ? `${multiSelectedTeeth.length} teeth selected` : `${multiSelectedTeeth.length} أسنان محددة`}</span>
+              <span className="font-normal text-[11.5px] text-[#67779a]">({multiSelectedTeeth.join('، ')})</span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center bg-[#f7f9fc] border border-dashed border-[#d7dfee] rounded-[14px] px-3 py-2 text-[13px] font-bold text-[#96a4bf]">
+              {isEn ? 'No teeth selected yet' : 'لم يتم تحديد أسنان بعد'}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex flex-wrap items-stretch gap-2">
             <button
               type="button"
               onClick={() => {
@@ -2141,11 +2154,37 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
                   setPriceInput(4000);
                 }
               }}
-              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs rounded-xl shadow-lg hover:shadow-xl transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-400/40 active:scale-95"
+              className={`basis-full sm:basis-auto sm:flex-1 font-extrabold text-sm rounded-[14px] px-4 py-2.5 transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                multiSelectedTeeth.length > 0
+                  ? 'bg-[#4d9484] hover:bg-[#58a795] text-white shadow-sm'
+                  : 'bg-[#eef1f7] text-[#a3aec6]'
+              }`}
             >
               <Sparkles className="h-4 w-4" />
               <span>{isEn ? `Apply Procedure (${multiSelectedTeeth.length} teeth)` : `اختيار وتطبيق الإجراء (${multiSelectedTeeth.length} أسنان)`}</span>
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsMultiSelectMode(false);
+                setMultiSelectedTeeth([]);
+              }}
+              className="flex-1 sm:flex-none bg-white border border-[#dde4f0] text-[#5d6f92] rounded-[14px] px-3 py-2.5 text-[12.5px] font-semibold transition cursor-pointer flex items-center justify-center gap-1 hover:bg-[#f7f9fc]"
+            >
+              <X className="h-3.5 w-3.5" />
+              <span>{isEn ? 'Cancel Selection' : 'إلغاء التحديد'}</span>
+            </button>
+            {Object.keys(chartState).length > 0 && (
+              <button
+                type="button"
+                onClick={handleResetChart}
+                title={isEn ? 'Reset dental chart for this patient' : 'تفريغ خريطة الأسنان لهذا المريض'}
+                className="flex-1 sm:flex-none bg-white border border-[#ecd9db] text-[#b0767d] rounded-[14px] px-3 py-2.5 text-[12.5px] font-semibold transition cursor-pointer flex items-center justify-center gap-1 hover:bg-[#faf1f2]"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>{isEn ? 'Reset Chart' : 'إعادة ضبط الخريطة'}</span>
+              </button>
+            )}
           </div>
         </div>
       )}
