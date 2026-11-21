@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getAppointmentsRef, getPatientsRef, getPatientRecordsRef, OperationType, handleDbError, cleanDbData, getDocsSmart as getDocs, getDocSmart as getDoc, collection, addDoc, updateDoc, setDoc, deleteDoc, doc, query, where, orderBy, limit, getAppointmentsCounts } from '../dbClient';
 import { Patient, Clinic, Appointment, DEFAULT_QUESTIONNAIRE_QUESTIONS, PatientQuestionnaire } from '../types';
-import { Calendar as CalendarIcon, Clock, Plus, User, FileText, CheckCircle, XCircle, AlertCircle, RefreshCw, Send, ChevronRight, ChevronLeft, ChevronDown, Coins, Sparkles, CalendarPlus, Stethoscope, Phone, Search, Building2, MapPin, Globe, Heart, Pencil, Save, X, Eye, EyeOff, Ticket } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Plus, User, FileText, CheckCircle, XCircle, AlertCircle, RefreshCw, Send, ChevronRight, ChevronLeft, ChevronDown, Coins, Sparkles, CalendarPlus, Stethoscope, Phone, Search, Building2, MapPin, Globe, Heart, Pencil, Save, X, Eye, EyeOff, Ticket, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDialogs } from './DialogContext';
 import PatientFinancialsModal, { getAppointmentPayments, normalizePaymentMethod } from './PatientFinancialsModal';
@@ -226,6 +226,37 @@ export default function InteractiveCalendar({
       setTurnNumberInput(getRecommendedTurnNumber(selectedDate));
     }
   }, [isAdding, selectedDate, appointments.length]);
+
+  // Quick Booking bar (حجز فوري) - binds the same booking state as the full form
+  const quickBookOverridesRef = useRef<{ bookingType?: 'time' | 'turn'; turnNumber?: number; notes?: string; procedures?: Array<{ id: string; name: string; price: number }> } | null>(null);
+
+  // Keep the quick consultation fee in sync when the quick bar is used outside the full form
+  useEffect(() => {
+    if (!isAdding && treatmentType === 'كشف جديد' && !initialPrice && clinic.consultationPrice !== undefined && clinic.consultationPrice > 0) {
+      setInitialPrice(String(clinic.consultationPrice));
+    }
+  }, [isAdding, treatmentType, initialPrice, clinic.consultationPrice]);
+
+  const handleQuickBook = () => {
+    if (checkSubscriptionBlocked(clinic, dialogs)) return;
+    if (!activeShift) {
+      dialogs.alert(isEn ? 'Please open a shift first!' : 'برجاء فتح وردية أولاً!', { severity: 'warning' });
+      return;
+    }
+    if (!selectedPatientId) {
+      dialogs.alert(isEn ? 'Please select a patient first' : 'الرجاء اختيار المريض أولاً', { severity: 'warning' });
+      return;
+    }
+    setIsNewPatient(false);
+    const isTurnQuick = clinicBookingMode === 'turn';
+    quickBookOverridesRef.current = {
+      bookingType: isTurnQuick ? 'turn' : 'time',
+      turnNumber: isTurnQuick ? getRecommendedTurnNumber(selectedDate) : undefined,
+      notes: '',
+      procedures: []
+    };
+    handleAddAppointment({ preventDefault: () => {} } as unknown as React.FormEvent);
+  };
 
   // Quick Booking (New Patient)
   const [isNewPatient, setIsNewPatient] = useState(false);
@@ -790,8 +821,13 @@ export default function InteractiveCalendar({
     setLoading(true);
     setError(null);
 
+    const quickOverrides = quickBookOverridesRef.current;
+    const effectiveIsNewPatient = quickOverrides ? false : isNewPatient;
+    const effectiveNotes = quickOverrides?.notes ?? appointmentNotes;
+    const effectiveProcedures = quickOverrides?.procedures ?? appProcedures;
+
     try {
-      if (isNewPatient) {
+      if (effectiveIsNewPatient) {
         if (!newPatientName.trim()) {
           dialogs.alert('يرجى إدخال اسم المريض بالكامل!', { severity: 'warning' });
           setLoading(false);
@@ -823,8 +859,9 @@ export default function InteractiveCalendar({
         }
       }
 
-      const isTurnBooking = clinicBookingMode === 'turn' || (clinicBookingMode === 'hybrid' && selectedBookingType === 'turn');
-      const targetTurn = isTurnBooking ? (Number(turnNumberInput) || getRecommendedTurnNumber(selectedDate)) : undefined;
+      const effectiveBookingType = quickOverrides?.bookingType ?? selectedBookingType;
+      const isTurnBooking = clinicBookingMode === 'turn' || (clinicBookingMode === 'hybrid' && effectiveBookingType === 'turn');
+      const targetTurn = isTurnBooking ? (Number(quickOverrides?.turnNumber ?? turnNumberInput) || getRecommendedTurnNumber(selectedDate)) : undefined;
 
       const normSelDate = normalizeDateStr(selectedDate);
       const sameDayActiveApps = appointments.filter(a =>
@@ -834,7 +871,7 @@ export default function InteractiveCalendar({
       );
 
       // Find if this patient already has an active appointment on the target date
-      let existingAppForPatient = (!isNewPatient && selectedPatientId)
+      let existingAppForPatient = (!effectiveIsNewPatient && selectedPatientId)
         ? sameDayActiveApps.find(a => a.patientId === selectedPatientId)
         : undefined;
 
@@ -868,7 +905,7 @@ export default function InteractiveCalendar({
         return;
       }
 
-      if (isNewPatient) {
+      if (effectiveIsNewPatient) {
         // Add New Patient placeholder
         const patientsRef = getPatientsRef(clinic.id);
         
@@ -939,7 +976,7 @@ export default function InteractiveCalendar({
       }
 
       // Check if the patient already has an active or completed appointment on that day (not cancelled)
-      if (!existingAppForPatient && !isNewPatient && targetPatientId) {
+      if (!existingAppForPatient && !effectiveIsNewPatient && targetPatientId) {
         // Fallback check if targetPatientId was resolved above
         const found = sameDayActiveApps.find((app) => app.patientId === targetPatientId);
         if (found) {
@@ -989,8 +1026,8 @@ export default function InteractiveCalendar({
           }];
         }
 
-        const newProcs = appProcedures && appProcedures.length > 0
-          ? appProcedures.map(p => ({ name: p.name, price: p.price, tooth: null }))
+        const newProcs = effectiveProcedures && effectiveProcedures.length > 0
+          ? effectiveProcedures.map(p => ({ name: p.name, price: p.price, tooth: null }))
           : [{ name: treatmentType, price: numPrice, tooth: null }];
 
         newProcs.forEach(p => {
@@ -1000,7 +1037,7 @@ export default function InteractiveCalendar({
           }
         });
 
-        const combinedNotes = `${existingAppForPatient.notes ? existingAppForPatient.notes + '\n' : ''}${appointmentNotes}`;
+        const combinedNotes = `${existingAppForPatient.notes ? existingAppForPatient.notes + '\n' : ''}${effectiveNotes}`;
 
         const appDocRef = doc(ref, existingAppForPatient.id);
         await setDoc(appDocRef, cleanDbData({
@@ -1037,33 +1074,33 @@ export default function InteractiveCalendar({
 
       const ref = getAppointmentsRef(clinic.id);
       const numPrice = Number(initialPrice) || 0;
-      const initialProcs = appProcedures && appProcedures.length > 0
-        ? appProcedures.map(p => ({ name: p.name, price: p.price, tooth: null }))
+      const initialProcs = effectiveProcedures && effectiveProcedures.length > 0
+        ? effectiveProcedures.map(p => ({ name: p.name, price: p.price, tooth: null }))
         : [{ name: treatmentType, price: numPrice, tooth: null }];
 
       await addDoc(ref, cleanDbData({
         patientId: targetPatientId,
         patientName: targetPatientName,
         patientPhone: targetPatientPhone,
-        patientWhatsapp: isNewPatient ? (newPatientWhatsappNumber.trim() || targetPatientPhone) : undefined,
-        patientGender: isNewPatient ? newPatientGender : undefined,
-        patientAge: isNewPatient ? newPatientAge.trim() : undefined,
-        patientOccupation: isNewPatient ? newPatientOccupation.trim() : undefined,
-        patientGovernorate: isNewPatient ? newPatientGovernorate.trim() : undefined,
-        patientCityOrDistrict: isNewPatient ? newPatientCityOrDistrict.trim() : undefined,
-        patientAddress: isNewPatient ? newPatientAddress.trim() : undefined,
-        patientMedicalHistory: isNewPatient ? newPatientMedicalHistory.trim() : undefined,
+        patientWhatsapp: effectiveIsNewPatient ? (newPatientWhatsappNumber.trim() || targetPatientPhone) : undefined,
+        patientGender: effectiveIsNewPatient ? newPatientGender : undefined,
+        patientAge: effectiveIsNewPatient ? newPatientAge.trim() : undefined,
+        patientOccupation: effectiveIsNewPatient ? newPatientOccupation.trim() : undefined,
+        patientGovernorate: effectiveIsNewPatient ? newPatientGovernorate.trim() : undefined,
+        patientCityOrDistrict: effectiveIsNewPatient ? newPatientCityOrDistrict.trim() : undefined,
+        patientAddress: effectiveIsNewPatient ? newPatientAddress.trim() : undefined,
+        patientMedicalHistory: effectiveIsNewPatient ? newPatientMedicalHistory.trim() : undefined,
         isPendingNewPatient: false,
         date: selectedDate,
         time: appointmentTime,
         bookingType: isTurnBooking ? 'turn' : 'time',
-        turnNumber: isTurnBooking ? (Number(turnNumberInput) || getRecommendedTurnNumber(selectedDate)) : undefined,
+        turnNumber: isTurnBooking ? (Number(quickOverrides?.turnNumber ?? turnNumberInput) || getRecommendedTurnNumber(selectedDate)) : undefined,
         treatmentType,
         price: numPrice,
         paidAmount: 0,
         remainingAmount: numPrice,
         invoiceStatus: numPrice > 0 ? 'pending_payment' : 'draft',
-        notes: appointmentNotes,
+        notes: effectiveNotes,
         status: 'scheduled',
         procedures: initialProcs
       }));
@@ -1096,6 +1133,7 @@ export default function InteractiveCalendar({
       setError('حدث خطأ أثناء حجز الموعد: ' + (err.message || err.toString()));
     } finally {
       setLoading(false);
+      quickBookOverridesRef.current = null;
     }
   };
 
@@ -1221,6 +1259,31 @@ export default function InteractiveCalendar({
   const daysArabic = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
   const daysEnglish = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const daysList = isEn ? daysEnglish : daysArabic;
+
+  const selectedDateLabel = useMemo(() => {
+    const parts = selectedDate.split('-').map(Number);
+    if (parts.length < 3 || parts.some(isNaN)) return selectedDate;
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    const dow = d.getDay();
+    return isEn
+      ? `${daysEnglish[dow]}, ${monthsEnglish[parts[1] - 1]} ${parts[2]}, ${parts[0]}`
+      : `${daysArabic[dow]} ${parts[2]} ${monthsArabic[parts[1] - 1]} ${parts[0]}`;
+  }, [selectedDate, isEn]);
+
+  const quickTimeOptions = useMemo(() => {
+    const opts: string[] = [];
+    for (let h = 8; h <= 23; h++) {
+      opts.push(`${String(h).padStart(2, '0')}:00`);
+      opts.push(`${String(h).padStart(2, '0')}:30`);
+    }
+    return opts;
+  }, []);
+
+  const bookingModeLabel = clinicBookingMode === 'turn'
+    ? (isEn ? 'Queue system' : 'نظام الدور')
+    : clinicBookingMode === 'time'
+    ? (isEn ? 'Time system' : 'نظام الوقت')
+    : (isEn ? 'Hybrid system (time & queue)' : 'نظام هجين (وقت ودور)');
 
   const getDaysInMonth = (year: number, month: number) => {
     return new Date(year, month + 1, 0).getDate();
@@ -1425,32 +1488,32 @@ export default function InteractiveCalendar({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-              <CalendarIcon className="h-6 w-6 text-indigo-600" />
-              {t('calendar.title')}
-            </h2>
-            <span className={`text-xs px-2.5 py-1 rounded-xl font-extrabold flex items-center gap-1.5 border shadow-2xs ${
-              clinicBookingMode === 'turn' 
-                ? 'bg-amber-50 text-amber-900 border-amber-300' 
-                : clinicBookingMode === 'time'
-                ? 'bg-indigo-50 text-indigo-900 border-indigo-300'
-                : 'bg-emerald-50 text-emerald-900 border-emerald-300'
-            }`}>
-              {clinicBookingMode === 'turn' ? (
-                <><Ticket className="h-3.5 w-3.5 text-amber-600" /> {t('calendar.bookingModes.turn')}</>
-              ) : clinicBookingMode === 'time' ? (
-                <><Clock className="h-3.5 w-3.5 text-indigo-600" /> {t('calendar.bookingModes.time')}</>
-              ) : (
-                <><CalendarIcon className="h-3.5 w-3.5 text-emerald-600" /> {t('calendar.bookingModes.hybrid')}</>
-              )}
-            </span>
+      {/* Hero Header */}
+      <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-lg border border-slate-800">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center shrink-0">
+            <CalendarIcon className="h-5 w-5 text-emerald-400" />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-white">{t('calendar.title')}</h2>
+            <p className="text-xs text-slate-300 mt-0.5 font-medium">
+              {bookingModeLabel} • {selectedDateLabel}
+            </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs bg-white/10 border border-white/10 text-white px-3 py-2 rounded-xl font-bold flex items-center gap-1.5">
+            <span className="text-slate-300 font-medium">{selectedDate === todayStr ? (isEn ? 'Today:' : 'اليوم:') : selectedDate === getYesterdayStr() ? (isEn ? 'Yesterday:' : 'أمس:') : selectedDate === getTomorrowStr() ? (isEn ? 'Tomorrow:' : 'غداً:') : (isEn ? 'Selected:' : 'المعروض:')}</span>
+            <span className="font-black">{selectedDayAppointments.length} {isEn ? 'appointments' : 'مواعيد'}</span>
+          </span>
+          <span className="text-xs bg-white/10 border border-white/10 text-white px-3 py-2 rounded-xl font-bold flex items-center gap-1.5">
+            <span className="text-slate-300 font-medium">{isEn ? 'Waiting:' : 'في الانتظار:'}</span>
+            <span className="font-black text-amber-300">{selectedDayAppointments.filter(a => a.status === 'waiting').length}</span>
+          </span>
+          <span className="text-xs bg-white/10 border border-white/10 text-white px-3 py-2 rounded-xl font-bold flex items-center gap-1.5">
+            <span className="text-slate-300 font-medium">{isEn ? "Day's revenue:" : 'إيراد اليوم:'}</span>
+            <span className="font-black text-emerald-300 font-mono">{dailyTotalPaid.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
+          </span>
           <button
             onClick={() => {
               if (!activeShift && !isAdding) {
@@ -1459,14 +1522,14 @@ export default function InteractiveCalendar({
               }
               setIsAdding(!isAdding);
             }}
-            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition shadow-md shadow-indigo-100 cursor-pointer"
+            className="flex items-center gap-1.5 bg-gradient-to-l from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition shadow-md shadow-emerald-900/40 cursor-pointer"
           >
             <Plus className="h-4 w-4" />
             {isAdding ? t('calendar.cancelBooking') : t('calendar.newAppointment')}
           </button>
           <button
             onClick={() => fetchAppointments(true)}
-            className="p-2.5 text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition cursor-pointer"
+            className="p-2.5 text-slate-200 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl transition cursor-pointer"
             title={t('common.refresh')}
           >
             <RefreshCw className="h-5 w-5" />
@@ -2178,108 +2241,81 @@ export default function InteractiveCalendar({
         </motion.div>
       )}
 
-      {/* Main Grid: Left side Calendar - Right side Day List */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Calendar Card (1/3 of screen = col-span-4) */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm lg:col-span-4">
-          <div className="flex items-center justify-between mb-6">
-            <button
-              onClick={() => navigateMonth('prev')}
-              className="p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition cursor-pointer"
-            >
-              <ChevronRight className="h-5 w-5 text-slate-600 rtl:rotate-0 ltr:rotate-180" />
-            </button>
-            <h3 className="font-bold text-slate-800 text-lg">
-              {monthsList[month]} {year}
-            </h3>
-            <button
-              onClick={() => navigateMonth('next')}
-              className="p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition cursor-pointer"
-            >
-              <ChevronLeft className="h-5 w-5 text-slate-600 rtl:rotate-0 ltr:rotate-180" />
-            </button>
-          </div>
-
-          {/* Weekdays */}
-          <div className="grid grid-cols-7 text-center mb-2">
-            {daysList.map((day) => (
-              <div key={day} className="text-xs font-bold text-slate-400 py-2">
-                {day}
-              </div>
-            ))}
-          </div>
-
-          {/* Month Days Grid */}
-          <div className="grid grid-cols-7 gap-1">
-            {calendarDays.map((cell, idx) => {
-              const pad = (num: number) => String(num).padStart(2, '0');
-              const cellIso = `${cell.year}-${pad(cell.month + 1)}-${pad(cell.day)}`;
-              const isSelected = selectedDate === cellIso;
-              const hasApp = hasAppointments(cell.day, cell.month, cell.year);
-              const count = getAppointmentsCount(cell.day, cell.month, cell.year);
-              
-              // Highlight today's date
-              const today = new Date();
-              const isToday = today.getDate() === cell.day && today.getMonth() === cell.month && today.getFullYear() === cell.year;
-
-              return (
-                <button
-                  key={`${cell.year}-${cell.month}-${cell.day}-${idx}`}
-                  onClick={() => handleSelectDate(cellIso)}
-                  className={`min-h-[72px] p-2 flex flex-col justify-between rounded-xl border transition relative ${
-                    cell.isCurrentMonth ? 'bg-white hover:bg-slate-50/70 border-slate-100' : 'bg-slate-50/40 text-slate-300 border-transparent'
-                  } ${isSelected ? 'ring-2 ring-indigo-500 border-indigo-500 bg-indigo-50/20' : ''} ${
-                    isToday ? 'bg-amber-50/30 border-amber-300' : ''
-                  }`}
-                >
-                  <div className="flex justify-between items-center w-full">
-                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md ${
-                      isToday ? 'bg-amber-100 text-amber-800' : isSelected ? 'text-indigo-600' : 'text-slate-600'
-                    }`}>
-                      {cell.day}
-                    </span>
-                    {count > 0 && (
-                      <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1 rounded font-black">
-                        {count}
-                      </span>
-                    )}
-                  </div>
-                  {hasApp && (
-                    <div className="w-full flex flex-col gap-0.5 mt-1">
-                      <div className="w-full h-1 bg-indigo-500 rounded-full"></div>
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+      {/* Quick Booking Bar */}
+      <div className="bg-white rounded-2xl border-2 border-emerald-500/60 shadow-sm p-3 flex flex-col md:flex-row items-stretch md:items-center gap-2.5">
+        <div className="flex-1 min-w-[220px]">
+          <PatientSearchSelect
+            patients={patients}
+            selectedPatientId={selectedPatientId}
+            onSelectPatient={(id) => { setIsNewPatient(false); setSelectedPatientId(id); }}
+            placeholder={isEn ? "Type patient name or number..." : "اكتب اسم المريض أو رقمه..."}
+          />
         </div>
+        {clinicBookingMode !== 'turn' && (
+          <div className="relative shrink-0">
+            <Clock className={`h-3.5 w-3.5 text-slate-400 absolute ${isEn ? 'left-2.5' : 'right-2.5'} top-1/2 -translate-y-1/2 pointer-events-none`} />
+            <select
+              value={appointmentTime}
+              onChange={(e) => setAppointmentTime(e.target.value)}
+              className={`${isEn ? 'pl-8 pr-3' : 'pr-8 pl-3'} py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 cursor-pointer appearance-none`}
+              title={isEn ? 'Appointment time' : 'وقت الموعد'}
+            >
+              {quickTimeOptions.map((tOpt) => (
+                <option key={tOpt} value={tOpt}>{isEn ? 'From ' : 'من '}{formatTimeTo12Hour(tOpt, isEn)}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        <select
+          value={treatmentType}
+          onChange={(e) => {
+            const val = e.target.value;
+            setTreatmentType(val);
+            setInitialPrice(val === 'كشف جديد'
+              ? (clinic.consultationPrice !== undefined && clinic.consultationPrice > 0 ? String(clinic.consultationPrice) : '')
+              : '');
+          }}
+          className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 cursor-pointer shrink-0"
+          title={isEn ? 'Visit type' : 'نوع الزيارة'}
+        >
+          <option value="كشف جديد">{isEn ? 'New Consultation' : 'كشف جديد'}</option>
+          <option value="استكمال جلسات">{isEn ? 'Follow-up Session' : 'استكمال جلسات'}</option>
+        </select>
+        <button
+          type="button"
+          onClick={handleQuickBook}
+          disabled={loading || !selectedPatientId}
+          className="shrink-0 flex items-center justify-center gap-1.5 bg-gradient-to-l from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white px-5 py-2.5 rounded-xl font-black text-sm transition shadow-md shadow-emerald-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        >
+          <Zap className="h-4 w-4" />
+          {isEn ? 'Quick Book' : 'حجز فوري'}
+        </button>
+      </div>
 
-        {/* Right Side: Two separated containers (Col span 8) */}
-        <div className="lg:col-span-8 flex flex-col space-y-4">
-          {/* Container 1: Date Header & Daily Financials Summary */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
-            <div className="flex items-center justify-between flex-wrap gap-3 border-b border-slate-100 pb-3">
+      {/* Main Grid: Day list (right in RTL) + Sidebar (calendar & revenue) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* Day List Column */}
+        <div className="lg:col-span-8 flex flex-col space-y-4 min-w-0">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+            {/* List Header: title + quick date pills */}
+            <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-slate-100">
               <div>
-                <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-2 flex-wrap">
-                  <Clock className="h-5 w-5 text-indigo-500" />
-                  {t('calendar.appointmentsFor')}: <span className="text-indigo-600 font-mono">{selectedDate}</span>
-                  {selectedDate === todayStr && (
-                    <span className="text-[11px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-lg font-black border border-emerald-200">{t('calendar.today')}</span>
-                  )}
-                  {selectedDate === getYesterdayStr() && (
-                    <span className="text-[11px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-lg font-black border border-amber-200">{t('calendar.yesterday')}</span>
-                  )}
-                  {selectedDate === getTomorrowStr() && (
-                    <span className="text-[11px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-lg font-black border border-indigo-200">{t('calendar.tomorrow')}</span>
-                  )}
+                <h3 className="font-extrabold text-slate-800 text-lg flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                  {selectedDate === todayStr
+                    ? (isEn ? "Today's Appointments" : 'مواعيد اليوم')
+                    : selectedDate === getYesterdayStr()
+                    ? (isEn ? "Yesterday's Appointments" : 'مواعيد أمس')
+                    : selectedDate === getTomorrowStr()
+                    ? (isEn ? "Tomorrow's Appointments" : 'مواعيد غداً')
+                    : (isEn ? 'Appointments: ' : 'مواعيد ') + selectedDateLabel}
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
                   {clinicBookingMode === 'turn'
-                    ? (isEn ? 'Daily table ordered by queue numbers and revenue stats' : 'جدول اليوم يعرض المواعيد المرتبة بـ أرقام الأدوار وإحصائيات التحصيل')
+                    ? (isEn ? 'Ordered by queue numbers' : 'مرتبة بأرقام الأدوار')
                     : clinicBookingMode === 'time'
-                    ? (isEn ? 'Daily table ordered by appointment time and revenue stats' : 'جدول اليوم يعرض المواعيد المرتبة بـ الساعات والتوقيت وإحصائيات التحصيل')
-                    : (isEn ? 'Daily table ordered by time & queue and revenue stats' : 'جدول اليوم يعرض المواعيد المرتبة بالساعة والدور وإحصائيات التحصيل')}
+                    ? (isEn ? 'Ordered by appointment time' : 'مرتبة بالساعة والتوقيت')
+                    : (isEn ? 'Ordered by time & queue' : 'مرتبة بالدور والساعة')}
                 </p>
               </div>
 
@@ -2294,16 +2330,10 @@ export default function InteractiveCalendar({
                     const pad = (num: number) => String(num).padStart(2, '0');
                     handleSelectDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 ${
-                    selectedDate === (() => {
-                      const parts = todayStr.split('-').map(Number);
-                      const d = new Date(parts[0], parts[1] - 1, parts[2]);
-                      d.setDate(d.getDate() - 1);
-                      const pad = (num: number) => String(num).padStart(2, '0');
-                      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-                    })()
-                      ? 'bg-amber-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                    selectedDate === getYesterdayStr()
+                      ? 'bg-[#272E40] text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
                   {t('calendar.yesterday')}
@@ -2311,10 +2341,10 @@ export default function InteractiveCalendar({
                 <button
                   type="button"
                   onClick={() => handleSelectDate(todayStr)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
                     selectedDate === todayStr
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      ? 'bg-[#272E40] text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
                   {t('calendar.today')}
@@ -2328,16 +2358,10 @@ export default function InteractiveCalendar({
                     const pad = (num: number) => String(num).padStart(2, '0');
                     handleSelectDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1 ${
-                    selectedDate === (() => {
-                      const parts = todayStr.split('-').map(Number);
-                      const d = new Date(parts[0], parts[1] - 1, parts[2]);
-                      d.setDate(d.getDate() + 1);
-                      const pad = (num: number) => String(num).padStart(2, '0');
-                      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-                    })()
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                    selectedDate === getTomorrowStr()
+                      ? 'bg-[#272E40] text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
                   {t('calendar.tomorrow')}
@@ -2346,157 +2370,93 @@ export default function InteractiveCalendar({
                   type="date"
                   value={selectedDate}
                   onChange={(e) => handleSelectDate(e.target.value)}
-                  className="px-2.5 py-1 rounded-xl text-xs font-black bg-slate-50 border border-slate-200 hover:bg-white text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs font-mono"
+                  className="px-2.5 py-1 rounded-xl text-xs font-black bg-slate-50 border border-slate-200 hover:bg-white text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500/40 shadow-2xs font-mono"
                   title={t('calendar.filterDate')}
                 />
               </div>
+            </div>
 
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-xs bg-indigo-50 text-indigo-700 font-extrabold px-2.5 py-1 rounded-xl border border-indigo-200/80">
-                  📅 {selectedDayAppointments.filter(app => app.status === 'scheduled').length} {isEn ? 'Scheduled' : 'غير مؤكد'}
+            {/* Legend + Search row */}
+            <div className="flex items-center justify-between flex-wrap gap-2 pt-3">
+              <div className="flex items-center gap-3 text-[11px] font-bold flex-wrap">
+                <span className="flex items-center gap-1 text-amber-600">
+                  <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                  {isEn ? 'Unconfirmed' : 'غير مؤكد'} {selectedDayAppointments.filter(app => app.status === 'scheduled').length}
                 </span>
-                <span className="text-xs bg-amber-50 text-amber-700 font-extrabold px-2.5 py-1 rounded-xl border border-amber-200/80">
-                  ⏳ {selectedDayAppointments.filter(app => app.status === 'waiting').length} {isEn ? 'Waiting' : 'في الانتظار'}
+                <span className="flex items-center gap-1 text-emerald-600">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                  {isEn ? 'Waiting' : 'في الانتظار'} {selectedDayAppointments.filter(app => app.status === 'waiting').length}
                 </span>
-                <span className="text-xs bg-emerald-50 text-emerald-700 font-extrabold px-2.5 py-1 rounded-xl border border-emerald-200/80">
-                  ✓ {selectedDayAppointments.filter(app => app.status === 'completed').length} {isEn ? 'Completed' : 'مكتمل'}
+                <span className="flex items-center gap-1 text-slate-500">
+                  <span className="h-2 w-2 rounded-full bg-slate-400"></span>
+                  {isEn ? 'Completed' : 'مكتمل'} {selectedDayAppointments.filter(app => app.status === 'completed').length}
                 </span>
+              </div>
+
+              {/* Search Input */}
+              <div className="relative min-w-[180px]">
+                <Search className={`h-3.5 w-3.5 text-slate-400 absolute ${isEn ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2`} />
+                <input
+                  type="text"
+                  placeholder={isEn ? "Search by name or phone..." : "بحث بالاسم أو الهاتف..."}
+                  value={appSearchQuery}
+                  onChange={(e) => setAppSearchQuery(e.target.value)}
+                  className={`w-full ${isEn ? 'pl-8 pr-7' : 'pl-7 pr-8'} py-1.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:bg-white transition-all`}
+                />
+                {appSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setAppSearchQuery('')}
+                    className={`absolute ${isEn ? 'right-2.5' : 'left-2.5'} top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold`}
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Daily Revenue Summary Box */}
-            <div className="bg-gradient-to-br from-indigo-50/50 via-emerald-50/30 to-slate-50/80 border border-slate-200/60 rounded-xl p-3.5 flex flex-col gap-2.5 shadow-2xs">
-              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-indigo-500 animate-pulse"></span>
-                {isEn ? "Today's Revenue & Collections" : 'الإيرادات والتحصيل لليوم'}
-              </span>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-xs flex justify-between items-center">
-                  <span className="text-xs text-slate-500 font-bold">{isEn ? 'Total:' : 'الإجمالي:'}</span>
-                  <span className="text-sm sm:text-base font-black text-indigo-600 font-mono">
-                    {dailyTotalOverall.toLocaleString()} <span className="text-xs font-normal text-slate-400">{isEn ? 'EGP' : 'ج.م'}</span>
-                  </span>
-                </div>
-
-                <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-xs flex justify-between items-center">
-                  <span className="text-xs text-slate-500 font-bold">{isEn ? 'Paid:' : 'المدفوع:'}</span>
-                  <span className="text-sm sm:text-base font-black text-emerald-600 font-mono">
-                    {dailyTotalPaid.toLocaleString()} <span className="text-xs font-normal text-slate-400">{isEn ? 'EGP' : 'ج.م'}</span>
-                  </span>
-                </div>
-
-                <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-xs flex justify-between items-center">
-                  <span className="text-xs text-slate-500 font-bold">{isEn ? 'Remaining / Pending:' : 'الآجل:'}</span>
-                  <span className="text-sm sm:text-base font-black text-amber-600 font-mono">
-                    {dailyTotalRemaining.toLocaleString()} <span className="text-xs font-normal text-slate-400">{isEn ? 'EGP' : 'ج.م'}</span>
-                  </span>
-                </div>
-              </div>
-
-              {/* Payment Methods Breakdown */}
-              <div className="border-t border-slate-200/50 pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <span className="text-[11px] font-bold text-slate-500">{isEn ? "Today's Collection Methods (Paid):" : 'تفصيل طرق تحصيل اليوم (المدفوع):'}</span>
-                <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-                  {activeMethodsList.map((method, idx) => {
-                    const amt = dailyPaymentMethods[method] || 0;
-                    return (
-                      <div key={idx} className="flex items-center justify-between sm:justify-start gap-1.5 bg-slate-50/80 px-2.5 py-1 rounded-lg border border-slate-200/60 text-slate-600 shadow-3xs">
-                        <span className="text-[10px] font-bold">
-                          {method === 'كاش' ? '💵' : method === 'فيزا' ? '💳' : method === 'إنستاباي' ? '⚡' : method === 'محفظة' ? '📱' : '💼'} {formatPaymentMethodName(method, isEn)}:
-                        </span>
-                        <span className="text-xs font-black text-slate-700 font-mono">{(amt).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Container 2: Dedicated Appointments Cards Container with scroll */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col flex-1">
-            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
-              <div className="flex items-center justify-between xl:justify-start gap-3 flex-wrap">
-                <h4 className="font-extrabold text-slate-800 text-base flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-indigo-500"></span>
-                  {isEn ? 'Registered Appointment Cards' : 'بطاقات المواعيد المسجلة'}
-                </h4>
-                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
-                  {filteredDayAppointments.length} {isEn ? 'of' : 'من'} {selectedDayAppointments.length}
-                </span>
-              </div>
-
-              {/* Filters & Search Controls */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-wrap">
-                {/* Search Input */}
-                <div className="relative min-w-[200px] flex-1 sm:flex-initial">
-                  <Search className={`h-3.5 w-3.5 text-slate-400 absolute ${isEn ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2`} />
-                  <input
-                    type="text"
-                    placeholder={isEn ? "Search by name or phone..." : "بحث بالاسم أو الهاتف..."}
-                    value={appSearchQuery}
-                    onChange={(e) => setAppSearchQuery(e.target.value)}
-                    className={`w-full ${isEn ? 'pl-8 pr-7' : 'pl-7 pr-8'} py-1.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs text-slate-700 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all`}
-                  />
-                  {appSearchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setAppSearchQuery('')}
-                      className={`absolute ${isEn ? 'right-2.5' : 'left-2.5'} top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold`}
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-
-                {/* Status Filter Tabs */}
-                <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl text-xs overflow-x-auto">
-                  <button
-                    type="button"
-                    onClick={() => setAppStatusFilter('all')}
-                    className={`px-2.5 py-1 rounded-lg font-bold whitespace-nowrap transition-all ${
-                      appStatusFilter === 'all' ? 'bg-white text-indigo-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {isEn ? 'All' : 'الكل'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAppStatusFilter('waiting')}
-                    className={`px-2.5 py-1 rounded-lg font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                      appStatusFilter === 'waiting' ? 'bg-white text-amber-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0"></span>
-                    {isEn ? 'Waiting' : 'تم الحضور (انتظار)'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAppStatusFilter('completed')}
-                    className={`px-2.5 py-1 rounded-lg font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                      appStatusFilter === 'completed' ? 'bg-white text-emerald-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0"></span>
-                    {isEn ? 'Completed' : 'مكتمل'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAppStatusFilter('scheduled')}
-                    className={`px-2.5 py-1 rounded-lg font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                      appStatusFilter === 'scheduled' ? 'bg-white text-indigo-600 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0"></span>
-                    {isEn ? 'Scheduled' : 'غير مؤكد'}
-                  </button>
-                </div>
-              </div>
+            {/* Status Filter Pills */}
+            <div className="flex items-center gap-1.5 flex-wrap pt-3">
+              <button
+                type="button"
+                onClick={() => setAppStatusFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                  appStatusFilter === 'all' ? 'bg-[#272E40] text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {isEn ? 'All' : 'الكل'} {selectedDayAppointments.length}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAppStatusFilter('scheduled')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                  appStatusFilter === 'scheduled' ? 'bg-amber-500 text-white shadow-sm' : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200/60'
+                }`}
+              >
+                {isEn ? 'Unconfirmed' : 'غير مؤكد'} {selectedDayAppointments.filter(app => app.status === 'scheduled').length}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAppStatusFilter('waiting')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                  appStatusFilter === 'waiting' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/60'
+                }`}
+              >
+                {isEn ? 'Arrived (Waiting)' : 'تم الحضور (الانتظار)'} {selectedDayAppointments.filter(app => app.status === 'waiting').length}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAppStatusFilter('completed')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                  appStatusFilter === 'completed' ? 'bg-slate-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {isEn ? 'Completed' : 'مكتمل'} {selectedDayAppointments.filter(app => app.status === 'completed').length}
+              </button>
             </div>
 
-            <div className="overflow-y-auto overflow-x-auto max-h-[520px] pr-1.5 pb-2">
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 content-start items-start">
+            {/* Appointment Cards */}
+            <div className="pt-4 space-y-4">
               {loading && appointments.length === 0 ? (
               <div className="col-span-full p-8 text-center text-slate-400">
                 <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-indigo-500" />
@@ -2527,303 +2487,448 @@ export default function InteractiveCalendar({
                   : -1;
                 const turnNumber = turnIndex !== -1 ? turnIndex + 1 : null;
 
+                const patientRec = patientsMap.get(app.patientId);
+                const appAge = ((app as any).patientAge || patientRec?.age || '').toString().trim();
+                const appPhone = app.patientPhone || patientRec?.phone || '';
+                const appPrice = (app.price !== undefined ? app.price : (app.cost || 0));
+                const appPaid = Number(app.paidAmount || 0);
+                const appRemaining = app.remainingAmount !== undefined ? Number(app.remainingAmount) : Math.max(0, appPrice - appPaid);
+                const appPayments = getAppointmentPayments(app);
+                const lastPaymentMethod = appPayments && appPayments.length > 0 ? appPayments[appPayments.length - 1].paymentMethod : app.paymentMethod;
+                const procBreakdown = resolveProcedureBreakdown(app);
+                const procNamesJoined = procBreakdown.map(p => formatProcedureName(p.name, isEn)).join(' + ');
+                const isTurnCard = clinicBookingMode === 'turn' || app.bookingType === 'turn';
+                const displayTurn = app.turnNumber ?? turnNumber;
+                const isFullyPaid = appPrice > 0 && appPaid > 0 && appRemaining <= 0;
+
                 return (
                   <div
                     key={app.id}
-                    className={`p-4 rounded-2xl border-2 transition-all duration-200 flex flex-col justify-between gap-3 relative overflow-hidden self-start h-fit min-w-[270px] ${
-                      app.status === 'completed' 
-                        ? 'bg-gradient-to-l from-emerald-50/40 via-white to-white border-emerald-400 shadow-sm' 
+                    className={`rounded-2xl border p-4 transition-all duration-200 shadow-sm ${
+                      app.status === 'completed'
+                        ? 'bg-white border-slate-200/80 border-r-4 border-r-emerald-400'
                         : app.status === 'waiting'
-                        ? 'bg-gradient-to-l from-amber-50/40 via-white to-white border-amber-400 shadow-sm'
-                        : app.status === 'cancelled' 
-                        ? 'bg-slate-50/60 border-slate-300 text-slate-400 opacity-75' 
-                        : 'bg-white border-blue-400 hover:border-blue-500 hover:shadow-md shadow-sm'
+                        ? 'bg-white border-emerald-300/70'
+                        : app.status === 'cancelled'
+                        ? 'bg-slate-50/60 border-slate-200 opacity-75'
+                        : 'bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-md'
                     }`}
                   >
-                    <div className="space-y-3">
-                      {/* Top row: Name, Turn number, and Edit Patient button */}
-                      <div className="flex justify-between items-center gap-2 border-b border-slate-100 pb-2.5">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                            app.status === 'completed' ? 'bg-emerald-500' : app.status === 'waiting' ? 'bg-amber-500 animate-pulse' : app.status === 'cancelled' ? 'bg-slate-400' : 'bg-indigo-500'
-                          }`}></span>
-                          {turnNumber && (
-                            <span className="bg-indigo-600 text-white font-bold text-[10px] px-1.5 py-0.5 rounded shrink-0">
-                              {isEn ? `Turn #${turnNumber}` : `دور ${turnNumber}`}
-                            </span>
-                          )}
-                          <h4 className={`text-base font-black truncate ${app.status === 'cancelled' ? 'line-through text-slate-400' : 'text-slate-800'}`}>
-                            {app.patientName}
-                          </h4>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenEditPatientModal(app);
-                            }}
-                            className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition shrink-0 cursor-pointer"
-                            title={isEn ? "Edit Patient Data" : "تعديل بيانات المريض"}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                    {/* Second row: Financials, Medical File buttons, and Appointment Time */}
-                    <div className="flex items-center justify-between gap-1.5 w-full flex-wrap">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setFinancialModalPatient({
-                              id: app.patientId,
-                              name: app.patientName,
-                              phone: app.patientPhone
-                            });
-                          }}
-                          className="text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded-xl transition border border-amber-200/80 flex items-center gap-1 text-xs font-bold shadow-2xs cursor-pointer whitespace-nowrap"
-                          title={isEn ? "Patient Financials & Accounts" : "المالية والحسابات التابعة للمريض"}
-                        >
-                          <Coins className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                          <span>{isEn ? 'Financials' : 'الماليات'}</span>
-                        </button>
-                        {onOpenMedicalFile && app.patientId && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onOpenMedicalFile(app.patientId);
-                            }}
-                            className="text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-xl transition border border-emerald-200/80 flex items-center gap-1 text-xs font-bold shadow-2xs cursor-pointer whitespace-nowrap"
-                            title={isEn ? "Patient Medical File" : "الملف الطبي للمريض"}
-                          >
-                            <FileText className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                            <span>{isEn ? 'File' : 'الملف'}</span>
-                          </button>
-                        )}
-                      </div>
-                      {clinicBookingMode === 'turn' || app.bookingType === 'turn' ? (
-                        <span className="text-xs font-black bg-amber-50/90 border border-amber-200/80 px-2 py-1 rounded-xl text-amber-900 flex items-center gap-1 shrink-0 shadow-2xs font-mono whitespace-nowrap" title={isEn ? "Turn booking" : "حجز بالدور والرقم"}>
-                          <Ticket className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                          <span>{isEn ? `Turn #${app.turnNumber || turnNumber}` : `دور #${app.turnNumber || turnNumber}`}</span>
-                        </span>
-                      ) : (
-                        <span className="text-xs font-black bg-indigo-50/90 border border-indigo-200/80 px-2 py-1 rounded-xl text-indigo-700 flex items-center gap-1 shrink-0 shadow-2xs font-mono whitespace-nowrap" title={isEn ? "Appointment time" : "توقيت الموعد"}>
-                          <Clock className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
-                          <span>{formatTimeTo12Hour(app.time, isEn)}</span>
-                          {app.turnNumber ? <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1 py-0.2 rounded mr-0.5">#{app.turnNumber}</span> : null}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Visit / Procedure Details: Summary or Full Table */}
-                    <div className="procedure-table-container">
-                    {expandedProcedureAppIds[app.id] ? (
-                      <div className="bg-slate-50/90 rounded-2xl border border-slate-200/80 overflow-hidden shadow-2xs animate-fade-in">
-                        {/* Header bar */}
-                        <div className="bg-slate-100/90 px-3.5 py-2 border-b border-slate-200/80 flex items-center justify-between">
-                          <span className="text-xs font-black text-slate-700 flex items-center gap-1.5">
-                            <Stethoscope className="h-3.5 w-3.5 text-indigo-600" />
-                            {isEn ? 'Procedures & Services' : 'جدول الإجراءات والخدمات'}
+                    {/* Top row: turn badge + patient info | amount */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <div className="flex flex-col items-center shrink-0 w-10">
+                          <span className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shadow-sm ${
+                            app.status === 'completed' ? 'bg-emerald-500 text-white' : app.status === 'cancelled' ? 'bg-slate-300 text-white' : 'bg-[#272E40] text-white'
+                          }`}>
+                            {app.status === 'completed' ? '✓' : (displayTurn || '—')}
                           </span>
+                          <span className="text-[9px] font-bold text-slate-400 mt-1 whitespace-nowrap">
+                            {app.status === 'completed'
+                              ? (isEn ? 'Done' : 'تم')
+                              : isTurnCard
+                              ? (isEn ? 'Turn' : 'دور')
+                              : formatTimeTo12Hour(app.time || '', isEn)}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
-                            {app.status === 'completed' && (
-                              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-black px-2 py-0.5 rounded-md border border-emerald-200/60">
-                                {isEn ? 'Completed ✓' : 'مكتمل ✓'}
+                            <h4 className={`text-base font-black truncate ${app.status === 'cancelled' ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                              {app.patientName}
+                            </h4>
+                            {app.status !== 'cancelled' && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleOpenEditPatientModal(app); }}
+                                className="p-1 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition shrink-0 cursor-pointer"
+                                title={isEn ? 'Edit Patient Data' : 'تعديل بيانات المريض'}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5 font-medium truncate">
+                            {appPhone}{appAge ? ` • ${isEn ? 'Age' : 'عمر'} ${appAge}${isEn ? '' : ' سنة'}` : ''}
+                          </p>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                            {app.status === 'scheduled' && (
+                              <span className="text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200/70 px-2 py-0.5 rounded-lg">
+                                {isEn ? 'Unconfirmed' : 'غير مؤكد'}
                               </span>
                             )}
                             {app.status === 'waiting' && (
-                              <span className="text-[10px] bg-amber-100 text-amber-800 font-black px-2 py-0.5 rounded-md border border-amber-200/60">
-                                {isEn ? 'Waiting ⏳' : 'انتظار ⏳'}
+                              <span className="text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200/70 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                {isEn ? 'Waiting' : 'في الانتظار'}
                               </span>
                             )}
+                            {app.status === 'completed' && (
+                              <span className="text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200/70 px-2 py-0.5 rounded-lg">
+                                {isEn ? 'Completed ✓' : 'مكتمل ✓'}
+                              </span>
+                            )}
+                            {app.status === 'cancelled' && (
+                              <span className="text-[10px] font-black bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-lg">
+                                {isEn ? 'Cancelled' : 'ملغى'}
+                              </span>
+                            )}
+                            {app.treatmentType && (
+                              <span className="text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200/70 px-2 py-0.5 rounded-lg">
+                                {formatProcedureName(app.treatmentType, isEn)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {/* Amount + payment badge */}
+                      <div className={`shrink-0 ${isEn ? 'text-right' : 'text-left'}`}>
+                        <div className="text-base font-black text-[#272E40] font-mono whitespace-nowrap">
+                          {appPrice.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
+                        </div>
+                        {appRemaining > 0 && appPrice > 0 ? (
+                          <span className="inline-block mt-1 text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200/70 px-2 py-0.5 rounded-lg">
+                            {isEn ? 'Deferred' : 'آجل'}
+                          </span>
+                        ) : appPaid > 0 ? (
+                          <span className="inline-block mt-1 text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200/70 px-2 py-0.5 rounded-lg">
+                            {isEn ? 'Paid' : 'مدفوع'}{lastPaymentMethod ? ` ${formatPaymentMethodName(lastPaymentMethod, isEn)}` : ''}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* Procedures: collapsed line / expanded table */}
+                    <div className="procedure-table-container mt-3">
+                      {expandedProcedureAppIds[app.id] ? (
+                        <div className="rounded-xl border border-blue-200/70 overflow-hidden animate-fade-in">
+                          <div className="bg-blue-50/80 px-3 py-1.5 flex items-center justify-between">
+                            <span className="text-[11px] font-black text-blue-800 flex items-center gap-1.5">
+                              <Stethoscope className="h-3.5 w-3.5 text-blue-600" />
+                              {isEn ? 'Procedures & Services Table' : 'جدول الإجراءات والخدمات'}
+                            </span>
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleProcedures(app.id);
-                              }}
-                              className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition flex items-center justify-center cursor-pointer"
-                              title={isEn ? "Close table" : "إغلاق الجدول"}
+                              onClick={(e) => { e.stopPropagation(); toggleProcedures(app.id); }}
+                              className="text-[10px] font-black text-blue-700 bg-white/80 hover:bg-white border border-blue-200 px-2 py-0.5 rounded-lg transition cursor-pointer flex items-center gap-1"
                             >
-                              <EyeOff className="h-3.5 w-3.5 text-slate-700" />
+                              {isEn ? 'Close table' : 'إغلاق الجدول'} ▴
                             </button>
                           </div>
-                        </div>
-
-                        {/* Table rows */}
-                        <div className="divide-y divide-slate-200/60 bg-white/70">
-                          {resolveProcedureBreakdown(app).map((proc, idx) => (
-                            <div key={idx} className="px-3.5 py-2 flex items-center justify-between gap-3 text-xs">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></span>
-                                <span className="font-bold text-slate-800 leading-snug">
-                                  {formatProcedureName(proc.name, isEn)}
-                                </span>
-                                {proc.tooth && !proc.name.includes('كشف') && !proc.name.includes('استكمال') && !proc.name.includes(`#${proc.tooth}`) && !proc.name.includes(`ضرس ${proc.tooth}`) && (
-                                  <ToothBadge tooth={proc.tooth} size="sm" />
-                                )}
-                              </div>
-                              <span className="font-mono font-black text-slate-800 shrink-0 bg-white px-2 py-0.5 rounded-lg border border-slate-200/70 shadow-2xs">
-                                {proc.price || proc.name === 'كشف جديد' ? `${(proc.price || 0).toLocaleString()} ${isEn ? 'EGP' : 'ج.م'}` : (isEn ? 'Free / Included' : 'مجاني / شامل')}
-                              </span>
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-slate-50/80 text-slate-500 text-[10px] font-black">
+                                <th className="text-start px-3 py-1.5 font-black">{isEn ? 'Procedure' : 'الإجراء'}</th>
+                                <th className="text-center px-3 py-1.5 font-black w-20">{isEn ? 'Tooth' : 'السن'}</th>
+                                <th className="text-end px-3 py-1.5 font-black w-28">{isEn ? 'Price' : 'السعر'}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {procBreakdown.map((proc, idx) => (
+                                <tr key={idx} className="text-slate-700">
+                                  <td className="px-3 py-1.5 font-bold">{formatProcedureName(proc.name, isEn)}</td>
+                                  <td className="px-3 py-1.5 text-center text-slate-500 font-bold">
+                                    {proc.tooth ? (isEn ? `Tooth ${proc.tooth}` : `ضرس ${proc.tooth}`) : '-'}
+                                  </td>
+                                  <td className="px-3 py-1.5 text-end font-black font-mono text-slate-800">
+                                    {proc.price > 0 ? `${proc.price.toLocaleString()} ${isEn ? 'EGP' : 'ج.م'}` : (isEn ? 'Free / Included' : 'مجاني / شامل')}
+                                  </td>
+                                </tr>
+                              ))}
+                              <tr className="bg-emerald-50/70">
+                                <td className="px-3 py-1.5 font-black text-emerald-900">{isEn ? 'Total Cost' : 'إجمالي التكلفة'}</td>
+                                <td></td>
+                                <td className="px-3 py-1.5 text-end font-black text-emerald-700 font-mono">
+                                  {appPrice.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                          {app.notes && (
+                            <div className="bg-amber-50/70 px-3 py-1.5 text-[11px] text-amber-900 border-t border-amber-100/80 leading-relaxed">
+                              <span className="font-black">{isEn ? 'Notes: ' : 'ملاحظات: '}</span>
+                              <span className="font-medium">{app.notes}</span>
                             </div>
-                          ))}
+                          )}
                         </div>
-
-                        {/* Total Row */}
-                        <div className="bg-indigo-50/70 px-3.5 py-2 border-t border-indigo-100/80 flex items-center justify-between text-xs">
-                          <span className="font-black text-indigo-950 flex items-center gap-1">
-                            {isEn ? '💰 Total Cost:' : '💰 إجمالي التكلفة:'}
+                      ) : (
+                        <div
+                          onClick={(e) => { e.stopPropagation(); toggleProcedures(app.id); }}
+                          className="bg-blue-50/60 hover:bg-blue-50 border border-blue-200/60 rounded-xl px-3 py-2 flex items-center justify-between gap-2 cursor-pointer transition group"
+                          title={isEn ? 'Click to view procedures details' : 'انقر لعرض جدول الإجراءات التفصيلي'}
+                        >
+                          <span className="text-[11px] font-bold text-blue-900 truncate">
+                            {isEn ? 'Procedures: ' : 'الإجراءات: '}
+                            {procNamesJoined || formatProcedureName(app.treatmentType || '', isEn)}
+                            {app.notes ? (isEn ? ' + notes' : ' + ملاحظات') : ''}
+                            {' • '}{isEn ? 'Total: ' : 'الإجمالي: '}{appPrice.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
+                            {isFullyPaid ? ` • ${isEn ? 'Paid' : 'مدفوع'}${lastPaymentMethod ? ` ${formatPaymentMethodName(lastPaymentMethod, isEn)}` : ''}` : ''}
                           </span>
-                          <span className="font-mono font-black text-indigo-700 text-sm">
-                            {((app.price !== undefined ? app.price : (app.cost || 0))).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
-                          </span>
+                          <ChevronDown className="h-3.5 w-3.5 text-blue-700 shrink-0 group-hover:translate-y-0.5 transition-transform" />
                         </div>
-
-                        {/* Notes if present */}
-                        {app.notes && (
-                          <div className="px-3.5 py-2 border-t border-slate-200/60 bg-amber-50/50 text-slate-700 text-xs leading-relaxed flex items-start gap-1.5">
-                            <span className="text-amber-700 font-bold shrink-0">{isEn ? '📝 Notes: ' : '📝 ملاحظات: '}</span>
-                            <span className="font-medium">{app.notes}</span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      /* Compact Summary Bar when collapsed: Word 'Procedures' / 'الإجراءات', Total Box, then Eye icon */
-                      <div
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleProcedures(app.id);
-                        }}
-                        className="bg-slate-50/90 hover:bg-indigo-50/60 p-2.5 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs cursor-pointer transition-all duration-150 group"
-                        title={isEn ? "Click to view procedures details" : "انقر لعرض جدول الإجراءات التفصيلي"}
-                      >
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <Stethoscope className="h-3.5 w-3.5 text-indigo-600 shrink-0 group-hover:scale-110 transition-transform" />
-                          <span className="font-extrabold text-slate-800 text-xs">{isEn ? 'Procedures' : 'الإجراءات'}</span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="flex items-center gap-1 font-mono font-black text-indigo-700 text-xs bg-white px-2.5 py-1 rounded-lg border border-slate-200/80 shadow-2xs">
-                            <span className="text-[10px] text-slate-500 font-sans font-bold">{isEn ? 'Total:' : 'الإجمالي:'}</span>
-                            <span>{((app.price !== undefined ? app.price : (app.cost || 0))).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
-                          </div>
-                          <span className="text-xs font-bold text-indigo-600 group-hover:text-indigo-800 bg-indigo-50 group-hover:bg-indigo-100 p-1.5 rounded-lg border border-indigo-200/60 transition flex items-center justify-center" title={isEn ? "View procedures details" : "عرض تفاصيل الإجراءات"}>
-                            <Eye className="h-4 w-4 text-indigo-600" />
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                      )}
                     </div>
-                  </div>
 
-                  {/* Action buttons - All on 1 single row */}
-                  <div className="border-t border-slate-100 pt-2.5 mt-1 flex items-center justify-between gap-1.5">
-                    {/* Main Status / Confirm Attendance Action */}
-                    {app.status === 'scheduled' && (
-                      <div className="flex items-center gap-1 flex-1 min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateStatus(app.id, 'waiting')}
-                          className="flex-1 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-2xs cursor-pointer text-xs py-1.5 px-2 rounded-xl font-bold transition flex items-center justify-center gap-1 truncate"
-                          title={isEn ? "Confirm attendance and move to waiting" : "تأكيد حضور المريض للعيادة وتحويل الموعد لانتظار"}
-                        >
-                          <span className="truncate">{isEn ? '⏳ Confirm Arrival' : '⏳ تأكيد الحضور'}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleUpdateStatus(app.id, 'cancelled')}
-                          className="bg-slate-100 hover:bg-slate-200 text-slate-500 text-[10px] px-2 py-1.5 rounded-xl font-bold transition shrink-0 cursor-pointer"
-                          title={isEn ? "Cancel appointment" : "إلغاء الموعد"}
-                        >
-                          {isEn ? 'Cancel' : 'إلغاء'}
-                        </button>
-                      </div>
-                    )}
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-1.5 flex-wrap pt-3 mt-3 border-t border-slate-100">
+                      {app.status === 'scheduled' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStatus(app.id, 'waiting')}
+                            className="bg-gradient-to-l from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-sm cursor-pointer text-xs py-1.5 px-3.5 rounded-xl font-black transition flex items-center gap-1"
+                            title={isEn ? 'Confirm attendance and move to waiting' : 'تأكيد حضور المريض للعيادة وتحويل الموعد لانتظار'}
+                          >
+                            {isEn ? 'Confirm Arrival' : 'تأكيد الحضور'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateStatus(app.id, 'cancelled')}
+                            className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/70 text-xs px-3 py-1.5 rounded-xl font-bold transition cursor-pointer"
+                            title={isEn ? 'Cancel appointment' : 'إلغاء الموعد'}
+                          >
+                            {isEn ? 'Cancel Appointment' : 'إلغاء الموعد'}
+                          </button>
+                        </>
+                      )}
 
-                    {app.status === 'waiting' && (
-                      <div className="flex-1 min-w-0 bg-amber-50/90 border border-amber-300 text-amber-900 text-xs py-1 px-2 rounded-xl font-bold flex items-center justify-between gap-1 shadow-2xs">
-                        <span className="flex items-center gap-1 truncate text-[11px]">
-                          <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
-                          <span className="truncate">{isEn ? 'Waiting' : 'في الانتظار'}</span>
-                        </span>
+                      {app.status === 'waiting' && (
                         <button
                           type="button"
                           onClick={() => handleUpdateStatus(app.id, 'completed')}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] px-2 py-0.5 rounded-lg font-bold transition cursor-pointer shrink-0"
-                          title={isEn ? "Confirm completion" : "تأكيد إتمام الموعد"}
+                          className="bg-gradient-to-l from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white shadow-sm cursor-pointer text-xs py-1.5 px-3.5 rounded-xl font-black transition flex items-center gap-1"
+                          title={isEn ? 'Confirm completion' : 'تأكيد إتمام الموعد'}
                         >
-                          {isEn ? 'Complete ✓' : 'إتمام ✓'}
+                          {isEn ? 'Complete Visit ✓' : 'إتمام الكشف ✓'}
                         </button>
-                      </div>
-                    )}
+                      )}
 
-                    {app.status === 'completed' && (
-                      <div className="flex-1 min-w-0 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] py-1.5 px-2 rounded-xl font-bold flex items-center justify-center gap-1 shrink-0">
-                        <CheckCircle className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                        <span className="truncate">{isEn ? 'Completed ✓' : 'مكتمل ✓'}</span>
-                      </div>
-                    )}
+                      {app.status === 'cancelled' && (
+                        <span className="bg-slate-100 border border-slate-200 text-slate-500 text-[11px] py-1.5 px-3 rounded-xl font-bold">
+                          {isEn ? '✕ Cancelled' : '✕ ملغى'}
+                        </span>
+                      )}
 
-                    {app.status === 'cancelled' && (
-                      <div className="flex-1 min-w-0 bg-slate-100 border border-slate-200 text-slate-500 text-[11px] py-1.5 px-2 rounded-xl font-bold text-center truncate">
-                        {isEn ? '✕ Cancelled' : '✕ ملغى'}
-                      </div>
-                    )}
-
-                    {/* WhatsApp Reminder Button */}
-                    <button
-                      type="button"
-                      onClick={() => sendWhatsAppReminder(app)}
-                      className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs px-2.5 py-1.5 rounded-xl font-bold transition border border-emerald-200/80 flex items-center gap-1 shrink-0 cursor-pointer"
-                      title={isEn ? "Send appointment reminder" : "إرسال رسالة تذكير بالموعد"}
-                    >
-                      <Send className="h-3 w-3 text-emerald-600" />
-                      <span className="hidden xs:inline">{isEn ? 'Reminder' : 'تذكير'}</span> {isEn ? 'WhatsApp' : 'واتساب'}
-                    </button>
-
-                    {/* Delete Appointment Button */}
-                    {!isStaff && (
-                      <div className="shrink-0 flex items-center">
-                        {deletingAppointmentId === app.id ? (
-                          <div className="flex items-center gap-1 bg-rose-50 p-0.5 rounded-xl border border-rose-200 animate-fade-in">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleDeleteAppointment(app.id);
-                                setDeletingAppointmentId(null);
-                              }}
-                              className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] px-2 py-1 rounded-lg font-bold transition cursor-pointer"
-                            >
-                              {isEn ? 'Delete' : 'حذف'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeletingAppointmentId(null)}
-                              className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] px-1.5 py-1 rounded-lg font-bold transition cursor-pointer"
-                            >
-                              {isEn ? 'Cancel' : 'إلغاء'}
-                            </button>
-                          </div>
-                        ) : (
+                      {app.status !== 'cancelled' && (
+                        <>
                           <button
                             type="button"
-                            onClick={() => setDeletingAppointmentId(app.id)}
-                            className="text-rose-400 hover:text-rose-600 hover:bg-rose-50 p-1.5 rounded-xl transition cursor-pointer flex items-center justify-center"
-                            title={isEn ? "Delete appointment permanently" : "حذف الموعد نهائياً"}
+                            onClick={() => sendWhatsAppReminder(app)}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-xl font-bold transition cursor-pointer flex items-center gap-1"
+                            title={isEn ? 'Send appointment reminder' : 'إرسال رسالة تذكير بالموعد'}
                           >
-                            <XCircle className="h-4 w-4" />
+                            <Send className="h-3 w-3" />
+                            {isEn ? 'Reminder' : 'تذكير'}
                           </button>
-                        )}
-                      </div>
-                    )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFinancialModalPatient({
+                                id: app.patientId,
+                                name: app.patientName,
+                                phone: app.patientPhone
+                              });
+                            }}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-xl font-bold transition cursor-pointer flex items-center gap-1"
+                            title={isEn ? 'Patient Financials & Accounts' : 'المالية والحسابات التابعة للمريض'}
+                          >
+                            <Coins className="h-3 w-3" />
+                            {isEn ? 'Financials' : 'الماليات'}
+                          </button>
+                          {onOpenMedicalFile && app.patientId && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onOpenMedicalFile(app.patientId); }}
+                              className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-xl font-bold transition cursor-pointer flex items-center gap-1"
+                              title={isEn ? 'Patient Medical File' : 'الملف الطبي للمريض'}
+                            >
+                              <FileText className="h-3 w-3" />
+                              {isEn ? 'File' : 'الملف'}
+                            </button>
+                          )}
+                          {app.status === 'waiting' && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleOpenEditPatientModal(app); }}
+                              className="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs px-3 py-1.5 rounded-xl font-bold transition cursor-pointer"
+                            >
+                              {isEn ? 'Edit' : 'تعديل'}
+                            </button>
+                          )}
+                        </>
+                      )}
+
+                      {/* Delete Appointment Button */}
+                      {!isStaff && (
+                        <div className="shrink-0 flex items-center">
+                          {deletingAppointmentId === app.id ? (
+                            <div className="flex items-center gap-1 bg-rose-50 p-0.5 rounded-xl border border-rose-200 animate-fade-in">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleDeleteAppointment(app.id);
+                                  setDeletingAppointmentId(null);
+                                }}
+                                className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] px-2 py-1 rounded-lg font-bold transition cursor-pointer"
+                              >
+                                {isEn ? 'Delete' : 'حذف'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingAppointmentId(null)}
+                                className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] px-1.5 py-1 rounded-lg font-bold transition cursor-pointer"
+                              >
+                                {isEn ? 'Cancel' : 'إلغاء'}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setDeletingAppointmentId(app.id)}
+                              className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 text-xs font-bold px-2.5 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1"
+                              title={isEn ? 'Delete appointment permanently' : 'حذف الموعد نهائياً'}
+                            >
+                              <XCircle className="h-3.5 w-3.5" />
+                              {isEn ? 'Delete' : 'حذف'}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
                 );
               })
             )}
+            </div>
+          </div>
+        </div>
+
+        {/* Sidebar Column: Mini Calendar + Daily Revenue */}
+        <div className="lg:col-span-4 space-y-5">
+          {/* Mini Calendar Card */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+            <div className="flex items-center justify-between mb-3 gap-2">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => navigateMonth('prev')}
+                  className="p-1.5 hover:bg-slate-50 rounded-lg border border-slate-100 transition cursor-pointer"
+                >
+                  <ChevronRight className="h-4 w-4 text-slate-600 rtl:rotate-0 ltr:rotate-180" />
+                </button>
+                <h3 className="font-black text-slate-800 text-sm min-w-[110px] text-center">
+                  {monthsList[month]} {year}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => navigateMonth('next')}
+                  className="p-1.5 hover:bg-slate-50 rounded-lg border border-slate-100 transition cursor-pointer"
+                >
+                  <ChevronLeft className="h-4 w-4 text-slate-600 rtl:rotate-0 ltr:rotate-180" />
+                </button>
               </div>
+              <button
+                type="button"
+                onClick={() => fetchAppointments(true)}
+                className="text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/70 px-2.5 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1"
+              >
+                <RefreshCw className="h-3 w-3" />
+                {isEn ? 'Refresh' : 'تحديث'}
+              </button>
+            </div>
+
+            {/* Weekdays */}
+            <div className="grid grid-cols-7 text-center mb-1">
+              {daysList.map((day) => (
+                <div key={day} className="text-[10px] font-bold text-slate-400 py-1">
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            {/* Month Days Grid (compact) */}
+            <div className="grid grid-cols-7 gap-1">
+              {calendarDays.map((cell, idx) => {
+                const pad = (num: number) => String(num).padStart(2, '0');
+                const cellIso = `${cell.year}-${pad(cell.month + 1)}-${pad(cell.day)}`;
+                const isSelected = selectedDate === cellIso;
+                const count = getAppointmentsCount(cell.day, cell.month, cell.year);
+                const today = new Date();
+                const isToday = today.getDate() === cell.day && today.getMonth() === cell.month && today.getFullYear() === cell.year;
+
+                return (
+                  <button
+                    key={`${cell.year}-${cell.month}-${cell.day}-${idx}`}
+                    type="button"
+                    onClick={() => handleSelectDate(cellIso)}
+                    className={`relative h-9 rounded-lg text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                      !cell.isCurrentMonth
+                        ? 'text-slate-300'
+                        : isSelected
+                        ? 'bg-[#272E40] text-white shadow-md'
+                        : isToday
+                        ? 'ring-2 ring-emerald-400 text-emerald-700 bg-emerald-50/50'
+                        : 'text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    {cell.day}
+                    {count > 0 && (
+                      <span className={`absolute -top-1 ${isEn ? '-right-1' : '-left-1'} min-w-[16px] h-4 px-0.5 rounded-full text-[9px] font-black flex items-center justify-center ${
+                        isSelected ? 'bg-white text-[#272E40]' : 'bg-[#272E40] text-white'
+                      }`}>
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Daily Revenue Card */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+            <h4 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
+              <span className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
+                <Coins className="h-3.5 w-3.5 text-emerald-600" />
+              </span>
+              {isEn ? "Today's Revenue & Collections" : 'إيرادات وتحصيل اليوم'}
+            </h4>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-slate-50 rounded-xl p-2.5 text-center border border-slate-100">
+                <div className="text-sm font-black text-[#272E40] font-mono">{dailyTotalOverall.toLocaleString()}</div>
+                <div className="text-[10px] font-bold text-slate-500 mt-0.5">{isEn ? 'Total EGP' : 'الإجمالي ج.م'}</div>
+              </div>
+              <div className="bg-emerald-50/70 rounded-xl p-2.5 text-center border border-emerald-100">
+                <div className="text-sm font-black text-emerald-600 font-mono">{dailyTotalPaid.toLocaleString()}</div>
+                <div className="text-[10px] font-bold text-emerald-700/80 mt-0.5">{isEn ? 'Paid EGP' : 'المدفوع ج.م'}</div>
+              </div>
+              <div className="bg-amber-50/70 rounded-xl p-2.5 text-center border border-amber-100">
+                <div className="text-sm font-black text-amber-600 font-mono">{dailyTotalRemaining.toLocaleString()}</div>
+                <div className="text-[10px] font-bold text-amber-700/80 mt-0.5">{isEn ? 'Pending EGP' : 'الآجل ج.م'}</div>
+              </div>
+            </div>
+            <div className="space-y-2 pt-1">
+              {activeMethodsList.map((method, idx) => {
+                const amt = dailyPaymentMethods[method] || 0;
+                const maxAmt = Math.max(1, ...activeMethodsList.map(m => dailyPaymentMethods[m] || 0));
+                return (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-slate-600 flex items-center gap-1">
+                        <span>{method === 'كاش' ? '💵' : method === 'فيزا' ? '💳' : method === 'إنستاباي' ? '⚡' : method === 'محفظة' ? '📱' : '💼'}</span>
+                        {formatPaymentMethodName(method, isEn)}
+                      </span>
+                      <span className="font-black text-slate-700 font-mono">{amt.toLocaleString()}</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-l from-emerald-400 to-green-500 rounded-full transition-all"
+                        style={{ width: `${Math.min(100, (amt / maxAmt) * 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
