@@ -998,6 +998,14 @@ class PostgresDbClient {
     });
   }
 
+  async closePool() {
+    if (this.pgPool) {
+      const oldPool = this.pgPool;
+      this.pgPool = null;
+      await oldPool.end();
+    }
+  }
+
   private async recreatePool() {
     if (this.pgPool) {
       const oldPool = this.pgPool;
@@ -1186,6 +1194,10 @@ function safeParseJson(dataVal: any): any {
 const wsClients = new Map<string, Set<WebSocket>>();
 const handledEvents = new Set<string>();
 
+export async function closeDatabase() {
+  await dbClient.closePool();
+}
+
 export function initWebSocketServer(server: any) {
   const wss = new WebSocketServer({ noServer: true });
 
@@ -1270,6 +1282,8 @@ export function initWebSocketServer(server: any) {
   wss.on('close', () => {
     clearInterval(interval);
   });
+
+  return wss;
 }
 
 function broadcastSync(clinicId: string | null, eventData: { eventId?: string; table: string; action: string; id?: string; payload?: any }) {

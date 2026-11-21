@@ -1,10 +1,11 @@
 import 'dotenv/config';
 import express from 'express';
 import app from './api/index';
-import { initDb } from './api/index';
+import { initDb, closeDatabase } from './api/index';
 import path from 'path';
 import fs from 'fs';
 
+const SHUTDOWN_TIMEOUT_MS = process.env.SHUTDOWN_TIMEOUT_MS ? parseInt(process.env.SHUTDOWN_TIMEOUT_MS, 10) : 10000;
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 async function startServer() {
@@ -50,7 +51,41 @@ async function startServer() {
     });
 
     const { initWebSocketServer } = await import('./api/index');
-    initWebSocketServer(server);
+    const wss = initWebSocketServer(server);
+
+    // Graceful shutdown: stop accepting new connections, let in-flight requests
+    // finish (bounded by SHUTDOWN_TIMEOUT_MS), close the DB pool, then exit.
+    let shuttingDown = false;
+    const shutdown = (signal: string) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      console.log(`[CrownDent Server] ${signal} received. Draining in-flight requests...`);
+
+      const forceTimer = setTimeout(() => {
+        console.error('[CrownDent Server] Drain timeout reached. Forcing exit.');
+        process.exit(1);
+      }, SHUTDOWN_TIMEOUT_MS);
+      forceTimer.unref();
+
+      // Close realtime sync sockets so they don't hold the server open
+      wss.clients.forEach((client) => client.close(1001, 'server shutting down'));
+      wss.close();
+
+      // Stop accepting new connections; the callback fires once active requests end
+      server.close(async () => {
+        try {
+          await closeDatabase();
+        } catch (e) {
+          console.error('[CrownDent Server] Error closing database pool:', e);
+        }
+        console.log('[CrownDent Server] Shutdown complete.');
+        process.exit(0);
+      });
+      // Idle keep-alive connections would otherwise delay the close
+      server.closeIdleConnections();
+    };
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
 
     server.on('error', (err) => {
       console.error('[CrownDent Server] Express listener encountered an error:', err);
