@@ -1,3 +1,4 @@
+import { systemSettingsSql } from '../../utils/systemSettingsSql';
 import React, { useState, useEffect } from 'react';
 import { db, doc, collection, setDoc, getDocsSmart as getDocs } from '../../dbClient';
 import { Clinic } from '../../types';
@@ -271,6 +272,8 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
             });
           }
         });
+
+        sqlStr += systemSettingsSql(fullSystemData.systemSettings);
 
         const blob = new Blob([sqlStr], { type: 'text/plain;charset=utf-8;' });
         const url = URL.createObjectURL(blob);

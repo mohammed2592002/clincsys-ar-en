@@ -1,3 +1,4 @@
+import { systemSettingsSql } from './systemSettingsSql';
 import { db, getDocsSmart as getDocs, collection } from '../dbClient';
 import { safeStorage } from './storage';
 import JSZip from 'jszip';
@@ -585,6 +586,8 @@ export async function exportFullSystemBackup(
         });
       }
     });
+
+    sqlStr += systemSettingsSql(fullSystemData.systemSettings);
 
     const blob = new Blob([sqlStr], { type: 'text/plain;charset=utf-8;' });
     triggerDownload(blob, filename);

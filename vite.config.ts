@@ -23,8 +23,11 @@ export default defineConfig(() => {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify - file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // Runtime database writes are not source changes. Watching these files
+      // causes a full-page reload after saves, losing tabs and confirmations.
+      watch: process.env.DISABLE_HMR === 'true' ? null : {
+        ignored: ['**/local_db.json', '**/local_db.json.tmp'],
+      },
     },
     build: {
       chunkSizeWarningLimit: 1000, // Increase warning threshold to 1MB

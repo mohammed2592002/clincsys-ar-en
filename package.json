@@ -16,7 +16,8 @@
     "test:live-bugs": "npm run build && TEST_LIVE_BUGS=1 node tests/run-finance.mjs",
     "test:file-access": "npm run build && node tests/run-file-access.mjs",
     "test:file-migrations": "npm run build && node tests/run-file-migrations.mjs",
-    "test:support-ui": "npm run build && TEST_UI=1 TEST_UI_ENTRY=tests/support-settings.ui.cjs node tests/run-finance.mjs"
+    "test:support-ui": "npm run build && TEST_UI=1 TEST_UI_ENTRY=tests/support-settings.ui.cjs node tests/run-finance.mjs",
+    "test:admin-save": "npm run lint && npm run build && tsx tests/system-settings-sql.test.ts && node tests/run-admin-save.mjs && TEST_DEV=1 node tests/run-admin-save.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1108.0",
