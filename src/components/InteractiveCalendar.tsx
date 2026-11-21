@@ -1524,24 +1524,36 @@ export default function InteractiveCalendar({
           dir={isEn ? "ltr" : "rtl"}
         >
           {/* Header */}
-          <div className="bg-gradient-to-l from-indigo-900 via-indigo-800 to-slate-900 text-white p-6 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shrink-0 shadow-inner">
-                <CalendarPlus className="h-6 w-6 text-indigo-300" />
+          <div className="bg-[#272E40] text-white p-5 sm:p-6 border-b border-slate-800">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center shrink-0">
+                  <CalendarPlus className="h-5 w-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black tracking-tight">{isEn ? 'Book New Appointment' : 'حجز موعد جديد'}</h3>
+                  <p className="text-xs text-slate-300 mt-0.5 font-medium">{isEn ? 'Consultation or follow-up booking in under a minute' : 'كشف أو استشارة في أقل من دقيقة'}</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-black tracking-tight">{isEn ? 'Book New Consultation or Appointment' : 'حجز موعد كشف أو استشارة جديد'}</h3>
-                <p className="text-xs text-indigo-200/80 mt-0.5 font-medium">{isEn ? 'Select patient, schedule visit date & time, and pick medical procedure easily' : 'قم باختيار المريض وتحديد موعد الزيارة ونوع الإجراء الطبي بسهولة'}</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setIsAdding(false)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition text-white/80 hover:text-white cursor-pointer shrink-0"
+                title={isEn ? "Close" : "إغلاق"}
+              >
+                ✕
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsAdding(false)}
-              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition text-white/80 hover:text-white cursor-pointer"
-              title={isEn ? "Close" : "إغلاق"}
-            >
-              ✕
-            </button>
+            <div className="mt-3">
+              <span className="inline-flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-1">
+                {clinicBookingMode === 'turn' ? <Ticket className="h-3 w-3 text-emerald-400" /> : <Clock className="h-3 w-3 text-emerald-400" />}
+                <span className="text-[11px] font-bold text-emerald-300">
+                  {isEn
+                    ? `Current booking mode: ${clinicBookingMode === 'turn' ? 'Queue' : clinicBookingMode === 'time' ? 'Time' : 'Hybrid'} - from clinic settings`
+                    : `وضع الحجز الحالي: ${clinicBookingMode === 'turn' ? 'بالدور' : clinicBookingMode === 'time' ? 'بالوقت' : 'هجين (وقت ودور)'} — من إعدادات العيادة`}
+                </span>
+              </span>
+            </div>
           </div>
 
           <form onSubmit={handleAddAppointment} className="p-6 space-y-6">
@@ -1556,18 +1568,18 @@ export default function InteractiveCalendar({
                 </div>
               </div>
             )}
-            {/* Step 1: Patient Selection */}
+            <div className={isNewPatient ? 'grid grid-cols-1 lg:grid-cols-2 gap-6 items-start' : ''}>
+            <div className="space-y-6 min-w-0">
+            {/* Step 1: Patient Details */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <span className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <User className="h-4 w-4 text-indigo-600" />
-                  {isEn ? '1. Patient Selection' : 'أولاً: تحديد بيانات المريض'}
-                </span>
-                <span className="text-[11px] text-slate-400 font-bold">{isEn ? 'Required *' : 'مطلوب *'}</span>
+              <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                <span className="w-6 h-6 rounded-full bg-[#272E40] text-white text-[11px] font-black flex items-center justify-center">{isEn ? '1' : '١'}</span>
+                <span className="text-xs font-black text-slate-700">{isEn ? 'Patient Details' : 'بيانات المريض'}</span>
+                <span className="text-[11px] text-slate-400 font-bold ms-auto">{isEn ? 'Required *' : 'مطلوب *'}</span>
               </div>
 
-              {/* Patient Type Select Tabs */}
-              <div className="grid grid-cols-2 gap-3 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/60">
+              {/* Patient Type Cards */}
+              <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -1577,14 +1589,17 @@ export default function InteractiveCalendar({
                     setNewPatientAge('');
                     setNewPatientMedicalHistory('');
                   }}
-                  className={`py-3 px-4 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer ${
+                  className={`p-3.5 rounded-2xl border-2 transition text-center cursor-pointer space-y-1.5 ${
                     !isNewPatient
-                      ? 'bg-white text-indigo-700 shadow-sm border border-indigo-100/80'
-                      : 'text-slate-600 hover:text-slate-800 hover:bg-white/40'
+                      ? 'border-emerald-500 bg-emerald-50/60 shadow-sm'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
                   }`}
                 >
-                  <User className={`h-4 w-4 ${!isNewPatient ? 'text-indigo-600' : 'text-slate-400'}`} />
-                  {isEn ? '📁 Existing Clinic Patient' : '📁 اختيار مريض مسجل بالعيادة'}
+                  <div className={`w-9 h-9 mx-auto rounded-xl flex items-center justify-center ${!isNewPatient ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                    <User className="h-4 w-4" />
+                  </div>
+                  <div className="text-xs font-black text-slate-800">{isEn ? 'Existing Clinic Patient' : 'مريض مسجل بالعيادة'}</div>
+                  <div className="text-[10px] text-slate-400 font-bold">{isEn ? 'Search patient files' : 'ابحث واختار من ملفات المرضى'}</div>
                 </button>
                 <button
                   type="button"
@@ -1592,264 +1607,186 @@ export default function InteractiveCalendar({
                     setIsNewPatient(true);
                     setSelectedPatientId('');
                   }}
-                  className={`py-3 px-4 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer ${
+                  className={`p-3.5 rounded-2xl border-2 transition text-center cursor-pointer space-y-1.5 ${
                     isNewPatient
-                      ? 'bg-white text-indigo-700 shadow-sm border border-indigo-100/80'
-                      : 'text-slate-600 hover:text-slate-800 hover:bg-white/40'
+                      ? 'border-emerald-500 bg-emerald-50/60 shadow-sm'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
                   }`}
                 >
-                  <Sparkles className={`h-4 w-4 ${isNewPatient ? 'text-amber-500' : 'text-slate-400'}`} />
-                  {isEn ? '✨ Register New Patient' : '✨ تسجيل مريض جديد وحجز فوري'}
+                  <div className={`w-9 h-9 mx-auto rounded-xl flex items-center justify-center ${isNewPatient ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                    <Plus className="h-4 w-4" />
+                  </div>
+                  <div className="text-xs font-black text-slate-800">{isEn ? 'New Patient' : 'مريض جديد'}</div>
+                  <div className="text-[10px] text-slate-400 font-bold">{isEn ? 'Quick registration & booking' : 'تسجيل سريع وحجز فوري'}</div>
                 </button>
+              </div>
+
+              {!isNewPatient && (
+                <div className="space-y-2 animate-fade-in">
+                  <PatientSearchSelect
+                    patients={patients}
+                    selectedPatientId={selectedPatientId}
+                    onSelectPatient={setSelectedPatientId}
+                    placeholder={isEn ? "Search by patient name or phone..." : "ابحث باسم المريض أو رقم الهاتف..."}
+                    required={!isNewPatient}
+                  />
+                  {selectedPatientId && (() => {
+                    const sp = patients.find(p => p.id === selectedPatientId);
+                    if (!sp) return null;
+                    const spAge = (sp as any).age;
+                    return (
+                      <div className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl p-2.5 animate-fade-in">
+                        <div className="w-9 h-9 rounded-xl bg-[#272E40] text-white flex items-center justify-center text-sm font-black shrink-0">{(sp.name || '؟').trim().charAt(0)}</div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-black text-slate-800 truncate">{sp.name}</div>
+                          <div className="text-[10px] text-slate-500 font-bold">
+                            <span dir="ltr">{sp.phone}</span>
+                            {spAge ? ` • ${spAge} ${isEn ? 'yrs' : 'سنة'}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* Step 2: Date & Turn/Time */}
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                <span className="w-6 h-6 rounded-full bg-[#272E40] text-white text-[11px] font-black flex items-center justify-center">{isEn ? '2' : '٢'}</span>
+                <span className="text-xs font-black text-slate-700">
+                  {isEn
+                    ? (clinicBookingMode === 'turn' ? 'Appointment & Queue Turn' : 'Appointment Date & Time')
+                    : (clinicBookingMode === 'turn' ? 'الموعد والدور' : 'الموعد والتوقيت')}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Date Box */}
+                <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80 flex flex-col justify-center">
+                  <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
+                    <CalendarIcon className="h-3.5 w-3.5 text-emerald-600" />
+                    {isEn ? 'Appointment Date' : 'تاريخ الموعد'}
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs text-center font-black text-slate-800 shadow-2xs cursor-pointer"
+                  />
+                </div>
+
+                {/* Auto Turn Card (queue mode) OR Turn stepper (hybrid) OR Time selects */}
+                {clinicBookingMode === 'turn' ? (
+                  <div className="bg-emerald-50/80 p-3 rounded-2xl border border-emerald-200/80 flex flex-col justify-center animate-fade-in">
+                    <label className="block text-[11px] font-black text-emerald-900 mb-1 flex items-center gap-1">
+                      <Ticket className="h-3.5 w-3.5 text-emerald-600" />
+                      {isEn ? 'Turn (auto)' : 'الدور (تلقائي)'}
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 text-white flex items-center justify-center text-lg font-black shadow-md shadow-emerald-200 shrink-0">
+                        {Number(turnNumberInput) || getRecommendedTurnNumber(selectedDate)}
+                      </div>
+                      <div>
+                        <div className="text-xs font-black text-emerald-900">{isEn ? 'Turn is booked automatically' : 'الدور بيتحجز تلقائي'}</div>
+                        <div className="text-[10px] text-emerald-700/80 font-bold mt-0.5">{isEn ? 'The patient takes the first free turn of the day' : 'المريض بياخد أول دور فاضي في قائمة اليوم'}</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : selectedBookingType === 'turn' ? (
+                  <div className="bg-amber-50/80 p-3 rounded-2xl border border-amber-200/80 flex flex-col justify-center animate-fade-in">
+                    <label className="block text-[11px] font-black text-amber-900 mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Ticket className="h-3.5 w-3.5 text-amber-600" />
+                        {isEn ? 'Queue / Turn #' : 'رقم الدور بالعيادة'} <span className="text-rose-500">*</span>
+                      </span>
+                      <span className="text-[9px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-bold">
+                        {isEn ? 'Auto' : 'تلقائي'}
+                      </span>
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setTurnNumberInput(prev => Math.max(1, Number(prev || 1) - 1))}
+                        className="w-8 h-8 rounded-lg bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-black text-sm flex items-center justify-center transition cursor-pointer shrink-0"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={turnNumberInput}
+                        onChange={(e) => setTurnNumberInput(e.target.value)}
+                        className="w-full px-2 py-1.5 bg-white border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-xs text-center font-black text-amber-950 font-mono shadow-2xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setTurnNumberInput(prev => Number(prev || 0) + 1)}
+                        className="w-8 h-8 rounded-lg bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-black text-sm flex items-center justify-center transition cursor-pointer shrink-0"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80 flex flex-col justify-center animate-fade-in">
+                    <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
+                      <Clock className="h-3.5 w-3.5 text-emerald-600" />
+                      {isEn ? 'Appointment Time' : 'توقيت الموعد'}
+                    </label>
+                    <div className="flex gap-1 items-center" dir="ltr">
+                      <select
+                        value={parse24To12(appointmentTime).hour12}
+                        onChange={(e) => {
+                          const { minute, period } = parse24To12(appointmentTime);
+                          setAppointmentTime(to24Hour(parseInt(e.target.value, 10), minute, period));
+                        }}
+                        className="flex-1 px-1 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs bg-white font-mono font-bold text-center cursor-pointer shadow-2xs"
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((h) => (
+                          <option key={h} value={h}>{String(h).padStart(2, '0')}</option>
+                        ))}
+                      </select>
+
+                      <span className="font-bold text-slate-400 font-mono">:</span>
+
+                      <select
+                        value={parse24To12(appointmentTime).minute}
+                        onChange={(e) => {
+                          const { hour12, period } = parse24To12(appointmentTime);
+                          setAppointmentTime(to24Hour(hour12, e.target.value, period));
+                        }}
+                        className="flex-1 px-1 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs bg-white font-mono font-bold text-center cursor-pointer shadow-2xs"
+                      >
+                        {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={parse24To12(appointmentTime).period}
+                        onChange={(e) => {
+                          const { hour12, minute } = parse24To12(appointmentTime);
+                          setAppointmentTime(to24Hour(hour12, minute, e.target.value));
+                        }}
+                        className="flex-1 px-1 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-[11px] bg-white font-black text-center cursor-pointer shadow-2xs text-emerald-700"
+                      >
+                        <option value="ص">{isEn ? 'AM' : 'ص'}</option>
+                        <option value="م">{isEn ? 'PM' : 'م'}</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-
-              {/* Row 1: Patient Search / Quick Booking + Date + Time/Turn Side by Side */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 pt-2">
-                {!isNewPatient ? (
-                  <>
-                    {/* Existing Patient Search Select (col-span-6) */}
-                    <div className="lg:col-span-6 flex flex-col justify-center">
-                      <div className="bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80 h-full flex flex-col justify-center animate-fade-in">
-                        <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
-                          <User className="h-3.5 w-3.5 text-indigo-600" />
-                          {isEn ? 'Search Patient File' : 'ابحث عن ملف المريض بالعيادة'} <span className="text-rose-500">*</span>
-                        </label>
-                        <PatientSearchSelect
-                          patients={patients}
-                          selectedPatientId={selectedPatientId}
-                          onSelectPatient={setSelectedPatientId}
-                          placeholder={isEn ? "Search by patient name or phone..." : "ابحث باسم المريض أو رقم الهاتف..."}
-                          required={!isNewPatient}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Date Box (col-span-3) */}
-                    <div className="lg:col-span-3 bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80 flex flex-col justify-center">
-                      <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
-                        <CalendarIcon className="h-3.5 w-3.5 text-indigo-600" />
-                        {isEn ? 'Appointment Date' : 'تاريخ الموعد'}
-                      </label>
-                      <input
-                        type="date"
-                        required
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-center font-black text-slate-800 shadow-2xs cursor-pointer"
-                      />
-                    </div>
-
-                    {/* Time OR Turn Box (col-span-3) */}
-                    {selectedBookingType === 'turn' ? (
-                      <div className="lg:col-span-3 bg-amber-50/80 p-3 rounded-2xl border border-amber-200/80 flex flex-col justify-center animate-fade-in">
-                        <label className="block text-[11px] font-black text-amber-900 mb-1 flex items-center justify-between">
-                          <span className="flex items-center gap-1">
-                            <Ticket className="h-3.5 w-3.5 text-amber-600" />
-                            {isEn ? 'Queue / Turn #' : 'رقم الدور بالعيادة'} <span className="text-rose-500">*</span>
-                          </span>
-                          <span className="text-[9px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-bold">
-                            {isEn ? 'Auto' : 'تلقائي'}
-                          </span>
-                        </label>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setTurnNumberInput(prev => Math.max(1, Number(prev || 1) - 1))}
-                            className="w-8 h-8 rounded-lg bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-black text-sm flex items-center justify-center transition cursor-pointer shrink-0"
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            min="1"
-                            required
-                            value={turnNumberInput}
-                            onChange={(e) => setTurnNumberInput(e.target.value)}
-                            className="w-full px-2 py-1.5 bg-white border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-xs text-center font-black text-amber-950 font-mono shadow-2xs"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setTurnNumberInput(prev => Number(prev || 0) + 1)}
-                            className="w-8 h-8 rounded-lg bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-black text-sm flex items-center justify-center transition cursor-pointer shrink-0"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="lg:col-span-3 bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80 flex flex-col justify-center animate-fade-in">
-                        <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
-                          <Clock className="h-3.5 w-3.5 text-indigo-600" />
-                          {isEn ? 'Appointment Time' : 'توقيت الموعد'}
-                        </label>
-                        <div className="flex gap-1 items-center" dir="ltr">
-                          <select
-                            value={parse24To12(appointmentTime).hour12}
-                            onChange={(e) => {
-                              const { minute, period } = parse24To12(appointmentTime);
-                              setAppointmentTime(to24Hour(parseInt(e.target.value, 10), minute, period));
-                            }}
-                            className="flex-1 px-1 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs bg-white font-mono font-bold text-center cursor-pointer shadow-2xs"
-                          >
-                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((h) => (
-                              <option key={h} value={h}>{String(h).padStart(2, '0')}</option>
-                            ))}
-                          </select>
-
-                          <span className="font-bold text-slate-400 font-mono">:</span>
-
-                          <select
-                            value={parse24To12(appointmentTime).minute}
-                            onChange={(e) => {
-                              const { hour12, period } = parse24To12(appointmentTime);
-                              setAppointmentTime(to24Hour(hour12, e.target.value, period));
-                            }}
-                            className="flex-1 px-1 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs bg-white font-mono font-bold text-center cursor-pointer shadow-2xs"
-                          >
-                            {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map((m) => (
-                              <option key={m} value={m}>{m}</option>
-                            ))}
-                          </select>
-
-                          <select
-                            value={parse24To12(appointmentTime).period}
-                            onChange={(e) => {
-                              const { hour12, minute } = parse24To12(appointmentTime);
-                              setAppointmentTime(to24Hour(hour12, minute, e.target.value));
-                            }}
-                            className="flex-1 px-1 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-[11px] bg-white font-black text-center cursor-pointer shadow-2xs text-indigo-700"
-                          >
-                            <option value="ص">{isEn ? 'AM' : 'ص'}</option>
-                            <option value="م">{isEn ? 'PM' : 'م'}</option>
-                          </select>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {/* Date Box (col-span-6) for New Patient */}
-                    <div className="lg:col-span-6 bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80 flex flex-col justify-center">
-                      <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
-                        <CalendarIcon className="h-3.5 w-3.5 text-indigo-600" />
-                        {isEn ? 'Appointment Date' : 'تاريخ الموعد'}
-                      </label>
-                      <input
-                        type="date"
-                        required
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs text-center font-black text-slate-800 shadow-2xs cursor-pointer"
-                      />
-                    </div>
-
-                    {/* Time OR Turn Box (col-span-6) for New Patient */}
-                    {selectedBookingType === 'turn' ? (
-                      <div className="lg:col-span-6 bg-amber-50/80 p-3 rounded-2xl border border-amber-200/80 flex flex-col justify-center animate-fade-in">
-                        <label className="block text-[11px] font-black text-amber-900 mb-1 flex items-center justify-between">
-                          <span className="flex items-center gap-1">
-                            <Ticket className="h-3.5 w-3.5 text-amber-600" />
-                            {isEn ? 'Queue / Turn #' : 'رقم الدور بالعيادة'} <span className="text-rose-500">*</span>
-                          </span>
-                          <span className="text-[9px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-bold">
-                            {isEn ? 'Auto' : 'تلقائي'}
-                          </span>
-                        </label>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setTurnNumberInput(prev => Math.max(1, Number(prev || 1) - 1))}
-                            className="w-8 h-8 rounded-lg bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-black text-sm flex items-center justify-center transition cursor-pointer shrink-0"
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            min="1"
-                            required
-                            value={turnNumberInput}
-                            onChange={(e) => setTurnNumberInput(e.target.value)}
-                            className="w-full px-2 py-1.5 bg-white border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-xs text-center font-black text-amber-950 font-mono shadow-2xs"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setTurnNumberInput(prev => Number(prev || 0) + 1)}
-                            className="w-8 h-8 rounded-lg bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-black text-sm flex items-center justify-center transition cursor-pointer shrink-0"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="lg:col-span-6 bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80 flex flex-col justify-center animate-fade-in">
-                        <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
-                          <Clock className="h-3.5 w-3.5 text-indigo-600" />
-                          {isEn ? 'Appointment Time' : 'توقيت الموعد'}
-                        </label>
-                        <div className="flex gap-1 items-center" dir="ltr">
-                          <select
-                            value={parse24To12(appointmentTime).hour12}
-                            onChange={(e) => {
-                              const { minute, period } = parse24To12(appointmentTime);
-                              setAppointmentTime(to24Hour(parseInt(e.target.value, 10), minute, period));
-                            }}
-                            className="flex-1 px-1 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs bg-white font-mono font-bold text-center cursor-pointer shadow-2xs"
-                          >
-                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((h) => (
-                              <option key={h} value={h}>{String(h).padStart(2, '0')}</option>
-                            ))}
-                          </select>
-
-                          <span className="font-bold text-slate-400 font-mono">:</span>
-
-                          <select
-                            value={parse24To12(appointmentTime).minute}
-                            onChange={(e) => {
-                              const { hour12, period } = parse24To12(appointmentTime);
-                              setAppointmentTime(to24Hour(hour12, e.target.value, period));
-                            }}
-                            className="flex-1 px-1 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs bg-white font-mono font-bold text-center cursor-pointer shadow-2xs"
-                          >
-                            {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map((m) => (
-                              <option key={m} value={m}>{m}</option>
-                            ))}
-                          </select>
-
-                          <select
-                            value={parse24To12(appointmentTime).period}
-                            onChange={(e) => {
-                              const { hour12, minute } = parse24To12(appointmentTime);
-                              setAppointmentTime(to24Hour(hour12, minute, e.target.value));
-                            }}
-                            className="flex-1 px-1 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-[11px] bg-white font-black text-center cursor-pointer shadow-2xs text-indigo-700"
-                          >
-                            <option value="ص">{isEn ? 'AM' : 'ص'}</option>
-                            <option value="م">{isEn ? 'PM' : 'م'}</option>
-                          </select>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
               {/* Full Registration Form for New Patient */}
               {isNewPatient && (
-                <div className="bg-indigo-50/40 p-4 rounded-2xl border border-indigo-100/90 space-y-3.5 animate-fade-in mt-2">
-                  <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
-                    <h4 className="text-xs font-black text-indigo-900 flex items-center gap-1.5">
-                      <User className="h-4 w-4 text-indigo-600" />
-                      {isEn ? 'New Patient Registration Details' : 'بيانات تسجيل المريض الجديد كاملة'}
-                    </h4>
-                    <span className="text-[10px] bg-indigo-100/80 text-indigo-800 font-bold px-2.5 py-0.5 rounded-lg">
-                      {isEn ? 'Instant File Creation' : 'تسجيل فوري للملف'}
-                    </span>
-                  </div>
-
+                <div className="space-y-3 animate-fade-in mt-2">
                   {/* 1. Personal & Demographic Data */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
                       <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
                         <User className="h-3 w-3 text-indigo-600" />
@@ -1890,6 +1827,37 @@ export default function InteractiveCalendar({
                     </div>
 
                     <div>
+                      <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
+                        <User className="h-3 w-3 text-emerald-600" />
+                        {isEn ? 'Gender' : 'النوع / الجنس'}
+                      </label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setNewPatientGender('ذكر')}
+                          className={`py-2 rounded-xl text-xs font-bold transition border cursor-pointer ${
+                            newPatientGender === 'ذكر'
+                              ? 'bg-[#272E40] text-white border-[#272E40] shadow-sm'
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {isEn ? 'Male' : 'ذكر'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNewPatientGender('أنثى')}
+                          className={`py-2 rounded-xl text-xs font-bold transition border cursor-pointer ${
+                            newPatientGender === 'أنثى'
+                              ? 'bg-[#272E40] text-white border-[#272E40] shadow-sm'
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {isEn ? 'Female' : 'أنثى'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="block text-[11px] font-black text-slate-700 flex items-center gap-1">
                           <Phone className="h-3 w-3 text-emerald-600" />
@@ -1901,7 +1869,7 @@ export default function InteractiveCalendar({
                         <button
                           type="button"
                           onClick={() => setNewPatientWhatsappNumber(newPatientPhone)}
-                          className="text-[10px] text-emerald-600 hover:underline font-bold cursor-pointer"
+                          className="text-[10px] text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded-full font-bold cursor-pointer transition"
                         >
                           {isEn ? 'Same as phone' : 'نفس الهاتف'}
                         </button>
@@ -1920,16 +1888,15 @@ export default function InteractiveCalendar({
                     <div>
                       <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
                         <User className="h-3 w-3 text-indigo-600" />
-                        {isEn ? 'Gender' : 'النوع / الجنس'}
+                        {isEn ? 'Occupation / Job' : 'الوظيفة / المهنة'}
                       </label>
-                      <select
-                        value={newPatientGender}
-                        onChange={(e) => setNewPatientGender(e.target.value as 'ذكر' | 'أنثى')}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-bold text-slate-800 shadow-2xs cursor-pointer"
-                      >
-                        <option value="ذكر">{isEn ? 'Male' : 'ذكر (Male)'}</option>
-                        <option value="أنثى">{isEn ? 'Female' : 'أنثى (Female)'}</option>
-                      </select>
+                      <input
+                        type="text"
+                        value={newPatientOccupation}
+                        onChange={(e) => setNewPatientOccupation(e.target.value)}
+                        placeholder={isEn ? "e.g. Engineer, Teacher (optional)..." : "مثال: مهندس، معلم (اختياري)..."}
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-bold text-slate-800 shadow-2xs"
+                      />
                     </div>
 
                     <div>
@@ -1948,24 +1915,10 @@ export default function InteractiveCalendar({
                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-bold text-slate-800 shadow-2xs"
                       />
                     </div>
-
-                    <div>
-                      <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
-                        <User className="h-3 w-3 text-indigo-600" />
-                        {isEn ? 'Occupation / Job' : 'الوظيفة / المهنة'}
-                      </label>
-                      <input
-                        type="text"
-                        value={newPatientOccupation}
-                        onChange={(e) => setNewPatientOccupation(e.target.value)}
-                        placeholder={isEn ? "e.g. Engineer, Teacher (optional)..." : "مثال: مهندس، معلم (اختياري)..."}
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-bold text-slate-800 shadow-2xs"
-                      />
-                    </div>
                   </div>
 
                   {/* 2. العنوان السكني والموقع */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-white/80 p-3 rounded-xl border border-slate-200/80">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
                       <SearchableSelect
                         label={isEn ? "Governorate" : "المحافظة"}
@@ -1988,7 +1941,7 @@ export default function InteractiveCalendar({
                       />
                     </div>
 
-                    <div>
+                    <div className="sm:col-span-2">
                       <label className="block text-[11px] font-black text-slate-700 mb-1">
                         {isEn ? "Detailed Address (optional)" : "تفاصيل العنوان السكني (يدوي)"}
                       </label>
@@ -2002,15 +1955,91 @@ export default function InteractiveCalendar({
                     </div>
                   </div>
 
+                </div>
+              )}
+
+              {/* Step 3: Visit Type & Price */}
+              <div className="flex items-center gap-2 border-b border-slate-100 pb-2 pt-1">
+                <span className="w-6 h-6 rounded-full bg-[#272E40] text-white text-[11px] font-black flex items-center justify-center">{isEn ? '3' : '٣'}</span>
+                <span className="text-xs font-black text-slate-700">{isEn ? 'Visit Type & Price' : 'نوع الزيارة والسعر'}</span>
+              </div>
+              {/* Row 2: Visit Type + Price (if new checkup) */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 pt-1">
+                {/* Visit Type */}
+                <div className={`${treatmentType === 'كشف جديد' ? 'lg:col-span-6' : 'lg:col-span-12'} bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80 flex flex-col justify-center transition-all duration-200`}>
+                  <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
+                    <Stethoscope className="h-3.5 w-3.5 text-indigo-600" />
+                    {isEn ? 'Visit / Procedure Type' : 'نوع الإجراء / الزيارة'}
+                  </label>
+                  <div className="grid grid-cols-2 gap-1.5 h-[36px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTreatmentType('كشف جديد');
+                        setInitialPrice(clinic.consultationPrice !== undefined && clinic.consultationPrice > 0 ? String(clinic.consultationPrice) : '');
+                      }}
+                      className={`rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 border cursor-pointer ${
+                        treatmentType === 'كشف جديد'
+                          ? 'bg-[#272E40] text-white border-[#272E40] shadow-sm'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {isEn ? 'New Consultation' : 'كشف جديد'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTreatmentType('استكمال جلسات');
+                        setInitialPrice('');
+                      }}
+                      className={`rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 border cursor-pointer ${
+                        treatmentType === 'استكمال جلسات'
+                          ? 'bg-[#272E40] text-white border-[#272E40] shadow-sm'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {isEn ? 'Follow-up Session' : 'استكمال جلسات'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Price input (col-span-6) - shown only when 'كشف جديد' is selected */}
+                {treatmentType === 'كشف جديد' && (
+                  <div className="lg:col-span-6 bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80 flex flex-col justify-center animate-fade-in">
+                    <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
+                      <Coins className="h-3.5 w-3.5 text-indigo-600" />
+                      {isEn ? 'New Consultation Fee (EGP)' : 'سعر الكشف الجديد (ج.م)'}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      inputMode="decimal"
+                      value={initialPrice}
+                      onChange={(e) => setInitialPrice(e.target.value.replace(/[^\d.]/g, ''))}
+                      placeholder={isEn ? "Enter fee (e.g. 300)" : "اكتب السعر (مثال: 300)"}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-bold text-slate-800 transition shadow-2xs h-[36px] text-center font-mono"
+                    />
+                  </div>
+                )}
+              </div>
+
+            </div>
+            {isNewPatient && (
+            <div className="space-y-3 animate-fade-in min-w-0">
                   {/* 3. Receptionist Initial Medical Questionnaire */}
                   <div className="space-y-3 bg-white/90 p-3.5 rounded-xl border border-indigo-100 shadow-2xs">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <div className="flex items-center gap-1.5 text-xs font-black text-rose-700 bg-rose-50 px-2.5 py-1 rounded-lg">
-                        <Heart className="h-3.5 w-3.5 text-rose-600" />
-                        <span>{isEn ? 'Initial Reception Medical Questionnaire' : 'استبيان موظف الاستقبال الطبي الأولي (قبل دخول المريض للطبيب)'}</span>
+                    <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-rose-50 flex items-center justify-center shrink-0">
+                          <Heart className="h-3.5 w-3.5 text-rose-500" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-black text-slate-800">{isEn ? 'Quick Medical Questionnaire' : 'الاستبيان الطبي السريع'}</div>
+                          <div className="text-[10px] text-slate-400 font-bold mt-0.5">{isEn ? 'Filled by reception during registration' : 'بيتعبى من الاستقبال أثناء التسجيل'}</div>
+                        </div>
                       </div>
-                      <span className="text-[10px] text-slate-500 font-semibold">
-                        {isEn ? 'Quick Screening & Alerts' : 'تنبيهات وأسئلة سريعة'}
+                      <span className="text-[10px] bg-[#272E40] text-white font-black px-2.5 py-1 rounded-lg shrink-0">
+                        {isEn ? `${activeQuestions.length} questions` : `${activeQuestions.length} أسئلة`}
                       </span>
                     </div>
 
@@ -2020,10 +2049,10 @@ export default function InteractiveCalendar({
                         const isYes = ans.answer === 'نعم';
 
                         return (
-                          <div key={q.id} className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                            <div className="sm:w-2/5">
+                          <div key={q.id} className={`p-2.5 rounded-xl border space-y-2 ${isYes ? 'bg-rose-50/70 border-rose-200' : 'bg-slate-50/80 border-slate-200/80'}`}>
+                            <div>
                               <label className="block text-xs font-bold text-slate-800">
-                                {idx + 1}. {q.text}
+                                {q.text}
                               </label>
                               {q.category && (
                                 <span className="inline-block mt-0.5 text-[9px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md">
@@ -2031,7 +2060,7 @@ export default function InteractiveCalendar({
                                 </span>
                               )}
                             </div>
-                            <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                            <div className="flex items-center gap-2">
                               {/* Yes/No Toggle */}
                               <div className="flex bg-slate-200/80 p-0.5 rounded-lg gap-1 shrink-0">
                                 <button
@@ -2064,7 +2093,7 @@ export default function InteractiveCalendar({
                                 value={ans.details}
                                 onChange={(e) => setQuestionAnswer(q.id, 'نعم', e.target.value)}
                                 placeholder={isYes ? (isEn ? "Provide explanation & details (optional)..." : (q.placeholder || "اكتب التوضيح والتفاصيل (اختياري)...")) : (isEn ? "Select (Yes) to enter details" : "حدد (نعم) لإدخال التفاصيل")}
-                                className={`w-full px-2.5 py-1.5 border rounded-lg text-xs font-medium transition ${
+                                className={`flex-1 min-w-0 px-2.5 py-1.5 border rounded-lg text-xs font-medium transition ${
                                   isYes
                                     ? 'bg-white border-rose-300 text-slate-800 focus:ring-2 focus:ring-rose-500/20'
                                     : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
@@ -2089,6 +2118,10 @@ export default function InteractiveCalendar({
                         />
                       </div>
 
+
+                    </div>
+                  </div>
+
                       {/* 4. التاريخ المرضي المبدئي / الملخص الطبي (اختياري) */}
                       <div>
                         <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
@@ -2104,76 +2137,25 @@ export default function InteractiveCalendar({
                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-bold text-slate-800 shadow-2xs"
                         />
                       </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+            </div>
+            )}
+            </div>
 
-              {/* Row 2: Visit Type + Price (if new checkup) */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 pt-1">
-                {/* Visit Type */}
-                <div className={`${treatmentType === 'كشف جديد' ? 'lg:col-span-6' : 'lg:col-span-12'} bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80 flex flex-col justify-center transition-all duration-200`}>
-                  <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
-                    <Stethoscope className="h-3.5 w-3.5 text-indigo-600" />
-                    {isEn ? 'Visit / Procedure Type' : 'نوع الإجراء / الزيارة'}
-                  </label>
-                  <div className="grid grid-cols-2 gap-1.5 h-[36px]">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTreatmentType('كشف جديد');
-                        setInitialPrice(clinic.consultationPrice !== undefined && clinic.consultationPrice > 0 ? String(clinic.consultationPrice) : '');
-                      }}
-                      className={`rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 border cursor-pointer ${
-                        treatmentType === 'كشف جديد'
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {isEn ? 'New Consultation' : 'كشف جديد'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTreatmentType('استكمال جلسات');
-                        setInitialPrice('');
-                      }}
-                      className={`rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 border cursor-pointer ${
-                        treatmentType === 'استكمال جلسات'
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {isEn ? 'Follow-up Session' : 'استكمال جلسات'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Price input (col-span-6) - shown only when 'كشف جديد' is selected */}
-                {treatmentType === 'كشف جديد' && (
-                  <div className="lg:col-span-6 bg-slate-50/80 p-3 rounded-2xl border border-slate-200/80 flex flex-col justify-center animate-fade-in">
-                    <label className="block text-[11px] font-black text-slate-700 mb-1 flex items-center gap-1">
-                      <Coins className="h-3.5 w-3.5 text-indigo-600" />
-                      {isEn ? 'New Consultation Fee (EGP)' : 'سعر الكشف الجديد (ج.م)'}
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      inputMode="decimal"
-                      value={initialPrice}
-                      onChange={(e) => setInitialPrice(e.target.value.replace(/[^\d.]/g, ''))}
-                      placeholder={isEn ? "Enter fee (e.g. 300)" : "اكتب السعر (مثال: 300)"}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-xs font-bold text-slate-800 transition shadow-2xs h-[36px] text-center font-mono"
-                    />
-                  </div>
-                )}
-              </div>
-
-            {/* Footer Action Bar */}
+            {/* Footer: summary + actions */}
             <div className="bg-slate-50/90 -mx-6 -mb-6 p-4 px-6 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3 mt-4">
-              <div className="text-xs font-bold text-slate-500 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>{isEn ? 'Selected Booking Date: ' : 'تاريخ الحجز المختار: '}<strong className="text-slate-800 font-mono">{selectedDate}</strong> ({formatTimeTo12Hour(appointmentTime, isEn)})</span>
+              <div className="text-[11px] font-bold text-slate-500">
+                <span className="text-slate-400">{isEn ? 'Booking summary: ' : 'ملخص الحجز: '}</span>
+                <strong className="text-slate-800">
+                  {isNewPatient && newPatientName.trim() ? `${newPatientName.trim()} • ` : ''}
+                  {selectedDate}
+                  {' • '}
+                  {clinicBookingMode === 'turn' || selectedBookingType === 'turn'
+                    ? `${isEn ? 'Turn' : 'الدور'} ${Number(turnNumberInput) || getRecommendedTurnNumber(selectedDate)}`
+                    : formatTimeTo12Hour(appointmentTime, isEn)}
+                  {' • '}
+                  {treatmentType === 'كشف جديد' ? (isEn ? 'New Consultation' : 'كشف جديد') : (isEn ? 'Follow-up Session' : 'استكمال جلسات')}
+                  {treatmentType === 'كشف جديد' && initialPrice ? ` • ${initialPrice} ${isEn ? 'EGP' : 'ج.م'}` : ''}
+                </strong>
               </div>
               <div className="flex items-center gap-2.5">
                 <button
@@ -2186,7 +2168,7 @@ export default function InteractiveCalendar({
                 <button
                   type="submit"
                   disabled={loading || (!isNewPatient && !selectedPatientId) || (isNewPatient && (!newPatientName || !newPatientPhone))}
-                  className="px-6 py-2.5 text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl text-xs font-black transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md shadow-indigo-200 cursor-pointer"
+                  className="px-6 py-2.5 text-white bg-gradient-to-l from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 rounded-xl text-xs font-black transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md shadow-emerald-200 cursor-pointer"
                 >
                   {loading ? (
                     <>
@@ -2196,7 +2178,7 @@ export default function InteractiveCalendar({
                   ) : (
                     <>
                       <CheckCircle className="h-4 w-4" />
-                      {isEn ? 'Confirm & Book Appointment Now' : 'تأكيد وحجز الموعد الآن'}
+                      {isNewPatient ? (isEn ? 'Register & Book Appointment' : 'تسجيل وحجز الموعد') : (isEn ? 'Confirm Booking' : 'تأكيد الحجز')}
                     </>
                   )}
                 </button>
@@ -2956,7 +2938,7 @@ export default function InteractiveCalendar({
                       <button
                         type="button"
                         onClick={() => setEditingPatientModalData({ ...editingPatientModalData, whatsappNumber: editingPatientModalData.phone })}
-                        className="text-[10px] text-emerald-600 hover:underline font-bold cursor-pointer"
+                        className="text-[10px] text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded-full font-bold cursor-pointer transition"
                       >
                         {isEn ? 'Same as phone' : 'نفس الهاتف'}
                       </button>
@@ -3020,7 +3002,7 @@ export default function InteractiveCalendar({
                 </div>
 
                 {/* 2. العنوان السكني والموقع */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-white/80 p-3 rounded-xl border border-slate-200/80">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
                     <SearchableSelect
                       label={isEn ? "Governorate" : "المحافظة"}
