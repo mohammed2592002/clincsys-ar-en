@@ -1976,172 +1976,54 @@ export default function ClinicSettings({
       
       {/* Right Side Navigation tabs (takes 1 column on lg) */}
       <div className="lg:col-span-1">
-        <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs space-y-2">
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm space-y-1.5 lg:sticky lg:top-4">
           <p className="text-[10px] text-slate-400 font-black px-2 uppercase tracking-wider mb-2">
-            {isEn ? 'Settings Sections' : 'أقسام لوحة الإعدادات'}
+            {isEn ? 'Settings Sections' : 'أقسام الإعدادات'}
           </p>
-          
-          {/* Identity Tab */}
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsSubTab('profile');
-              setSettingsSuccess('');
-              setSettingsError('');
-            }}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border text-right cursor-pointer ${
-              settingsSubTab === 'profile'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-3xs'
-                : 'bg-transparent text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          >
-            <Activity className={`h-4 w-4 shrink-0 ${settingsSubTab === 'profile' ? 'text-emerald-600' : 'text-slate-400'}`} />
-            <span>{isEn ? 'Clinic Identity & Rx Pad' : 'هوية العيادة والروشتة'}</span>
-          </button>
-
-          {/* Price List & Services Tab */}
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsSubTab('services_prices');
-              setSettingsSuccess('');
-              setSettingsError('');
-            }}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border text-right cursor-pointer ${
-              settingsSubTab === 'services_prices'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-3xs'
-                : 'bg-transparent text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          >
-            <Tag className={`h-4 w-4 shrink-0 ${settingsSubTab === 'services_prices' ? 'text-emerald-600' : 'text-slate-400'}`} />
-            <span>{isEn ? 'Services & Price List' : 'قائمة الأسعار والخدمات'}</span>
-          </button>
-
-          {/* Patient Questionnaire Tab */}
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsSubTab('questionnaire');
-              setSettingsSuccess('');
-              setSettingsError('');
-            }}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border text-right cursor-pointer ${
-              settingsSubTab === 'questionnaire'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-3xs'
-                : 'bg-transparent text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          >
-            <ClipboardList className={`h-4 w-4 shrink-0 ${settingsSubTab === 'questionnaire' ? 'text-emerald-600' : 'text-slate-400'}`} />
-            <span>{isEn ? 'Patient Questionnaire' : 'استبيان المرضى'}</span>
-          </button>
-
-          {/* Staff Tab */}
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsSubTab('staff');
-              setSettingsSuccess('');
-              setSettingsError('');
-            }}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border text-right cursor-pointer ${
-              settingsSubTab === 'staff'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-3xs'
-                : 'bg-transparent text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          >
-            <Users className={`h-4 w-4 shrink-0 ${settingsSubTab === 'staff' ? 'text-emerald-600' : 'text-slate-400'}`} />
-            <span>{isEn ? 'Staff Management' : 'شؤون الموظفين'}</span>
-          </button>
-
-          {/* Backup Tab */}
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsSubTab('backup');
-              setSettingsSuccess('');
-              setSettingsError('');
-            }}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border text-right cursor-pointer ${
-              settingsSubTab === 'backup'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-3xs'
-                : 'bg-transparent text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          >
-            <Database className={`h-4 w-4 shrink-0 ${settingsSubTab === 'backup' ? 'text-emerald-600' : 'text-slate-400'}`} />
-            <span>{isEn ? 'Backup & Restore' : 'النسخ والنسخ الاحتياطي'}</span>
-          </button>
-
-          {/* Subscription Tab */}
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsSubTab('subscription');
-              setSettingsSuccess('');
-              setSettingsError('');
-            }}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border text-right cursor-pointer ${
-              settingsSubTab === 'subscription'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-3xs'
-                : 'bg-transparent text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          >
-            <Receipt className={`h-4 w-4 shrink-0 ${settingsSubTab === 'subscription' ? 'text-emerald-600' : 'text-slate-400'}`} />
-            <span>{isEn ? 'Subscription Details' : 'تفاصيل الاشتراك'}</span>
-          </button>
-
-          {/* Payment Methods Tab */}
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsSubTab('payment_methods');
-              setSettingsSuccess('');
-              setSettingsError('');
-            }}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border text-right cursor-pointer ${
-              settingsSubTab === 'payment_methods'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-3xs'
-                : 'bg-transparent text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          >
-            <CreditCard className={`h-4 w-4 shrink-0 ${settingsSubTab === 'payment_methods' ? 'text-emerald-600' : 'text-slate-400'}`} />
-            <span>{isEn ? 'Payment Methods' : 'طرق الدفع بالعيادة'}</span>
-          </button>
-
-          {/* Loyalty Program Tab */}
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsSubTab('loyalty_program');
-              setSettingsSuccess('');
-              setSettingsError('');
-            }}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border text-right cursor-pointer ${
-              settingsSubTab === 'loyalty_program'
-                ? 'bg-amber-50 text-amber-800 border-amber-500 shadow-3xs'
-                : 'bg-transparent text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          >
-            <Gift className={`h-4 w-4 shrink-0 ${settingsSubTab === 'loyalty_program' ? 'text-amber-600' : 'text-slate-400'}`} />
-            <span>{isEn ? 'Loyalty Program' : 'نظام ولاء المرضى والمكافآت'}</span>
-          </button>
-
-          {/* Technical Support Tab */}
-          <button
-            type="button"
-            onClick={() => {
-              setSettingsSubTab('tech_support');
-              setSettingsSuccess('');
-              setSettingsError('');
-            }}
-            className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all border text-right cursor-pointer ${
-              settingsSubTab === 'tech_support'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-3xs'
-                : 'bg-transparent text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900'
-            }`}
-          >
-            <Headphones className={`h-4 w-4 shrink-0 ${settingsSubTab === 'tech_support' ? 'text-emerald-600' : 'text-slate-400'}`} />
-            <span>{isEn ? 'Technical Support' : 'قسم الدعم الفني والتواصل'}</span>
-          </button>
+          {([
+            { id: 'profile', icon: Activity, ar: 'هوية العيادة والروشتة', en: 'Clinic Identity & Rx Pad', subAr: 'الاسم والشعار وبيانات الطبيب والحجز', subEn: 'Name, logo, doctor & booking' },
+            { id: 'services_prices', icon: Tag, ar: 'قائمة الأسعار والخدمات', en: 'Prices & Services List', subAr: 'خدمات العيادة وأسعارها وأقسامها', subEn: 'Clinic services, prices & categories' },
+            { id: 'questionnaire', icon: ClipboardList, ar: 'استبيان المرضى', en: 'Patient Questionnaire', subAr: 'أسئلة الاستقبال الطبية الأولية', subEn: 'Initial medical intake questions' },
+            { id: 'staff', icon: Users, ar: 'شؤون الموظفين', en: 'Staff Management', subAr: 'صلاحيات دخول السكرتارية', subEn: 'Reception access permissions' },
+            { id: 'backup', icon: Database, ar: 'النسخ الاحتياطي', en: 'Backup', subAr: 'تنزيل واستعادة بيانات العيادة', subEn: 'Download & restore clinic data' },
+            { id: 'subscription', icon: Receipt, ar: 'تفاصيل الاشتراك', en: 'Subscription Details', subAr: 'حالة الاشتراك وتاريخ انتهائه', subEn: 'Subscription status & expiry date' },
+            { id: 'payment_methods', icon: CreditCard, ar: 'طرق الدفع بالعيادة', en: 'Payment Methods', subAr: 'قنوات الدفع المعتمدة', subEn: 'Accepted payment channels' },
+            { id: 'loyalty_program', icon: Gift, ar: 'ولاء المرضى والمكافآت', en: 'Loyalty & Rewards', subAr: 'نقاط وخصومات المرضى', subEn: 'Patient points & discounts' },
+            { id: 'tech_support', icon: Headphones, ar: 'الدعم الفني والتواصل', en: 'Support & Contact', subAr: 'أرقام الدعم ووسائل التواصل', subEn: 'Support numbers & channels' },
+          ] as const).map((item) => {
+            const NavIcon = item.icon;
+            const isActive = settingsSubTab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setSettingsSubTab(item.id);
+                  setSettingsSuccess('');
+                  setSettingsError('');
+                }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all text-right cursor-pointer ${
+                  isActive
+                    ? 'bg-[#272E40] text-white shadow-md'
+                    : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                  isActive ? 'bg-white/10' : 'bg-slate-100'
+                }`}>
+                  <NavIcon className={`h-4 w-4 ${isActive ? 'text-emerald-400' : 'text-slate-500'}`} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-xs font-black truncate ${isActive ? 'text-white' : 'text-slate-800'}`}>
+                    {isEn ? item.en : item.ar}
+                  </span>
+                  <span className={`block text-[10px] font-medium truncate mt-0.5 ${isActive ? 'text-slate-300' : 'text-slate-400'}`}>
+                    {isEn ? item.subEn : item.subAr}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -2166,19 +2048,23 @@ export default function ClinicSettings({
         {settingsSubTab === 'profile' && (
           <div className="space-y-6 animate-fade-in">
             
-            {/* Visual Header / Guidance */}
-            <div className="bg-gradient-to-l from-emerald-50 via-teal-50/20 to-transparent p-6 rounded-3xl border border-emerald-100/70">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <h2 className="text-base sm:text-lg font-black text-slate-800 flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-emerald-600 animate-pulse" />
-                    {isEn ? 'Clinic Settings & Rx Pad' : 'إعدادات العيادة'}
-                  </h2>
+            {/* Navy Hero */}
+            <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center shrink-0">
+                  <Sparkles className="h-5 w-5 text-emerald-400" />
                 </div>
-                <div className="shrink-0 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full text-[11px] font-black text-emerald-700 flex items-center gap-1">
-                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                  {isEn ? 'Verified Smart Rx' : 'روشتة ذكية ومعتمدة'}
+                <div>
+                  <h2 className="text-xl font-black text-white">{isEn ? 'Clinic Identity & Rx Pad' : 'هوية العيادة والروشتة'}</h2>
+                  <p className="text-xs text-slate-300 mt-0.5 font-medium">{isEn ? 'All printed Rx pad data in 5 organized sections, saved in one click' : 'كل بيانات الروشتة المطبوعة في 5 أقسام مرتبة ودفعة واحدة'}</p>
                 </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs bg-white/10 border border-white/10 text-white px-3 py-2 rounded-xl font-bold">{isEn ? '5 sections' : '5 أقسام'}</span>
+                <span className="text-xs bg-white/10 border border-white/10 text-white px-3 py-2 rounded-xl font-bold flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                  {isEn ? 'Unified save' : 'حفظ موحد'}
+                </span>
               </div>
             </div>
 
@@ -2188,76 +2074,7 @@ export default function ClinicSettings({
               <div className="space-y-6">
                 <form onSubmit={handleUpdateClinicBranding} className="space-y-6 text-right">
                   
-                  {/* Modern Tab Selector to switch between the 5 compact settings tabs */}
-                  <div className="bg-slate-100/70 p-1.5 rounded-2xl border border-slate-200/80 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1 shadow-3xs">
-                    <button
-                      type="button"
-                      onClick={() => setProfileSubSection('identity')}
-                      className={`py-2 px-1.5 rounded-xl text-[10.5px] font-black transition-all flex items-center justify-center gap-1 cursor-pointer ${
-                        profileSubSection === 'identity'
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                      }`}
-                    >
-                      <Building2 className="h-3.5 w-3.5 shrink-0" />
-                      <span>{isEn ? 'Clinic Name & Logo' : 'اسم وشعار العيادة'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setProfileSubSection('doctor')}
-                      className={`py-2 px-1.5 rounded-xl text-[10.5px] font-black transition-all flex items-center justify-center gap-1 cursor-pointer ${
-                        profileSubSection === 'doctor'
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                      }`}
-                    >
-                      <Users className="h-3.5 w-3.5 shrink-0" />
-                      <span>{isEn ? 'Doctor Info' : 'بيانات الطبيب'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setProfileSubSection('contact')}
-                      className={`py-2 px-1.5 rounded-xl text-[10.5px] font-black transition-all flex items-center justify-center gap-1 cursor-pointer ${
-                        profileSubSection === 'contact'
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                      }`}
-                    >
-                      <Phone className="h-3.5 w-3.5 shrink-0" />
-                      <span>{isEn ? 'Address & Contact' : 'العناوين والاتصال'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setProfileSubSection('style')}
-                      className={`py-2 px-1.5 rounded-xl text-[10.5px] font-black transition-all flex items-center justify-center gap-1 cursor-pointer ${
-                        profileSubSection === 'style'
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                      }`}
-                    >
-                      <Settings className="h-3.5 w-3.5 shrink-0" />
-                      <span>{isEn ? 'Rx Style & Fee' : 'مظهر الروشتة والسعر'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setProfileSubSection('booking')}
-                      className={`py-2 px-1.5 rounded-xl text-[10.5px] font-black transition-all flex items-center justify-center gap-1 cursor-pointer ${
-                        profileSubSection === 'booking'
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                      }`}
-                    >
-                      <Ticket className="h-3.5 w-3.5 shrink-0 text-amber-300" />
-                      <span>{isEn ? 'Booking System' : 'نظام الحجز'}</span>
-                    </button>
-                  </div>
-
-                  {/* Render only the active sub-section card */}
-                  {profileSubSection === 'identity' && (
+                  {(
                     <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-3xs space-y-6 animate-fade-in">
                       <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
                         <span className="p-2.5 bg-emerald-50 rounded-2xl shrink-0">
@@ -2371,7 +2188,7 @@ export default function ClinicSettings({
                     </div>
                   )}
 
-                  {profileSubSection === 'doctor' && (
+                  {(
                     <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-3xs space-y-6 animate-fade-in">
                       <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
                         <span className="p-2.5 bg-blue-50 rounded-2xl shrink-0">
@@ -2456,7 +2273,7 @@ export default function ClinicSettings({
                     </div>
                   )}
 
-                  {profileSubSection === 'contact' && (
+                  {(
                     <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-3xs space-y-6 animate-fade-in">
                       <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
                         <span className="p-2.5 bg-indigo-50 rounded-2xl shrink-0">
@@ -2570,7 +2387,7 @@ export default function ClinicSettings({
                     </div>
                   )}
 
-                  {profileSubSection === 'style' && (
+                  {(
                     <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-3xs space-y-6 animate-fade-in">
                       <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
                         <span className="p-2.5 bg-purple-50 rounded-2xl shrink-0">
@@ -2653,7 +2470,7 @@ export default function ClinicSettings({
                     </div>
                   )}
 
-                  {profileSubSection === 'booking' && (
+                  {(
                     <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-3xs space-y-6 animate-fade-in">
                       <div className="flex items-start gap-3 border-b border-slate-100 pb-4">
                         <span className="p-2.5 bg-indigo-50 rounded-2xl shrink-0">
@@ -2737,18 +2554,19 @@ export default function ClinicSettings({
                     </div>
                   )}
 
-                  {/* Save Button */}
-                  <button
-                    type="submit"
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-4 rounded-2xl text-xs transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <CheckCircle className="h-4.5 w-4.5" />
-                    <span>
-                      {profileSubSection === 'booking' 
-                        ? (isEn ? 'Save & Apply Booking System' : 'حفظ وتطبيق نظام الحجز المعتمد للمواعيد فوراً')
-                        : (isEn ? 'Save Clinic Identity & Update Rx' : 'حفظ واعتماد هوية العيادة وتحديث الروشتات فوراً')}
-                    </span>
-                  </button>
+                  {/* Save Bar */}
+                  <div className="bg-[#272E40] rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg border border-slate-800">
+                    <p className="text-[11px] text-slate-300 font-medium text-center sm:text-start">
+                      {isEn ? 'All five sections are saved with one click and the Rx pad updates instantly' : 'كل الأقسام الخمسة تتحفظ بضغطة واحدة والروشتة تتحدث فوراً'}
+                    </p>
+                    <button
+                      type="submit"
+                      className="shrink-0 bg-gradient-to-l from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-black py-2.5 px-6 rounded-xl text-xs transition-all shadow-md cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      <span>{isEn ? 'Save & Apply Clinic Identity' : 'حفظ واعتماد هوية العيادة'}</span>
+                    </button>
+                  </div>
                 </form>
               </div>
 
@@ -2760,27 +2578,19 @@ export default function ClinicSettings({
         {/* PRICE LIST & SERVICES TAB */}
         {settingsSubTab === 'services_prices' && (
           <div className="space-y-6 animate-fade-in">
-            {/* Header Banner */}
-            <div className="bg-gradient-to-l from-emerald-500/10 via-teal-500/5 to-transparent p-6 rounded-3xl border border-emerald-200/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <h2 className="text-base sm:text-lg font-black text-slate-800 flex items-center gap-2">
-                  <Tag className="h-5 w-5 text-emerald-600" />
-                  {isEn ? 'Price List & Medical Services' : 'قائمة الأسعار والخدمات الطبية'}
-                </h2>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  {isEn ? 'Specify all services and procedures offered by your clinic and their fees in EGP. Used for invoicing and tooth condition updates.' : 'قم بتحديد جميع الخدمات والإجراءات التي تقدمها عيادتك وأسعارها بالجنيه المصري. يتم استخدام هذه القائمة عند تحديد الإجراء للمريض لحساب الفاتورة وتغيير الرسم البياني للأسنان تلقائياً.'}
-                </p>
+            <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
+                  <Tag className="h-5 w-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-white">{isEn ? 'Services & Price List' : 'قائمة الأسعار والخدمات'}</h2>
+                  <p className="text-xs text-slate-300 mt-0.5">{isEn ? 'Search, add and edit in one place' : 'البحث والإضافة والتعديل في مكان واحد'}</p>
+                </div>
               </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <div className="bg-white p-3 rounded-2xl border border-slate-200 text-center shadow-2xs">
-                  <span className="text-[10px] font-bold text-slate-400 block">{isEn ? 'Total Services:' : 'إجمالي الخدمات:'}</span>
-                  <span className="text-sm font-black text-emerald-600">{settingsServicesList.length}</span>
-                </div>
-                <div className="bg-white p-3 rounded-2xl border border-slate-200 text-center shadow-2xs">
-                  <span className="text-[10px] font-bold text-slate-400 block">{isEn ? 'Categories:' : 'عدد الأقسام:'}</span>
-                  <span className="text-sm font-black text-indigo-600">{settingsCategoriesList.length}</span>
-                </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{settingsServicesList.length} {isEn ? 'services' : 'خدمة'}</span>
+                  <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{settingsCategoriesList.length} {isEn ? 'categories' : 'قسم'}</span>
               </div>
             </div>
 
@@ -3171,7 +2981,22 @@ export default function ClinicSettings({
 
         {/* PATIENT QUESTIONNAIRE SETTINGS TAB */}
         {settingsSubTab === 'questionnaire' && (
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-6 animate-fade-in">
+          <div className="space-y-5 animate-fade-in">
+            <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
+                  <ClipboardList className="h-5 w-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-white">{isEn ? 'Patient Questionnaire' : 'استبيان المرضى'}</h2>
+                  <p className="text-xs text-slate-300 mt-0.5">{isEn ? 'Initial medical intake questions' : 'أسئلة الاستقبال الطبية الأولية'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{questionnaireQuestions.filter(q => q.enabled !== false).length} {isEn ? 'active questions' : 'أسئلة مفعلة'}</span>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
               <div>
                 <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
@@ -3418,12 +3243,28 @@ export default function ClinicSettings({
                 </div>
               )}
             </div>
+            </div>
           </div>
         )}
 
         {/* 2. STAFF MANAGEMENT TAB */}
         {settingsSubTab === 'staff' && (
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-6 animate-fade-in">
+          <div className="space-y-5 animate-fade-in">
+            <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
+                  <Users className="h-5 w-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-white">{isEn ? 'Staff Management' : 'شؤون الموظفين'}</h2>
+                  <p className="text-xs text-slate-300 mt-0.5">{isEn ? 'Add staff and set permissions in one click' : 'إضافة موظف وتحديد صلاحياته بضغطة'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{isEn ? 'Flexible permissions' : 'صلاحيات مرنة'}</span>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
             <div>
               <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
                 <Users className="h-5 w-5 text-indigo-600" />
@@ -3786,12 +3627,28 @@ export default function ClinicSettings({
                 </form>
               </details>
             </div>
+            </div>
           </div>
         )}
 
         {/* 3. BACKUP TAB */}
         {settingsSubTab === 'backup' && (
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-6 animate-fade-in">
+          <div className="space-y-5 animate-fade-in">
+            <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
+                  <Database className="h-5 w-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-white">{isEn ? 'Backup' : 'النسخ الاحتياطي'}</h2>
+                  <p className="text-xs text-slate-300 mt-0.5">{isEn ? 'Auto daily backups, one-click download & restore' : 'نسخ يومي تلقائي وتنزيل واستعادة بضغطة'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{isEn ? '4 export formats' : '4 صيغ تصدير'}</span>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
             <div>
               <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
                 <Database className="h-5 w-5 text-indigo-600" />
@@ -4033,12 +3890,28 @@ export default function ClinicSettings({
                 />
               </label>
             </div>
+            </div>
           </div>
         )}
 
         {/* 4. SUBSCRIPTION TAB */}
         {settingsSubTab === 'subscription' && (
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-6 animate-fade-in">
+          <div className="space-y-5 animate-fade-in">
+            <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
+                  <Receipt className="h-5 w-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-white">{isEn ? 'Subscription Details' : 'تفاصيل الاشتراك'}</h2>
+                  <p className="text-xs text-slate-300 mt-0.5">{isEn ? 'Clinic subscription status & data protection' : 'حالة اشتراك العيادة وحماية البيانات'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{isEn ? 'Active & valid' : 'نشط وصالح'}</span>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
             <div>
               <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
                 <Receipt className="h-5 w-5 text-emerald-600" />
@@ -4084,12 +3957,28 @@ export default function ClinicSettings({
             <div className="text-[10px] text-slate-400 leading-relaxed pt-4 border-t border-slate-100 text-center">
               {isEn ? '* All activation & subscription processes are synced with Google Cloud clock to prevent local time tampering.' : '* جميع عمليات التنشيط والاشتراك مرتبطة بساعة جوجل السحابية لحمايتها من أي تلاعب في توقيت الأجهزة المحلية.'}
             </div>
+            </div>
           </div>
         )}
 
         {/* 5. PAYMENT METHODS MANAGEMENT TAB */}
         {settingsSubTab === 'payment_methods' && (
-          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-6 animate-fade-in" dir={isEn ? 'ltr' : 'rtl'}>
+          <div className="space-y-5 animate-fade-in" dir={isEn ? 'ltr' : 'rtl'}>
+            <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
+                  <CreditCard className="h-5 w-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-white">{isEn ? 'Clinic Payment Methods' : 'طرق الدفع بالعيادة'}</h2>
+                  <p className="text-xs text-slate-300 mt-0.5">{isEn ? 'Approved payment channels for transactions' : 'قنوات الدفع المعتمدة في المعاملات'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{(clinic.paymentMethods || ['كاش', 'فيزا', 'إنستاباي', 'محفظة']).length} {isEn ? 'active methods' : 'طرق نشطة'}</span>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
             <div>
               <h2 className="text-base font-black text-slate-800 flex items-center gap-2">
                 <CreditCard className="h-5 w-5 text-emerald-600" />
@@ -4243,12 +4132,28 @@ export default function ClinicSettings({
                   : 'طرق الدفع الأربعة الأساسية (كاش، فيزا، إنستاباي، محفظة) يتم توريدها افتراضياً في حالة عدم تحديد قنوات مخصصة. عند حذفك لأي طريقة دفع، يتم مطابقة جميع البيانات وتعديلها محلياً وسحابياً لضمان تطابق الأرباح والدرج بالكامل مع تصفية الورديات.'}
               </p>
             </div>
+            </div>
           </div>
         )}
 
         {/* Technical Support Tab Content */}
         {settingsSubTab === 'tech_support' && (
-          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs space-y-8 animate-fade-in" dir={isEn ? 'ltr' : 'rtl'}>
+          <div className="space-y-5 animate-fade-in" dir={isEn ? 'ltr' : 'rtl'}>
+            <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
+                  <Headphones className="h-5 w-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-white">{isEn ? 'Support & Contact' : 'الدعم الفني والتواصل'}</h2>
+                  <p className="text-xs text-slate-300 mt-0.5">{isEn ? 'All support channels in one place' : 'كل طرق التواصل مع الدعم في مكان واحد'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{isEn ? 'Direct WhatsApp' : 'واتساب مباشر'}</span>
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
             
             {/* Main Title & Clinic Info Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-6">
@@ -4438,12 +4343,27 @@ export default function ClinicSettings({
               </div>
             )}
 
+            </div>
           </div>
         )}
 
         {/* Loyalty Program Settings Panel */}
         {settingsSubTab === 'loyalty_program' && (
           <div className="space-y-5" dir={isEn ? 'ltr' : 'rtl'}>
+            <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg border border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
+                  <Gift className="h-5 w-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black text-white">{isEn ? 'Patient Loyalty & Rewards' : 'ولاء المرضى والمكافآت'}</h2>
+                  <p className="text-xs text-slate-300 mt-0.5">{isEn ? 'Points earning & redemption rules' : 'قواعد كسب واستبدال النقاط'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{isEn ? 'Auto-calculated example' : 'مثال محسوب تلقائياً'}</span>
+              </div>
+            </div>
             {/* Loyalty View Mode Header Switcher */}
             <div className="bg-white p-3 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2 bg-slate-100/80 p-1 rounded-xl">
