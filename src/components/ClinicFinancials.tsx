@@ -3691,411 +3691,308 @@ ${methodsBreakdown}
 
         {/* TAB 5: Revenues (تقارير وتحليلات الإيرادات) */}
         {activeTab === 'revenues' && (
-          <div className="lg:col-span-12 space-y-6 animate-fade-in text-right">
-            
-            {/* Filter and Period Selector Card */}
-            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-base font-black text-slate-800">{isEn ? 'Revenue Reports & Analytics' : 'تقارير وتحليلات الإيرادات'}</h3>
-                  <p className="text-xs text-slate-400 mt-0.5">{isEn ? 'Track income, cash flow, and receipt distribution by collection channels and period' : 'تتبع المداخيل، تدفقات السيولة وتوزيع المقبوضات حسب قنوات التحصيل والوقت'}</p>
+          <div className="lg:col-span-12 space-y-5 animate-fade-in">
+
+            {/* Period pills + range chip + gross/net toggle */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex bg-white border border-slate-200 p-1 rounded-full text-xs gap-1 shadow-sm">
+                  {([
+                    { id: 'daily', ar: 'يومي', en: 'Daily' },
+                    { id: 'weekly', ar: 'أسبوعي', en: 'Weekly' },
+                    { id: 'monthly', ar: 'شهري', en: 'Monthly' },
+                    { id: 'custom', ar: 'فترة محددة', en: 'Custom' }
+                  ] as const).map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => { setRevenueFilterMode(p.id); setRevenuesLimit(10); }}
+                      className={`py-1.5 px-4 rounded-full font-bold transition cursor-pointer ${
+                        revenueFilterMode === p.id
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {isEn ? p.en : p.ar}
+                    </button>
+                  ))}
                 </div>
-                
-                {/* Horizontal Filter Selector */}
-                <div className="flex bg-slate-100 p-1 rounded-xl text-xs gap-1 self-start md:self-auto">
-                  <button
-                    type="button"
-                    onClick={() => { setRevenueFilterMode('daily'); setRevenuesLimit(10); }}
-                    className={`py-1.5 px-3 rounded-lg font-bold transition ${
-                      revenueFilterMode === 'daily'
-                        ? 'bg-white text-slate-800 shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    📅 {isEn ? 'Daily' : 'يومي'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setRevenueFilterMode('weekly'); setRevenuesLimit(10); }}
-                    className={`py-1.5 px-3 rounded-lg font-bold transition ${
-                      revenueFilterMode === 'weekly'
-                        ? 'bg-white text-slate-800 shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    📊 {isEn ? 'Weekly' : 'أسبوعي'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setRevenueFilterMode('monthly'); setRevenuesLimit(10); }}
-                    className={`py-1.5 px-3 rounded-lg font-bold transition ${
-                      revenueFilterMode === 'monthly'
-                        ? 'bg-white text-slate-800 shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    📆 {isEn ? 'Monthly' : 'شهري'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setRevenueFilterMode('custom'); setRevenuesLimit(10); }}
-                    className={`py-1.5 px-3 rounded-lg font-bold transition ${
-                      revenueFilterMode === 'custom'
-                        ? 'bg-white text-slate-800 shadow-xs'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    🗓️ {isEn ? 'Custom Period' : 'فترة محددة'}
-                  </button>
-                </div>
+                <span className="bg-white border border-slate-200 rounded-full px-3.5 py-1.5 text-xs font-bold text-slate-600 shadow-sm flex items-center gap-1.5">
+                  📅 <span dir={isEn ? 'ltr' : 'rtl'}>{(() => {
+                    const shortD = (ds: string) => {
+                      if (!ds) return '';
+                      try {
+                        const d = new Date(ds + 'T00:00:00');
+                        return isEn
+                          ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                          : d.toLocaleDateString('ar-EG', { day: 'numeric', month: 'long' });
+                      } catch { return ds; }
+                    };
+                    const yearOf = (ds: string) => (ds || '').slice(0, 4);
+                    if (revenueFilterMode === 'daily') return `${shortD(revenueDailyDate)} ${yearOf(revenueDailyDate)}`;
+                    if (revenueFilterMode === 'weekly') {
+                      const b = getWeekBounds(revenueWeeklyDate);
+                      return `${shortD(b.startDateStr)} – ${shortD(b.endDateStr)} ${yearOf(b.endDateStr)}`;
+                    }
+                    if (revenueFilterMode === 'monthly') {
+                      try {
+                        const [y, m] = revenueMonthlyVal.split('-');
+                        const d = new Date(parseInt(y), parseInt(m) - 1, 1);
+                        return isEn
+                          ? d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                          : d.toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
+                      } catch { return revenueMonthlyVal; }
+                    }
+                    return `${shortD(revenueStartDate)} – ${shortD(revenueEndDate)} ${yearOf(revenueEndDate)}`;
+                  })()}</span>
+                </span>
               </div>
 
-              {/* Conditional Inputs Row */}
-              <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                {revenueFilterMode === 'daily' && (
-                  <div className="md:col-span-1">
-                    <label className="block text-xs font-bold text-slate-600 mb-1.5">{isEn ? 'Select Day:' : 'اختر اليوم:'}</label>
-                    <input
-                      type="date"
-                      value={revenueDailyDate}
-                      onChange={(e) => setRevenueDailyDate(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-slate-50 font-bold focus:ring-2 focus:ring-amber-500"
-                    />
-                  </div>
-                )}
-
-                {revenueFilterMode === 'weekly' && (
-                  <div className="md:col-span-2 flex flex-col md:flex-row gap-4">
-                    <div className="flex-1">
-                      <label className="block text-xs font-bold text-slate-600 mb-1.5">{isEn ? 'Select Day in Week:' : 'اختر يوماً في الأسبوع:'}</label>
-                      <input
-                        type="date"
-                        value={revenueWeeklyDate}
-                        onChange={(e) => setRevenueWeeklyDate(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-slate-50 font-bold focus:ring-2 focus:ring-amber-500"
-                      />
-                    </div>
-                    <div className="flex-1 bg-amber-50/50 border border-amber-200/60 rounded-2xl p-3 flex flex-col justify-center">
-                      <span className="text-xs font-bold text-amber-800">{isEn ? 'Calculated Week Bounds:' : 'نطاق الأسبوع المحتسب:'}</span>
-                      <span className="text-xs font-black text-amber-900 mt-1">
-                        {isEn ? `From ${getWeekBounds(revenueWeeklyDate).startDateStr} to ${getWeekBounds(revenueWeeklyDate).endDateStr}` : <>من {formatArabicDate(getWeekBounds(revenueWeeklyDate).startDateStr)} <br /> إلى {formatArabicDate(getWeekBounds(revenueWeeklyDate).endDateStr)}</>}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {revenueFilterMode === 'monthly' && (
-                  <div className="md:col-span-2 flex flex-col md:flex-row gap-4">
-                    <div className="flex-1">
-                      <label className="block text-xs font-bold text-slate-600 mb-1.5">{isEn ? 'Select Month:' : 'اختر الشهر:'}</label>
-                      <input
-                        type="month"
-                        value={revenueMonthlyVal}
-                        onChange={(e) => setRevenueMonthlyVal(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-slate-50 font-bold focus:ring-2 focus:ring-amber-500 text-slate-800"
-                      />
-                    </div>
-                    <div className="flex-1 bg-amber-50/50 border border-amber-200/60 rounded-2xl p-3 flex flex-col justify-center text-right">
-                      <span className="text-xs font-bold text-amber-800">{isEn ? 'Selected Month:' : 'الشهر المحدد:'}</span>
-                      <span className="text-xs font-black text-amber-900 mt-1">
-                        {isEn ? revenueMonthlyVal : formatArabicMonth(revenueMonthlyVal)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {revenueFilterMode === 'custom' && (
-                  <div className="md:col-span-3 grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1.5">{isEn ? 'From Date:' : 'من تاريخ:'}</label>
-                      <input
-                        type="date"
-                        value={revenueStartDate}
-                        onChange={(e) => setRevenueStartDate(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-slate-50 font-bold focus:ring-2 focus:ring-amber-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-600 mb-1.5">{isEn ? 'To Date:' : 'إلى تاريخ:'}</label>
-                      <input
-                        type="date"
-                        value={revenueEndDate}
-                        onChange={(e) => setRevenueEndDate(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs bg-slate-50 font-bold focus:ring-2 focus:ring-amber-500"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Toggle Row for Gross Revenue vs Net Profit */}
-            <div className="flex flex-col md:flex-row bg-slate-50 border border-slate-200/60 p-4 rounded-3xl items-center justify-between gap-4">
-              <div className="flex flex-col text-right">
-                <span className="text-xs font-extrabold text-slate-800">📊 {isEn ? 'Choose Analytics Display Mode:' : 'اختر طريقة عرض التحليلات والتقارير المالية:'}</span>
-                <p className="text-[11px] text-slate-500 mt-0.5">{isEn ? 'Toggle immediately between gross revenues and net profit after deducting expenses.' : 'يمكنك التنقل فوراً بين عرض إجمالي الإيرادات أو صافي الأرباح مخصوماً منها المصروفات.'}</p>
-              </div>
-              
-              <div className="flex bg-white border border-slate-200/80 p-1 rounded-2xl gap-1.5 w-full md:w-auto shrink-0 justify-center">
+              <div className="flex bg-white border border-slate-200 p-1 rounded-full text-xs gap-1 shadow-sm">
                 <button
                   type="button"
                   onClick={() => setRevenueReportType('gross')}
-                  className={`flex-1 md:flex-initial py-2 px-4 rounded-xl font-black text-xs transition duration-200 flex items-center justify-center gap-1.5 cursor-pointer ${
+                  className={`py-1.5 px-4 rounded-full font-bold transition cursor-pointer ${
                     revenueReportType === 'gross'
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  📈 {isEn ? 'Gross Revenue (Pre-deduction)' : 'إجمالي الإيرادات (قبل الخصم)'}
+                  {isEn ? 'Gross Revenue' : 'إجمالي الإيرادات'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setRevenueReportType('net')}
-                  className={`flex-1 md:flex-initial py-2 px-4 rounded-xl font-black text-xs transition duration-200 flex items-center justify-center gap-1.5 cursor-pointer ${
+                  className={`py-1.5 px-4 rounded-full font-bold transition cursor-pointer ${
                     revenueReportType === 'net'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  💰 {isEn ? 'Net Profit (After Expenses)' : 'صافي الأرباح (بعد خصم المصاريف)'}
+                  {isEn ? 'Net Profit After Expenses' : 'صافي الأرباح بعد المصاريف'}
                 </button>
               </div>
             </div>
 
-            {/* KPIs Block */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* KPI 1 - Dynamic Main Metric */}
-              {revenueReportType === 'gross' ? (
-                <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-indigo-600 flex items-center gap-1">💰 {isEn ? 'Total Period Gross Revenue' : 'إجمالي إيرادات الفترة'}</span>
-                    <p className="text-2xl font-black text-indigo-600 font-mono mt-1">
-                      {totalPeriodRevenue.toLocaleString()} <span className="text-xs font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
-                    </p>
-                    <span className="text-xs text-slate-400 block mt-1">{isEn ? 'Shows total revenues without deducting expenses' : 'تظهر كل الإيرادات بدون خصم المصاريف'}</span>
-                  </div>
-                  <div className="h-12 w-12 rounded-2xl bg-indigo-50 flex items-center justify-center">
-                    <TrendingUp className="h-6 w-6 text-indigo-600" />
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">📉 {isEn ? 'Period Net Profit' : 'صافي الأرباح للفترة'}</span>
-                    <p className="text-2xl font-black text-emerald-600 font-mono mt-1">
-                      {(totalPeriodRevenue - totalPeriodExpenses).toLocaleString()} <span className="text-xs font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
-                    </p>
-                    <span className="text-xs text-slate-400 block mt-1">{isEn ? 'Full period expenses have been deducted' : 'تم خصم المصروفات الكلية للفترة بالكامل'}</span>
-                  </div>
-                  <div className="h-12 w-12 rounded-2xl bg-emerald-50 flex items-center justify-center">
-                    <TrendingUp className="h-6 w-6 text-emerald-600" />
-                  </div>
-                </div>
+            {/* Compact date inputs for the selected period mode */}
+            <div className="flex flex-wrap items-center gap-2 bg-white border border-slate-200 rounded-2xl px-3.5 py-2 shadow-sm w-fit">
+              {revenueFilterMode === 'daily' && (
+                <>
+                  <label className="text-xs font-bold text-slate-500">{isEn ? 'Day:' : 'اليوم:'}</label>
+                  <input
+                    type="date"
+                    value={revenueDailyDate}
+                    onChange={(e) => setRevenueDailyDate(e.target.value)}
+                    className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 font-bold focus:ring-2 focus:ring-emerald-500"
+                  />
+                </>
               )}
+              {revenueFilterMode === 'weekly' && (
+                <>
+                  <label className="text-xs font-bold text-slate-500">{isEn ? 'Any day in the week:' : 'أي يوم في الأسبوع:'}</label>
+                  <input
+                    type="date"
+                    value={revenueWeeklyDate}
+                    onChange={(e) => setRevenueWeeklyDate(e.target.value)}
+                    className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 font-bold focus:ring-2 focus:ring-emerald-500"
+                  />
+                </>
+              )}
+              {revenueFilterMode === 'monthly' && (
+                <>
+                  <label className="text-xs font-bold text-slate-500">{isEn ? 'Month:' : 'الشهر:'}</label>
+                  <input
+                    type="month"
+                    value={revenueMonthlyVal}
+                    onChange={(e) => setRevenueMonthlyVal(e.target.value)}
+                    className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 font-bold focus:ring-2 focus:ring-emerald-500 text-slate-800"
+                  />
+                </>
+              )}
+              {revenueFilterMode === 'custom' && (
+                <>
+                  <label className="text-xs font-bold text-slate-500">{isEn ? 'From:' : 'من:'}</label>
+                  <input
+                    type="date"
+                    value={revenueStartDate}
+                    onChange={(e) => setRevenueStartDate(e.target.value)}
+                    className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 font-bold focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <label className="text-xs font-bold text-slate-500">{isEn ? 'To:' : 'إلى:'}</label>
+                  <input
+                    type="date"
+                    value={revenueEndDate}
+                    onChange={(e) => setRevenueEndDate(e.target.value)}
+                    className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 font-bold focus:ring-2 focus:ring-emerald-500"
+                  />
+                </>
+              )}
+            </div>
 
-              {/* KPI 2 - Period Expenses */}
-              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-rose-500">💸 {isEn ? 'Total Period Expenses' : 'إجمالي المصروفات للفترة'}</span>
-                  <p className="text-2xl font-black text-rose-600 font-mono mt-1">
-                    {totalPeriodExpenses.toLocaleString()} <span className="text-xs font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
-                  </p>
-                  <span className="text-xs text-slate-400 block mt-1">{isEn ? 'Total outgoing expenses during the period' : 'إجمالي كافة المصاريف الخارجة خلال الفترة'}</span>
-                </div>
-                <div className="h-12 w-12 rounded-2xl bg-rose-50 flex items-center justify-center">
-                  <TrendingDown className="h-6 w-6 text-rose-600" />
-                </div>
+            {/* KPI cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-emerald-600 text-white p-6 rounded-3xl shadow-sm">
+                <span className="text-xs font-bold text-emerald-100">
+                  {revenueReportType === 'gross'
+                    ? (isEn ? 'Total Period Revenue' : 'إجمالي إيرادات الفترة')
+                    : (isEn ? 'Period Net Profit' : 'صافي الربح للفترة')}
+                </span>
+                <p className="text-4xl font-black font-mono mt-2">
+                  {(revenueReportType === 'gross' ? totalPeriodRevenue : totalPeriodRevenue - totalPeriodExpenses).toLocaleString()}
+                  <span className="text-sm font-bold"> {isEn ? 'EGP' : 'ج.م'}</span>
+                </p>
+                <span className="text-xs text-emerald-100/90 block mt-2">
+                  {revenueReportType === 'gross'
+                    ? (isEn
+                        ? `Before expenses · Net profit after deduction ${(totalPeriodRevenue - totalPeriodExpenses).toLocaleString()} EGP`
+                        : `قبل خصم المصاريف · صافي الربح بعد الخصم ${(totalPeriodRevenue - totalPeriodExpenses).toLocaleString()} ج.م`)
+                    : (isEn
+                        ? `After expenses · Gross revenue before deduction ${totalPeriodRevenue.toLocaleString()} EGP`
+                        : `بعد خصم المصاريف · إجمالي الإيرادات قبل الخصم ${totalPeriodRevenue.toLocaleString()} ج.م`)}
+                </span>
               </div>
 
-              {/* KPI 3 - Visits Count */}
-              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-amber-500">👥 {isEn ? 'Paid Appointments / Visits' : 'عدد الحجوزات/الزيارات المسددة'}</span>
-                  <p className="text-2xl font-black text-amber-600 font-mono mt-1">
-                    {filteredRevenueAppointments.length} <span className="text-xs font-bold">{isEn ? 'Visits' : 'زيارة'}</span>
-                  </p>
-                  <span className="text-xs text-slate-400 block mt-1">{isEn ? 'Total completed appointments in period' : 'إجمالي الحجوزات المكتملة بالفترة'}</span>
-                </div>
-                <div className="h-12 w-12 rounded-2xl bg-amber-50 flex items-center justify-center">
-                  <CheckCircle className="h-6 w-6 text-amber-600" />
-                </div>
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <span className="text-xs font-bold text-slate-500">{isEn ? 'Total Period Expenses' : 'إجمالي المصروفات للفترة'}</span>
+                <p className="text-3xl font-black text-rose-600 font-mono mt-2">
+                  {totalPeriodExpenses.toLocaleString()} <span className="text-sm font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
+                </p>
+                <span className="text-xs text-slate-400 block mt-2">{isEn ? 'All outgoing expenses during the period' : 'كافة المصاريف الخارجة خلال الفترة'}</span>
+              </div>
+
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <span className="text-xs font-bold text-slate-500">{isEn ? 'Paid Appointments / Visits' : 'الحجوزات / الزيارات المسددة'}</span>
+                <p className="text-3xl font-black text-blue-600 font-mono mt-2">
+                  {filteredRevenueAppointments.length} <span className="text-sm font-bold">{isEn ? 'visits' : 'زيارة'}</span>
+                </p>
+                <span className="text-xs text-slate-400 block mt-2">{isEn ? 'Completed appointments in the period' : 'الحجوزات المكتملة بالفترة'}</span>
               </div>
             </div>
 
-            {/* Payment Methods share and charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              
-              {/* Payment Methods Share Card */}
-              <div className="lg:col-span-5 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col">
-                <h3 className="text-sm font-black text-slate-800 mb-1">
-                  {revenueReportType === 'gross' 
-                    ? (isEn ? '💳 Collection Channels & Payment Methods' : '💳 قنوات التحصيل وطرق الدفع')
-                    : (isEn ? '💳 Net Profit by Payment Channel' : '💳 صافي الأرباح حسب قنوات التحصيل')}
-                </h3>
-                <p className="text-xs text-slate-400 mb-4">
-                  {revenueReportType === 'gross' 
-                    ? (isEn ? 'Analysis of collected amounts distributed across clinic payment methods' : 'تحليل المبالغ المحصلة موزعة على طرق الدفع النشطة بالعيادة')
-                    : (isEn ? 'Analysis of net amounts (Revenue minus Expenses) per payment channel' : 'تحليل صافي المبالغ (الإيرادات مخصوماً منها المصاريف) لكل قناة دفع')}
-                </p>
-                
-                <div className="space-y-4 flex-1 flex flex-col justify-center">
-                  {activeMethodsList.map((method, idx) => {
+            {/* Collection channels - full width */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+              <h3 className="text-sm font-black text-slate-800">{isEn ? 'Collection Channels & Payment Methods' : 'قنوات التحصيل وطرق الدفع'}</h3>
+              <p className="text-xs text-slate-400 mt-0.5 mb-5">{isEn ? 'Collected amounts distributed across active payment methods · in / out / net' : 'توزيع المبالغ المحصلة على طرق الدفع النشطة · وارد / مصروف / صافي'}</p>
+
+              <div className="space-y-5">
+                {(() => {
+                  const channelRows = activeMethodsList.map((method) => {
                     const revAmt = revenueMethodBreakdown[method] || 0;
                     const expAmt = expenseMethodBreakdown[method] || 0;
                     const amt = revenueReportType === 'gross' ? revAmt : revAmt - expAmt;
-                    
-                    const totalToUse = revenueReportType === 'gross' 
-                      ? totalPeriodRevenue 
-                      : (totalPeriodRevenue - totalPeriodExpenses);
-                    
-                    const pct = totalToUse > 0 ? (amt / totalToUse) * 100 : 0;
-                    
-                    let colorClass = 'bg-emerald-500';
-                    let textClass = 'text-emerald-700';
-                    let bgLight = 'bg-emerald-50/50';
-                    
-                    if (method === 'فيزا' || method === 'card') {
-                      colorClass = 'bg-blue-500';
-                      textClass = 'text-blue-700';
-                      bgLight = 'bg-blue-50/50';
-                    } else if (method === 'إنستاباي' || method === 'instapay') {
-                      colorClass = 'bg-indigo-500';
-                      textClass = 'text-indigo-700';
-                      bgLight = 'bg-indigo-50/50';
-                    } else if (method === 'محفظة' || method === 'wallet') {
-                      colorClass = 'bg-amber-500';
-                      textClass = 'text-amber-700';
-                      bgLight = 'bg-amber-50/50';
-                    } else if (idx > 3) {
-                      colorClass = 'bg-purple-500';
-                      textClass = 'text-purple-700';
-                      bgLight = 'bg-purple-50/50';
-                    }
-
+                    return { method, revAmt, expAmt, amt };
+                  });
+                  const maxAmt = Math.max(1, ...channelRows.map(c => Math.max(0, c.amt)));
+                  return channelRows.map(({ method, revAmt, expAmt, amt }, idx) => {
+                    const pct = Math.max(0, Math.min(100, (Math.max(0, amt) / maxAmt) * 100));
                     const displayMethod = isEn ? (
                       method === 'كاش' ? 'Cash' :
-                      method === 'فيزا' ? 'Visa / Card' :
+                      method === 'فيزا' ? 'Visa' :
                       method === 'إنستاباي' ? 'InstaPay' :
                       method === 'محفظة' ? 'E-Wallet' : method
                     ) : method;
-
                     return (
-                      <div key={idx} className={`p-3 rounded-2xl border border-slate-100 ${bgLight}`}>
-                        <div className="flex items-center justify-between text-xs mb-1.5">
-                          <span className="font-bold text-slate-700 flex items-center gap-1">
-                            {method === 'كاش' ? '💵' : method === 'فيزا' ? '💳' : method === 'إنستاباي' ? '⚡' : method === 'محفظة' ? '📱' : '💼'}
-                            {displayMethod}
-                          </span>
-                          <span className="font-mono font-extrabold text-slate-800">
-                            {amt.toLocaleString()} {isEn ? 'EGP' : 'ج.م'} {pct > 0 ? `(${pct.toFixed(1)}%)` : ''}
-                          </span>
+                      <div key={idx} className="flex items-center gap-4">
+                        <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5 shrink-0 min-w-[72px]">
+                          {displayMethod}
+                          {method === 'فيزا' ? '💳' : method === 'إنستاباي' ? '⚡' : method === 'محفظة' ? '📱' : method === 'كاش' ? '💵' : ''}
+                        </span>
+                        <div className="flex-1 bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
                         </div>
-                        <div className="flex justify-between text-[10px] text-slate-500 mb-2 gap-1" dir={isEn ? 'ltr' : 'rtl'}>
-                          <span>{isEn ? 'In:' : 'وارد:'} <span className="font-mono font-bold text-emerald-600">{revAmt.toLocaleString()}</span> {isEn ? 'EGP' : 'ج.م'}</span>
-                          <span>{isEn ? 'Out:' : 'مصروف:'} <span className="font-mono font-bold text-rose-500">{expAmt.toLocaleString()}</span> {isEn ? 'EGP' : 'ج.م'}</span>
-                          <span>{isEn ? 'Net:' : 'صافي:'} <span className="font-mono font-bold text-slate-800">{(revAmt - expAmt).toLocaleString()}</span> {isEn ? 'EGP' : 'ج.م'}</span>
-                        </div>
-                        {/* Progress Bar */}
-                        <div className="w-full bg-slate-200/60 h-2 rounded-full overflow-hidden">
-                          <div className={`h-full ${colorClass} rounded-full transition-all duration-500`} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+                        <div className="text-end shrink-0">
+                          <span className="font-mono font-black text-slate-800 text-sm block">{amt.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {isEn
+                              ? `Out ${expAmt.toLocaleString()} · Net ${(revAmt - expAmt).toLocaleString()}`
+                              : `مصروف ${expAmt.toLocaleString()} · صافي ${(revAmt - expAmt).toLocaleString()}`}
+                          </span>
                         </div>
                       </div>
                     );
-                  })}
-                </div>
+                  });
+                })()}
               </div>
+            </div>
 
-              {/* Detailed Transactions List */}
-              <div className="lg:col-span-7 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col">
-                <div className="flex items-center justify-between mb-1">
-                  <h3 className="text-sm font-black text-slate-800">📋 {isEn ? 'Detailed Receipt Register' : 'سجل المقبوضات التفصيلي'}</h3>
-                  <span className="text-xs bg-slate-100 px-2 py-0.5 rounded-full font-bold text-slate-500">
-                    {filteredRevenueAppointments.length} {isEn ? 'records' : 'حركة'}
-                  </span>
+            {/* Detailed receipts register - full width */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black text-slate-800">{isEn ? 'Detailed Receipts Register' : 'سجل المقبوضات التفصيلي'}</h3>
+                <span className="text-xs bg-slate-100 px-2.5 py-0.5 rounded-full font-bold text-slate-500">
+                  {filteredRevenueAppointments.length} {isEn ? 'records' : 'حركة'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5 mb-3">{isEn ? 'All financial transactions received and confirmed during the selected period' : 'كافة الحركات المالية المستلمة والمؤكدة خلال الفترة المحددة'}</p>
+
+              {filteredRevenueAppointments.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <span className="text-2xl">🔍</span>
+                  <p className="text-xs font-bold text-slate-400 mt-2">{isEn ? 'No revenues recorded during the selected period' : 'لا توجد أي إيرادات مسجلة خلال الفترة المحددة'}</p>
                 </div>
-                <p className="text-xs text-slate-400 mb-4">{isEn ? 'All financial transactions received and confirmed during the selected period' : 'كافة الحركات المالية المستلمة والمؤكدة خلال الفترة المحددة'}</p>
-
-                {filteredRevenueAppointments.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center py-10 text-center">
-                    <span className="text-2xl">🔍</span>
-                    <p className="text-xs font-bold text-slate-400 mt-2">{isEn ? 'No revenues recorded during the selected period' : 'لا توجد أي إيرادات مسجلة خلال الفترة المحددة'}</p>
-                  </div>
-                ) : (
-                  <div className="flex-1 flex flex-col justify-between">
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse text-right text-xs">
-                        <thead>
-                          <tr className="border-b border-slate-100 text-slate-500 font-bold">
-                            <th className="pb-2">{isEn ? 'Date' : 'التاريخ'}</th>
-                            <th className="pb-2">{isEn ? 'Patient' : 'المريض'}</th>
-                            <th className="pb-2">{isEn ? 'Treatment' : 'العلاج'}</th>
-                            <th className="pb-2">{isEn ? 'Payment Method' : 'طريقة الدفع'}</th>
-                            <th className="pb-2 text-left">{isEn ? 'Collected' : 'المحصل'}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {filteredRevenueAppointments.slice(0, revenuesLimit).map((app, idx) => {
-                            const amt = app.paidAmount !== undefined ? app.paidAmount : app.price;
-                            const method = formatPaymentMethod(app.paymentMethod);
-                            return (
-                              <tr key={idx} className="hover:bg-slate-50/50">
-                                <td className="py-2.5 text-slate-500 font-mono text-xs">{app.date}</td>
-                                <td className="py-2.5 font-bold text-slate-800">{app.patientName}</td>
-                                <td className="py-2.5 text-slate-500 text-xs truncate max-w-[120px]">{app.treatmentType || (isEn ? 'Examination' : 'كشف واستشارة')}</td>
-                                <td className="py-2.5">
-                                  {method === 'فيزا' ? (
-                                    <span className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold text-xs">{isEn ? 'Visa 💳' : 'فيزا 💳'}</span>
-                                  ) : method === 'إنستاباي' ? (
-                                    <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-xs">{isEn ? 'InstaPay ⚡' : 'إنستاباي ⚡'}</span>
-                                  ) : method === 'محفظة' ? (
-                                    <span className="px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 font-bold text-xs">{isEn ? 'Wallet 📱' : 'محفظة 📱'}</span>
-                                  ) : method === 'كاش' ? (
-                                    <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-bold text-xs">{isEn ? 'Cash 💵' : 'كاش 💵'}</span>
-                                  ) : (
-                                    <span className="px-1.5 py-0.5 rounded-md bg-slate-50 text-slate-700 font-bold text-xs">{method} 💼</span>
-                                  )}
-                                </td>
-                                <td className="py-2.5 text-left font-bold text-slate-800 font-mono">{amt.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {filteredRevenueAppointments.length > revenuesLimit && (
-                      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200 mt-2">
-                        <span className="text-xs font-bold text-slate-500">
-                          {isEn ? `Showing ${Math.min(revenuesLimit, filteredRevenueAppointments.length)} of ${filteredRevenueAppointments.length} transactions` : <>يتم عرض <span className="font-mono font-black text-indigo-600">{Math.min(revenuesLimit, filteredRevenueAppointments.length)}</span> من أصل <span className="font-mono font-black text-slate-800">{filteredRevenueAppointments.length}</span> حركة مالية</>}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setRevenuesLimit(prev => prev + 5)}
-                            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
-                          >
-                            <RefreshCw className="h-3.5 w-3.5" />
-                            <span>{isEn ? 'Show 5 More (+5)' : 'عرض 5 حركات إضافية (+5)'}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setRevenuesLimit(filteredRevenueAppointments.length)}
-                            className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-xl text-xs transition border border-slate-200 cursor-pointer"
-                          >
-                            {isEn ? `Show All (${filteredRevenueAppointments.length})` : `عرض الكل (${filteredRevenueAppointments.length})`}
-                          </button>
+              ) : (
+                <>
+                  <div className="divide-y divide-slate-100">
+                    {filteredRevenueAppointments.slice(0, revenuesLimit).map((app, idx) => {
+                      const amt = app.paidAmount !== undefined ? app.paidAmount : app.price;
+                      const method = formatPaymentMethod(app.paymentMethod);
+                      const isPartial = app.price > 0 && amt < app.price;
+                      const timeLbl = (() => {
+                        if (!app.time) return '';
+                        const [hh, mm] = app.time.split(':').map(Number);
+                        if (isNaN(hh)) return app.time;
+                        const h12 = hh % 12 === 0 ? 12 : hh % 12;
+                        const suffix = isEn ? (hh < 12 ? 'AM' : 'PM') : (hh < 12 ? 'ص' : 'م');
+                        return `${h12}:${String(mm || 0).padStart(2, '0')} ${suffix}`;
+                      })();
+                      const methodEn = method === 'كاش' ? 'Cash' : method === 'فيزا' ? 'Visa' : method === 'إنستاباي' ? 'InstaPay' : method === 'محفظة' ? 'E-Wallet' : method;
+                      return (
+                        <div key={idx} className="flex items-center gap-3 py-3">
+                          <span className="text-xs text-slate-400 font-mono shrink-0 w-16">{timeLbl}</span>
+                          <span className="font-bold text-slate-800 text-sm shrink-0">{app.patientName}</span>
+                          <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold text-[11px] shrink-0">{isEn ? methodEn : method}</span>
+                          <span className="flex-1 text-xs text-slate-500 truncate">
+                            {app.treatmentType || (isEn ? 'Examination' : 'كشف واستشارة')}
+                            {isPartial
+                              ? (isEn ? ' · Partial payment' : ' · سداد جزئي')
+                              : (isEn ? ' · Full payment' : ' · سداد كامل')}
+                          </span>
+                          <span className="font-mono font-black text-slate-800 text-sm shrink-0">{amt.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })}
                   </div>
-                )}
-              </div>
 
+                  {filteredRevenueAppointments.length > revenuesLimit && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200 mt-3">
+                      <span className="text-xs font-bold text-slate-500">
+                        {isEn ? `Showing ${Math.min(revenuesLimit, filteredRevenueAppointments.length)} of ${filteredRevenueAppointments.length} transactions` : <>يتم عرض <span className="font-mono font-black text-emerald-600">{Math.min(revenuesLimit, filteredRevenueAppointments.length)}</span> من أصل <span className="font-mono font-black text-slate-800">{filteredRevenueAppointments.length}</span> حركة مالية</>}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setRevenuesLimit(prev => prev + 5)}
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          <span>{isEn ? 'Show 5 More (+5)' : 'عرض 5 حركات إضافية (+5)'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRevenuesLimit(filteredRevenueAppointments.length)}
+                          className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-xl text-xs transition border border-slate-200 cursor-pointer"
+                        >
+                          {isEn ? `Show All (${filteredRevenueAppointments.length})` : `عرض الكل (${filteredRevenueAppointments.length})`}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
           </div>
         )}
-
       </div>
 
       {financialModalPatient && (
