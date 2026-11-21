@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getAppointmentsRef, getPatientsRef, getPatientRecordsRef, OperationType, handleDbError, cleanDbData, getDocsSmart as getDocs, getDocSmart as getDoc, collection, addDoc, updateDoc, setDoc, deleteDoc, doc, query, where, orderBy, limit, getAppointmentsCounts } from '../dbClient';
 import { Patient, Clinic, Appointment, DEFAULT_QUESTIONNAIRE_QUESTIONS, PatientQuestionnaire } from '../types';
-import { Calendar as CalendarIcon, Clock, Plus, User, FileText, CheckCircle, XCircle, AlertCircle, RefreshCw, Send, ChevronRight, ChevronLeft, ChevronDown, Coins, Sparkles, CalendarPlus, Stethoscope, Phone, Search, Building2, MapPin, Globe, Heart, Pencil, Save, X, Eye, EyeOff, Ticket, Zap } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Plus, User, FileText, CheckCircle, XCircle, AlertCircle, RefreshCw, Send, ChevronRight, ChevronLeft, ChevronDown, Coins, Sparkles, CalendarPlus, Stethoscope, Phone, Search, Building2, MapPin, Globe, Heart, Pencil, Save, X, Eye, EyeOff, Ticket } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useDialogs } from './DialogContext';
 import PatientFinancialsModal, { getAppointmentPayments, normalizePaymentMethod } from './PatientFinancialsModal';
@@ -227,36 +227,12 @@ export default function InteractiveCalendar({
     }
   }, [isAdding, selectedDate, appointments.length]);
 
-  // Quick Booking bar (حجز فوري) - binds the same booking state as the full form
-  const quickBookOverridesRef = useRef<{ bookingType?: 'time' | 'turn'; turnNumber?: number; notes?: string; procedures?: Array<{ id: string; name: string; price: number }> } | null>(null);
-
   // Keep the quick consultation fee in sync when the quick bar is used outside the full form
   useEffect(() => {
     if (!isAdding && treatmentType === 'كشف جديد' && !initialPrice && clinic.consultationPrice !== undefined && clinic.consultationPrice > 0) {
       setInitialPrice(String(clinic.consultationPrice));
     }
   }, [isAdding, treatmentType, initialPrice, clinic.consultationPrice]);
-
-  const handleQuickBook = () => {
-    if (checkSubscriptionBlocked(clinic, dialogs)) return;
-    if (!activeShift) {
-      dialogs.alert(isEn ? 'Please open a shift first!' : 'برجاء فتح وردية أولاً!', { severity: 'warning' });
-      return;
-    }
-    if (!selectedPatientId) {
-      dialogs.alert(isEn ? 'Please select a patient first' : 'الرجاء اختيار المريض أولاً', { severity: 'warning' });
-      return;
-    }
-    setIsNewPatient(false);
-    const isTurnQuick = clinicBookingMode === 'turn';
-    quickBookOverridesRef.current = {
-      bookingType: isTurnQuick ? 'turn' : 'time',
-      turnNumber: isTurnQuick ? getRecommendedTurnNumber(selectedDate) : undefined,
-      notes: '',
-      procedures: []
-    };
-    handleAddAppointment({ preventDefault: () => {} } as unknown as React.FormEvent);
-  };
 
   // Quick Booking (New Patient)
   const [isNewPatient, setIsNewPatient] = useState(false);
@@ -821,10 +797,9 @@ export default function InteractiveCalendar({
     setLoading(true);
     setError(null);
 
-    const quickOverrides = quickBookOverridesRef.current;
-    const effectiveIsNewPatient = quickOverrides ? false : isNewPatient;
-    const effectiveNotes = quickOverrides?.notes ?? appointmentNotes;
-    const effectiveProcedures = quickOverrides?.procedures ?? appProcedures;
+    const effectiveIsNewPatient = isNewPatient;
+    const effectiveNotes = appointmentNotes;
+    const effectiveProcedures = appProcedures;
 
     try {
       if (effectiveIsNewPatient) {
@@ -859,9 +834,9 @@ export default function InteractiveCalendar({
         }
       }
 
-      const effectiveBookingType = quickOverrides?.bookingType ?? selectedBookingType;
+      const effectiveBookingType = selectedBookingType;
       const isTurnBooking = clinicBookingMode === 'turn' || (clinicBookingMode === 'hybrid' && effectiveBookingType === 'turn');
-      const targetTurn = isTurnBooking ? (Number(quickOverrides?.turnNumber ?? turnNumberInput) || getRecommendedTurnNumber(selectedDate)) : undefined;
+      const targetTurn = isTurnBooking ? (Number(turnNumberInput) || getRecommendedTurnNumber(selectedDate)) : undefined;
 
       const normSelDate = normalizeDateStr(selectedDate);
       const sameDayActiveApps = appointments.filter(a =>
@@ -1094,7 +1069,7 @@ export default function InteractiveCalendar({
         date: selectedDate,
         time: appointmentTime,
         bookingType: isTurnBooking ? 'turn' : 'time',
-        turnNumber: isTurnBooking ? (Number(quickOverrides?.turnNumber ?? turnNumberInput) || getRecommendedTurnNumber(selectedDate)) : undefined,
+        turnNumber: isTurnBooking ? (Number(turnNumberInput) || getRecommendedTurnNumber(selectedDate)) : undefined,
         treatmentType,
         price: numPrice,
         paidAmount: 0,
@@ -1133,7 +1108,6 @@ export default function InteractiveCalendar({
       setError('حدث خطأ أثناء حجز الموعد: ' + (err.message || err.toString()));
     } finally {
       setLoading(false);
-      quickBookOverridesRef.current = null;
     }
   };
 
@@ -1269,15 +1243,6 @@ export default function InteractiveCalendar({
       ? `${daysEnglish[dow]}, ${monthsEnglish[parts[1] - 1]} ${parts[2]}, ${parts[0]}`
       : `${daysArabic[dow]} ${parts[2]} ${monthsArabic[parts[1] - 1]} ${parts[0]}`;
   }, [selectedDate, isEn]);
-
-  const quickTimeOptions = useMemo(() => {
-    const opts: string[] = [];
-    for (let h = 8; h <= 23; h++) {
-      opts.push(`${String(h).padStart(2, '0')}:00`);
-      opts.push(`${String(h).padStart(2, '0')}:30`);
-    }
-    return opts;
-  }, []);
 
   const bookingModeLabel = clinicBookingMode === 'turn'
     ? (isEn ? 'Queue system' : 'نظام الدور')
@@ -2240,57 +2205,6 @@ export default function InteractiveCalendar({
           </form>
         </motion.div>
       )}
-
-      {/* Quick Booking Bar */}
-      <div className="bg-white rounded-2xl border-2 border-emerald-500/60 shadow-sm p-3 flex flex-col md:flex-row items-stretch md:items-center gap-2.5">
-        <div className="flex-1 min-w-[220px]">
-          <PatientSearchSelect
-            patients={patients}
-            selectedPatientId={selectedPatientId}
-            onSelectPatient={(id) => { setIsNewPatient(false); setSelectedPatientId(id); }}
-            placeholder={isEn ? "Type patient name or number..." : "اكتب اسم المريض أو رقمه..."}
-          />
-        </div>
-        {clinicBookingMode !== 'turn' && (
-          <div className="relative shrink-0">
-            <Clock className={`h-3.5 w-3.5 text-slate-400 absolute ${isEn ? 'left-2.5' : 'right-2.5'} top-1/2 -translate-y-1/2 pointer-events-none`} />
-            <select
-              value={appointmentTime}
-              onChange={(e) => setAppointmentTime(e.target.value)}
-              className={`${isEn ? 'pl-8 pr-3' : 'pr-8 pl-3'} py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 cursor-pointer appearance-none`}
-              title={isEn ? 'Appointment time' : 'وقت الموعد'}
-            >
-              {quickTimeOptions.map((tOpt) => (
-                <option key={tOpt} value={tOpt}>{isEn ? 'From ' : 'من '}{formatTimeTo12Hour(tOpt, isEn)}</option>
-              ))}
-            </select>
-          </div>
-        )}
-        <select
-          value={treatmentType}
-          onChange={(e) => {
-            const val = e.target.value;
-            setTreatmentType(val);
-            setInitialPrice(val === 'كشف جديد'
-              ? (clinic.consultationPrice !== undefined && clinic.consultationPrice > 0 ? String(clinic.consultationPrice) : '')
-              : '');
-          }}
-          className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 cursor-pointer shrink-0"
-          title={isEn ? 'Visit type' : 'نوع الزيارة'}
-        >
-          <option value="كشف جديد">{isEn ? 'New Consultation' : 'كشف جديد'}</option>
-          <option value="استكمال جلسات">{isEn ? 'Follow-up Session' : 'استكمال جلسات'}</option>
-        </select>
-        <button
-          type="button"
-          onClick={handleQuickBook}
-          disabled={loading || !selectedPatientId}
-          className="shrink-0 flex items-center justify-center gap-1.5 bg-gradient-to-l from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white px-5 py-2.5 rounded-xl font-black text-sm transition shadow-md shadow-emerald-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-        >
-          <Zap className="h-4 w-4" />
-          {isEn ? 'Quick Book' : 'حجز فوري'}
-        </button>
-      </div>
 
       {/* Main Grid: Day list (right in RTL) + Sidebar (calendar & revenue) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
