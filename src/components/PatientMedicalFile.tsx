@@ -73,7 +73,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
   // Form State
   const [isAddingRecord, setIsAddingRecord] = useState(false);
   const [treatment, setTreatment] = useState('حشو ليزر تجميلي للضرس');
-  const [cost, setCost] = useState(350);
+  const [cost, setCost] = useState(600); // matches the catalog default for the pre-filled treatment (حشو ليزر = 600)
   const [notes, setNotes] = useState('');
 
   // Multiple concurrent procedures within this appointment
@@ -83,7 +83,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
   useEffect(() => {
     if (isAddingRecord) {
       setProcedures([
-        { id: 'p-init', name: treatment || 'حشو ليزر تجميلي للضرس', cost: cost || 350, tooth: selectedToothNum }
+        { id: 'p-init', name: treatment || 'حشو ليزر تجميلي للضرس', cost: cost || 600, tooth: selectedToothNum }
       ]);
     }
   }, [isAddingRecord]);

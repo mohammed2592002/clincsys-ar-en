@@ -17,6 +17,48 @@ import {
 import { safeStorage } from './utils/storage';
 import { uploadFileToR2, dataUrlToBlob } from './utils/r2Upload';
 
+// ==================== AUTH TOKEN HANDLING ====================
+// The server issues a signed session token at login; every API request carries it.
+const AUTH_TOKEN_KEY = 'dental_auth_token';
+
+export function getAuthToken(): string {
+  try {
+    return safeStorage.getItem(AUTH_TOKEN_KEY) || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+export function setAuthToken(token: string) {
+  try {
+    if (token) {
+      safeStorage.setItem(AUTH_TOKEN_KEY, token);
+    } else {
+      safeStorage.removeItem(AUTH_TOKEN_KEY);
+    }
+  } catch (e) {}
+}
+
+export function clearAuthToken() {
+  setAuthToken('');
+}
+
+export function authHeaders(): Record<string, string> {
+  const token = getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function handleAuthExpiry() {
+  try {
+    safeStorage.removeItem(AUTH_TOKEN_KEY);
+    safeStorage.removeItem('dental_saas_session');
+  } catch (e) {}
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('clinic-auth-expired'));
+  }
+}
+// ================== END AUTH TOKEN HANDLING ==================
+
 export const app = { name: '[MockApp]' };
 
 const smartDocsCache = new Map<string, any>();
@@ -168,11 +210,16 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 
     try {
       const res = await fetch(fullUrl, {
         ...options,
+        headers: { ...authHeaders(), ...(options.headers || {}) },
         signal: controller.signal
       });
       clearTimeout(timer);
       if (options.signal && callerAbortListener) {
         options.signal.removeEventListener('abort', callerAbortListener);
+      }
+      if (res.status === 401 && typeof fullUrl === 'string' && fullUrl.includes('/api/db')) {
+        // Session expired or logged out elsewhere: force re-login
+        handleAuthExpiry();
       }
       return res;
     } catch (err: any) {
@@ -999,17 +1046,18 @@ export async function uploadBytes(refInstance: any, blob: Blob) {
 }
 
 export async function getDownloadURL(refInstance: any) {
+  const tokenParam = getAuthToken() ? `&token=${encodeURIComponent(getAuthToken())}` : '';
   if (typeof refInstance === 'string') {
     if (refInstance.startsWith('http://') || refInstance.startsWith('https://')) {
       return refInstance;
     }
-    return getApiUrl(`/api/files?path=${encodeURIComponent(refInstance)}`);
+    return getApiUrl(`/api/files?path=${encodeURIComponent(refInstance)}${tokenParam}`);
   }
   if (refInstance?.path) {
     if (refInstance.path.startsWith('http://') || refInstance.path.startsWith('https://')) {
       return refInstance.path;
     }
-    return getApiUrl(`/api/files?path=${encodeURIComponent(refInstance.path)}`);
+    return getApiUrl(`/api/files?path=${encodeURIComponent(refInstance.path)}${tokenParam}`);
   }
   return '';
 }
@@ -1156,7 +1204,7 @@ export async function getDocsSmart(q: any, forceRefresh = false) {
     }
   }
 
-  const result = await getDocs(q);
+  const result = await getDocs(q, forceRefresh);
   const cacheKey = getQueryCacheKey(q);
   if (cacheKey) {
     smartDocsCache.set(cacheKey, result);
@@ -1174,7 +1222,7 @@ export async function getDocSmart(docRef: any, forceRefresh = false) {
     }
   }
 
-  const result = await getDoc(docRef);
+  const result = await getDoc(docRef, forceRefresh);
   const cacheKey = docRef?.path || '';
   if (cacheKey) {
     smartDocCache.set(cacheKey, result);

@@ -1397,7 +1397,7 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
   const [condition, setCondition] = useState<DentalTooth['condition']>('healthy');
   const [notes, setNotes] = useState('');
   const [serviceInput, setServiceInput] = useState(isEn ? 'Cosmetic Composite Laser Filling' : 'حشو ليزر تجميلي');
-  const [priceInput, setPriceInput] = useState<number>(350);
+  const [priceInput, setPriceInput] = useState<number>(600); // matches default service price (حشو ليزر تجميلي = 600)
   const [isSavingSession, setIsSavingSession] = useState(false);
 
   // Dynamic services and category management state
@@ -1696,7 +1696,7 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
       setNotes('');
     }
     setServiceInput('حشو ليزر تجميلي');
-    setPriceInput(350);
+    setPriceInput(600); // keep in sync with the catalog/quick-button price for the default service
   }, [readOnly, hasAdultAction, hasChildAction, isAdultMatured, isMultiSelectMode, chartState, dialogs]);
 
   const buildUpdatedToothData = (num: number, cond: DentalTooth['condition'], notesStr: string, serviceName?: string, priceVal?: number): DentalTooth => {

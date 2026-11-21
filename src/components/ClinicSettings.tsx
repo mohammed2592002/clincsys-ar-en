@@ -728,7 +728,7 @@ export default function ClinicSettings({
       setCustomPrescriptionPadConfigInput(getEffectivePadConfig(clinic.id, clinic.customPrescriptionPadConfig));
       setClinicConsultationPriceInput(clinic.consultationPrice !== undefined ? Number(clinic.consultationPrice) : 0);
       setBookingSystemModeInput(clinic.bookingSystemMode || 'hybrid');
-      setStaffPinInput(clinic.staffPin || '1234');
+      // PIN is never sent back by the server; an empty field keeps the current PIN
       
       if (!editingStaffId) {
         setSelectedStaffTabs(getClinicAllAllowedTabs());
@@ -789,18 +789,32 @@ export default function ClinicSettings({
       }
     }
 
+    if (!editingStaffId && !newStaffPassword.trim()) {
+      dialogs.alert('يرجى تحديد كلمة مرور للموظف الجديد!', { severity: 'warning' });
+      return;
+    }
+
     try {
       const currentMembers = clinic.staffMembers || [];
       let updatedMembers: StaffMember[];
       if (editingStaffId) {
-        updatedMembers = currentMembers.map(m => m.id === editingStaffId ? {
-          ...m,
-          name: newStaffName.trim(),
-          role: newStaffRole.trim() || 'سكرتير / استقبال',
-          password: newStaffPassword.trim(),
-          phone: cleanStaffPhone,
-          allowedTabs: finalStaffTabs
-        } : m);
+        updatedMembers = currentMembers.map(m => {
+          if (m.id !== editingStaffId) return m;
+          const next: any = {
+            ...m,
+            name: newStaffName.trim(),
+            role: newStaffRole.trim() || 'سكرتير / استقبال',
+            phone: cleanStaffPhone,
+            allowedTabs: finalStaffTabs
+          };
+          // Empty password field on edit = keep the existing password (server preserves it)
+          if (newStaffPassword.trim()) {
+            next.password = newStaffPassword.trim();
+          } else {
+            delete next.password;
+          }
+          return next;
+        });
       } else {
         const newMember: StaffMember = {
           id: Date.now().toString(),
@@ -838,7 +852,7 @@ export default function ClinicSettings({
     setEditingStaffId(member.id);
     setNewStaffName(member.name);
     setNewStaffRole(member.role);
-    setNewStaffPassword(member.password);
+    setNewStaffPassword(''); // leave empty to keep the current password
     setNewStaffPhone(member.phone || '');
     setSelectedStaffTabs(filteredTabs);
     setSettingsSuccess('');
@@ -3704,7 +3718,7 @@ export default function ClinicSettings({
                           <td className="py-3 px-4 font-mono">
                             <div className="flex items-center gap-1.5">
                               <span className="bg-slate-100 px-2.5 py-0.5 rounded text-indigo-950 font-bold">
-                                {showStaffPasswords[member.id] ? member.password : '••••••••'}
+                                {member.password && showStaffPasswords[member.id] ? member.password : '••••••••'}
                               </span>
                               <button
                                 type="button"

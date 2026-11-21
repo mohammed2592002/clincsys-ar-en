@@ -559,7 +559,8 @@ export default function ClinicFinancials({
       const ref = getAppointmentsRef(clinic.id);
       let snap;
       try {
-        snap = await getDocs(ref);
+        // Financial reports must never read a stale cached list: always fetch fresh from the server
+        snap = await getDocs(ref, true);
       } catch (err: any) {
         handleDbError(err, OperationType.LIST, `clinics/${clinic.id}/appointments`);
       }

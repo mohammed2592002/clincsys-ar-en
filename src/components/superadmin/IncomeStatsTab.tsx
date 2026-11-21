@@ -14,6 +14,7 @@ import {
   Coins
 } from 'lucide-react';
 import { useDialogs } from '../DialogContext';
+import { authHeaders } from '../../dbClient';
 
 interface IncomeStatsTabProps {}
 
@@ -66,7 +67,7 @@ export default function IncomeStatsTab({}: IncomeStatsTabProps) {
       if (incomePeriod === 'custom') {
         url += `&startDate=${incomeStartDate}&endDate=${incomeEndDate}`;
       }
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: { ...authHeaders() } });
       if (res.ok) {
         const data = await res.json();
         setIncomeStatsData(data);
