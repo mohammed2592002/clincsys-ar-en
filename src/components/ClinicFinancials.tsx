@@ -2626,68 +2626,129 @@ ${methodsBreakdown}
         {/* TAB 3: Shift History (سجل الإقفال التاريخي) */}
         {activeTab === 'shift_history' && (
           <div className="lg:col-span-12 space-y-4 animate-fade-in">
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-              <div className="border-b border-slate-100 pb-3">
-                <h3 className="text-sm font-bold text-slate-800">{isEn ? 'Closed Shifts Historical Archive' : 'الأرشيف التاريخي لإغلاق الورديات واليومية'}</h3>
-                <p className="text-xs text-slate-400 mt-0.5">{isEn ? 'Displays all shifts manually closed by staff or doctors for review' : 'يعرض كافة الورديات والشيفتات التي تم إقفالها يدوياً بواسطة السكرتارية أو الأطباء للمراجعة'}</p>
-              </div>
-
-              {shiftHistory.length === 0 ? (
-                <div className="p-12 text-center text-slate-400">
-                  <Archive className="h-10 w-10 mx-auto text-slate-300 mb-2" />
-                  <span className="text-xs font-bold">{isEn ? 'No closed shift history records found yet' : 'لا يوجد أي سجلات وردية مغلقة تاريخياً حتى الآن'}</span>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-right text-xs">
-                      <thead>
-                        <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-150">
-                          <th className="p-3 text-right">{isEn ? 'Shift Date' : 'تاريخ اليوم'}</th>
-                          <th className="p-3 text-right">{isEn ? 'Saved At' : 'توقيت الحفظ'}</th>
-                          <th className="p-3 text-center">{isEn ? 'Completed Appointments' : 'المواعيد المكتملة'}</th>
-                          <th className="p-3 text-left">{isEn ? 'Cloud Expected' : 'المتوقع سحابياً'}</th>
-                          <th className="p-3 text-left">{isEn ? 'Actual Cash' : 'الفعلي بالدرج'}</th>
-                          <th className="p-3 text-left">{isEn ? 'Discrepancy' : 'الفارق (العجز/الزيادة)'}</th>
-                          <th className="p-3 text-right">{isEn ? 'Closed By' : 'مغلق بواسطة'}</th>
-                          <th className="p-3 text-center">{isEn ? 'Details' : 'تفاصيل'}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {shiftHistory.slice(0, shiftHistoryLimit).map((shift) => (
-                          <tr key={shift.id} className="border-b border-slate-100 hover:bg-slate-50/40">
-                            <td className="p-3 font-bold text-slate-800 font-mono">{shift.date}</td>
-                            <td className="p-3 text-slate-500 font-mono">{new Date(shift.closedAt).toLocaleTimeString(isEn ? 'en-US' : 'ar-EG', { hour: '2-digit', minute: '2-digit', hour12: true })}</td>
-                            <td className="p-3 text-center font-bold text-slate-700 font-mono">{shift.completedCount}</td>
-                            <td className="p-3 text-left font-mono text-slate-600">{(shift.expectedCash || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
-                            <td className="p-3 text-left font-mono font-bold text-slate-800">{(shift.actualCash || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
-                            <td className={`p-3 text-left font-mono font-black ${
-                              shift.discrepancy === 0 
-                                ? 'text-emerald-600' 
-                                : shift.discrepancy < 0 
-                                  ? 'text-rose-600' 
-                                  : 'text-indigo-600'
-                            }`}>
-                              {shift.discrepancy === 0 ? (isEn ? 'Exact Match' : 'مطابق') : `${shift.discrepancy > 0 ? '+' : ''}${(shift.discrepancy || 0).toLocaleString()} ${isEn ? 'EGP' : 'ج.م'}`}
-                            </td>
-                            <td className="p-3 text-slate-600 font-bold">{shift.closedBy}</td>
-                            <td className="p-3 text-center">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedHistoryShift(shift)}
-                                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold px-2.5 py-1.5 rounded-lg transition text-[10px] flex items-center justify-center gap-1 mx-auto cursor-pointer"
-                              >
-                                <span>🔍</span> {isEn ? 'Shift Details' : 'تفاصيل الوردية'}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+            {(() => {
+              const nowMonth = new Date();
+              const monthKey = `${nowMonth.getFullYear()}-${String(nowMonth.getMonth() + 1).padStart(2, '0')}`;
+              const monthShifts = shiftHistory.filter(s => (s.date || '').startsWith(monthKey));
+              const monthRevenue = monthShifts.reduce((sum, s) => sum + (Number(s.totalRevenue) || 0), 0);
+              const deficitShifts = monthShifts.filter(s => Number(s.discrepancy) < 0);
+              const deficitSum = deficitShifts.reduce((sum, s) => sum + (Number(s.discrepancy) || 0), 0);
+              const fmtTime = (iso?: string) => {
+                if (!iso) return '—';
+                const d = new Date(iso);
+                return isNaN(d.getTime()) ? '—' : d.toLocaleTimeString(isEn ? 'en-US' : 'ar-EG', { hour: '2-digit', minute: '2-digit' });
+              };
+              const fmtDay = (dateStr: string) => {
+                const d = new Date(dateStr + 'T00:00:00');
+                if (isNaN(d.getTime())) return { day: dateStr, rest: '' };
+                return {
+                  day: String(d.getDate()),
+                  rest: d.toLocaleDateString(isEn ? 'en-US' : 'ar-EG', { weekday: 'long' }) + (isEn ? ', ' : ' • ') + d.toLocaleDateString(isEn ? 'en-US' : 'ar-EG', { month: 'long', year: 'numeric' })
+                };
+              };
+              return (
+                <>
+                  {/* Month summary cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-2">
+                      <span className="text-xs font-bold text-slate-500 block">{isEn ? 'Closed shifts this month' : 'ورديات مقفلة هذا الشهر'}</span>
+                      <span className="text-2xl font-black text-slate-800 font-mono block">
+                        {monthShifts.length} <span className="text-sm font-bold text-slate-400">{isEn ? 'shifts' : 'وردية'}</span>
+                      </span>
+                    </div>
+                    <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-2">
+                      <span className="text-xs font-bold text-slate-500 block">{isEn ? "Month's total collections" : 'إجمالي محصل الشهر'}</span>
+                      <span className="text-2xl font-black text-emerald-600 font-mono block">
+                        {monthRevenue.toLocaleString()} <span className="text-sm font-bold text-slate-400">{isEn ? 'EGP' : 'ج.م'}</span>
+                      </span>
+                    </div>
+                    <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-2">
+                      <span className="text-xs font-bold text-slate-500 block">{isEn ? 'Drawer discrepancies' : 'فروقات الدرج'}</span>
+                      {deficitShifts.length === 0 ? (
+                        <span className="text-lg font-black text-emerald-600 block">{isEn ? 'No discrepancies' : 'لا توجد فروقات'}</span>
+                      ) : (
+                        <span className="text-lg font-black text-rose-600 block">
+                          {isEn
+                            ? `${deficitShifts.length} shift${deficitShifts.length > 1 ? 's' : ''} short by ${Math.abs(deficitSum).toLocaleString()} EGP`
+                            : `${deficitShifts.length === 1 ? 'وردية واحدة' : `${deficitShifts.length} ورديات`} بعجز ${deficitSum.toLocaleString()} ج.م`}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
+                  {shiftHistory.length === 0 ? (
+                    <div className="p-10 text-center border-2 border-dashed border-slate-200 rounded-3xl bg-white/60">
+                      <Archive className="h-8 w-8 mx-auto text-slate-300 mb-2" />
+                      <span className="text-xs font-bold text-slate-400">{isEn ? 'No closed shift records yet' : 'لا توجد سجلات وردية مغلقة حتى الآن'}</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {shiftHistory.slice(0, shiftHistoryLimit).map((shift) => {
+                        const d = fmtDay(shift.date);
+                        const disc = Number(shift.discrepancy) || 0;
+                        return (
+                          <div key={shift.id} className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center gap-4 shadow-2xs">
+                            {/* Date + cashier */}
+                            <div className="flex items-center gap-4 min-w-0 lg:w-72 shrink-0">
+                              <div className="text-center shrink-0 w-14">
+                                <div className="text-2xl font-black text-slate-900 font-mono leading-none">{d.day}</div>
+                                <div className="text-[10px] text-slate-400 font-bold mt-1">{d.rest}</div>
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-sm font-black text-slate-900 truncate">{shift.cashierName || shift.closedBy}</div>
+                                <div className="text-[11px] text-slate-400 font-medium mt-0.5">
+                                  {isEn ? 'from' : 'من'} {fmtTime(shift.openedAt)} {isEn ? 'to' : 'إلى'} {fmtTime(shift.closedAt)} • {shift.completedCount} {isEn ? 'collected operations' : 'عمليات محصلة'}
+                                  {shift.notes ? ` • ${isEn ? 'note recorded' : 'ملاحظة مسجلة'}` : ''}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Numbers */}
+                            <div className="flex items-center gap-5 sm:gap-7 flex-1 justify-center">
+                              <div className="text-center">
+                                <span className="text-[10px] text-slate-400 font-bold block">{isEn ? 'Collected' : 'المحصل'}</span>
+                                <span className="text-sm font-black text-emerald-600 font-mono">{(Number(shift.totalRevenue) || 0).toLocaleString()}</span>
+                              </div>
+                              <div className="text-center">
+                                <span className="text-[10px] text-slate-400 font-bold block">{isEn ? 'Expected in drawer' : 'المتوقع بالدرج'}</span>
+                                <span className="text-sm font-black text-slate-700 font-mono">{(shift.expectedCash || 0).toLocaleString()}</span>
+                              </div>
+                              <div className="text-center">
+                                <span className="text-[10px] text-slate-400 font-bold block">{isEn ? 'Actual' : 'الفعلي'}</span>
+                                <span className={`text-sm font-black font-mono ${disc < 0 ? 'text-rose-600' : 'text-slate-700'}`}>{(shift.actualCash || 0).toLocaleString()}</span>
+                              </div>
+                              <div>
+                                {disc === 0 ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full">
+                                    <Check className="h-3 w-3" /> {isEn ? 'Match' : 'مطابق'}
+                                  </span>
+                                ) : disc < 0 ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-700 bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-full">
+                                    {isEn ? 'Short' : 'عجز'} {disc.toLocaleString()}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-black text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full">
+                                    {isEn ? 'Surplus' : 'زيادة'} +{disc.toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setSelectedHistoryShift(shift)}
+                              className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-xl text-xs transition shrink-0 cursor-pointer"
+                            >
+                              {isEn ? 'View Report' : 'عرض التقرير'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {shiftHistory.length > shiftHistoryLimit && (
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-white rounded-2xl border border-slate-200">
                       <span className="text-xs font-bold text-slate-500">
                         {isEn ? `Showing ${Math.min(shiftHistoryLimit, shiftHistory.length)} of ${shiftHistory.length} closed shifts` : <>يتم عرض <span className="font-mono font-black text-indigo-600">{Math.min(shiftHistoryLimit, shiftHistory.length)}</span> من أصل <span className="font-mono font-black text-slate-800">{shiftHistory.length}</span> وردية مغلقة</>}
                       </span>
@@ -2710,8 +2771,9 @@ ${methodsBreakdown}
                       </div>
                     </div>
                   )}
-                </div>
-              )}
+                </>
+              );
+            })()}
 
               {/* Detailed Historical Shift Modal */}
               {selectedHistoryShift && (
@@ -2873,7 +2935,6 @@ ${methodsBreakdown}
                   </div>
                 </div>
               )}
-            </div>
           </div>
         )}
 
