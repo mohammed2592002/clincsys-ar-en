@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500" viewBox="0 0 500 500">
+<defs>
+ <linearGradient id="rim" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#ffffff"/><stop offset=".27" stop-color="#d7e9e3"/><stop offset=".52" stop-color="#fcfffd"/><stop offset=".78" stop-color="#a6c9bf"/><stop offset="1" stop-color="#edf8f1"/></linearGradient>
+ <linearGradient id="teal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#4aa99b"/><stop offset=".38" stop-color="#218e7e"/><stop offset=".72" stop-color="#11796d"/><stop offset="1" stop-color="#65b4a2"/></linearGradient>
+ <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#e1f6ec"/><stop offset=".45" stop-color="#6fbbaa"/><stop offset="1" stop-color="#0c6159"/></linearGradient>
+ <radialGradient id="inner"><stop stop-color="#f9fdfa"/><stop offset="1" stop-color="#e8f3ec"/></radialGradient>
+ <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#234d40" flood-opacity=".14"/></filter>
+ <filter id="smallshadow" x="-25%" y="-25%" width="150%" height="170%"><feDropShadow dx="0" dy="4" stdDeviation="2.5" flood-color="#195d51" flood-opacity=".22"/></filter>
+ <path id="tooth" d="M249 127 C226 128 211 107 188 112 C157 117 147 140 151 174 C153 197 164 214 168 238 C173 261 177 305 192 315 C210 328 215 302 221 278 C228 251 233 237 246 236 C260 235 269 254 275 279 C281 307 286 323 301 314 C317 303 321 264 326 240 C331 216 342 194 344 171 C347 143 338 121 315 114 C291 106 277 126 255 122 C264 134 283 139 302 131 C291 150 269 151 249 144"/>
+</defs>
+<g transform="translate(250 206) scale(1.32) translate(-251 -218)" filter="url(#smallshadow)">
+ <use href="#tooth" fill="url(#teal)" stroke="#0d7063" stroke-width="2"/>
+ <use href="#tooth" fill="none" stroke="url(#edge)" stroke-width="8" stroke-linejoin="round"/>
+ <path d="M186 122 C160 130 158 149 162 176 C165 198 174 217 178 238 C182 262 185 290 192 302" stroke="#eafff2" stroke-opacity=".5" stroke-width="2" fill="none" stroke-linecap="round"/>
+ <g stroke="#d1ede1" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+  <path d="M231 189v-18m16 18v-26m16 26v-18M219 200h-17l-8-8M219 214h-26M219 228h-13l-10 12M233 238v17l-8 8m23-25v29m15-29v16l11 8M277 200h17l10-10m-27 24h32m-32 14h18l10 12"/>
+  <circle cx="231" cy="167" r="3.7"/><circle cx="247" cy="159" r="3.7"/><circle cx="263" cy="167" r="3.7"/>
+  <circle cx="191" cy="188" r="4"/><circle cx="188" cy="214" r="4"/><circle cx="192" cy="244" r="4"/>
+  <circle cx="221" cy="266" r="4"/><circle cx="248" cy="272" r="4"/><circle cx="278" cy="266" r="4"/>
+  <circle cx="308" cy="186" r="4"/><circle cx="314" cy="214" r="4"/><circle cx="309" cy="244" r="4"/>
+ </g>
+ <rect x="227" y="191" width="43" height="43" rx="8" fill="url(#rim)" stroke="#a0d2c0" stroke-width="1.8"/>
+ <rect x="235" y="199" width="27" height="27" rx="4" fill="url(#teal)"/>
+</g>
+<text x="250" y="420" text-anchor="middle" font-family="Arial,sans-serif" font-size="36" letter-spacing="-1.5" fill="#256c60">Core<tspan font-weight="700" fill="#128579">Dent</tspan>Sys</text>
+</svg>

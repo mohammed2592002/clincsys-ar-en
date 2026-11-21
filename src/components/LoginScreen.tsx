@@ -20,11 +20,13 @@ import {
   Send,
   ExternalLink,
   PhoneCall,
-  Database
+  Database,
+  Headphones
 } from 'lucide-react';
 import { db, doc, getDocSmart } from '../dbClient';
 import { SocialContact } from '../types';
-import LanguageSwitcher from './LanguageSwitcher';
+import loginEmblem from '../assets/login-emblem.svg';
+import './LoginScreen.css';
 
 interface LoginScreenProps {
   loginRole: 'manager' | 'staff';
@@ -117,201 +119,30 @@ export default function LoginScreen({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 bg-gradient-to-br from-sky-100 via-slate-50 to-blue-100 text-slate-800 flex flex-col justify-center items-center p-4 sm:p-6 font-sans relative select-none overflow-hidden" dir={isEn ? 'ltr' : 'rtl'}>
-      {/* Top bar with Language Switcher */}
-      <div className="absolute top-4 end-4 z-20">
-        <LanguageSwitcher variant="pill" />
-      </div>
-
-      {/* Soft Ambient Sky Blue Background Orbs */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] h-[320px] bg-sky-300/30 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-10 right-10 w-[300px] h-[300px] bg-cyan-200/40 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Main Container */}
-      <div className="relative z-10 w-full max-w-md mx-auto flex flex-col items-center">
-
-        {/* Brand Logo Header */}
-        <div className="flex flex-col items-center mb-6 text-center">
-          <div className="w-14 h-14 bg-white/80 border border-sky-200/80 rounded-2xl flex items-center justify-center text-sky-600 mb-3 shadow-md shadow-sky-100/50 backdrop-blur-md">
-            <Activity className="h-7 w-7 text-sky-600" />
+    <div className="cd-login" dir={isEn ? 'ltr' : 'rtl'}>
+      <header className="cd-header">
+        <a className="cd-brand" href="/" aria-label="CoreDentSys"><span className="cd-brandmark"><Activity /></span><span className="cd-brandname">Core<span>Dent</span>Sys</span></a>
+        <nav className="cd-nav"><a className="cd-home" href="/">{isEn ? <ArrowLeft /> : <ArrowRight />}{t('auth.backToWebsite')}</a><button className="cd-language" type="button" onClick={() => i18n.changeLanguage(isEn ? 'ar' : 'en')}><Globe />{isEn ? 'العربية' : 'English'}</button></nav>
+      </header>
+      <main className="cd-main">
+        <section className="cd-form-section" aria-labelledby="login-title"><div className="cd-form-wrap">
+          <div className="cd-eyebrow">{t('auth.clinicEntry')}</div><h1 id="login-title">{t('auth.welcomeBack')}</h1><p className="cd-sub">{t('auth.signInDescription')}</p>
+          <div className="cd-roles" role="group" aria-label={t('auth.chooseRole')}>
+            <button type="button" aria-pressed={loginRole === 'manager'} className={`cd-role ${loginRole === 'manager' ? 'active' : ''}`} onClick={() => { setLoginRole('manager'); setLoginError(''); }}><UserCheck />{t('auth.managerTab')}</button>
+            <button type="button" aria-pressed={loginRole === 'staff'} className={`cd-role ${loginRole === 'staff' ? 'active' : ''}`} onClick={() => { setLoginRole('staff'); setLoginError(''); }}><Briefcase />{t('auth.staffTab')}</button>
           </div>
-
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-            CoreDentSys
-          </h1>
-          <p className="text-xs text-sky-600 font-bold tracking-widest uppercase mt-0.5">
-            {t('common.appSubtitle')}
-          </p>
-        </div>
-
-        {/* Smooth Glassmorphic Card */}
-        <div className="w-full bg-white/75 backdrop-blur-xl border border-white/80 p-6 sm:p-8 rounded-3xl shadow-xl shadow-sky-900/5 relative space-y-6 text-start">
-
-          {/* Title Header */}
-          <div className="text-center">
-            <h2 className="text-xl font-bold text-slate-900">{t('auth.loginBtn')}</h2>
-          </div>
-
-          {/* Role Switcher tabs */}
-          <div className="grid grid-cols-2 gap-2 bg-slate-100/70 p-1.5 rounded-2xl text-xs border border-sky-100/80 backdrop-blur-sm">
-            <button
-              type="button"
-              onClick={() => { setLoginRole('manager'); setLoginError(''); }}
-              className={`py-2.5 px-3 rounded-xl font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                loginRole === 'manager' 
-                  ? 'bg-white text-sky-700 shadow-sm border border-sky-200/80 scale-[1.01]' 
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <UserCheck className="h-4 w-4 text-sky-600" />
-              <span>{t('auth.managerRole')}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => { setLoginRole('staff'); setLoginError(''); }}
-              className={`py-2.5 px-3 rounded-xl font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                loginRole === 'staff' 
-                  ? 'bg-white text-cyan-700 shadow-sm border border-cyan-200/80 scale-[1.01]' 
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Briefcase className="h-4 w-4 text-cyan-600" />
-              <span>{t('auth.staffRole')}</span>
-            </button>
-          </div>
-
-          {/* Error Banner */}
-          <AnimatePresence>
-            {loginError && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="bg-rose-50/90 border border-rose-200 p-3 rounded-xl flex items-start gap-2.5 shadow-2xs"
-              >
-                <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
-                <p className="text-xs text-rose-700 font-bold leading-relaxed">{loginError}</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Login Form */}
-          <form onSubmit={handleLoginSubmit} className="space-y-4">
-            {/* Email Field */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5 text-start">
-                {t('auth.email')}
-              </label>
-              <div className="relative">
-                <input
-                  type="email"
-                  required
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder={t('auth.emailPlaceholder')}
-                  className="w-full ps-10 pe-10 py-3 bg-white/80 border border-sky-200/80 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-100 text-sm text-slate-800 font-mono placeholder:text-slate-400 transition shadow-2xs"
-                  dir="ltr"
-                />
-                <Mail className="absolute start-3.5 top-3.5 h-4 w-4 text-sky-500/70" />
-              </div>
-            </div>
-
-            {/* Password Field */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5 text-start">
-                {loginRole === 'manager' ? t('auth.password') : `${t('auth.password')} / PIN`}
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  placeholder={t('auth.passwordPlaceholder')}
-                  className="w-full ps-10 pe-10 py-3 bg-white/80 border border-sky-200/80 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-100 text-sm font-mono text-slate-800 placeholder:text-slate-400 transition shadow-2xs"
-                  dir="ltr"
-                />
-                <Lock className="absolute start-3.5 top-3.5 h-4 w-4 text-sky-500/70" />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute end-3.5 top-3 text-slate-400 hover:text-sky-600 transition p-1 cursor-pointer"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={loginLoading}
-              className={`w-full text-white font-extrabold py-3.5 rounded-xl transition-all disabled:opacity-50 text-sm flex items-center justify-center gap-2 mt-2 cursor-pointer shadow-md ${
-                loginRole === 'manager' 
-                  ? 'bg-sky-600 hover:bg-sky-700 shadow-sky-200' 
-                  : 'bg-cyan-600 hover:bg-cyan-700 shadow-cyan-200'
-              }`}
-            >
-              {loginLoading ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span>{t('auth.loginLoading')}</span>
-                </>
-              ) : (
-                <>
-                  <span>{t('auth.loginBtn')}</span>
-                  {isEn ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
-                </>
-              )}
-            </button>
-
-            {/* Request Free 7-Day Trial Button */}
-            <div className="pt-2 border-t border-slate-200/80 mt-3">
-              <button
-                type="button"
-                onClick={handleRequestTrial}
-                disabled={!trialPhone}
-                title={!trialPhone ? (isEn ? 'Trial contact has not been configured by the administrator' : 'لم يضبط المسؤول رقم التواصل للنسخة التجريبية') : undefined}
-                className="w-full bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold py-3.5 px-4 rounded-xl transition-all text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-emerald-500/20 active:scale-[0.99] group"
-              >
-                <MessageCircle className="h-4 w-4 text-emerald-100 group-hover:scale-110 transition-transform fill-white/20" />
-                <span>{t('auth.requestTrial')}</span>
-              </button>
-            </div>
-
-            {/* Social Media Links from Technical Support */}
-            {socialLinks.length > 0 && (
-              <div className="pt-3 border-t border-slate-200/80 mt-3 flex flex-col items-center gap-2">
-                <span className="text-[11px] font-bold text-slate-500">{t('auth.support')}:</span>
-                <div className="flex items-center justify-center flex-wrap gap-2">
-                  {socialLinks.map((link) => (
-                    <a
-                      key={link.id || link.url}
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={link.title}
-                      className="px-3 py-1.5 bg-slate-50 hover:bg-sky-50 border border-slate-200/90 hover:border-sky-300 rounded-xl transition-all shadow-2xs hover:scale-105 flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-sky-700 cursor-pointer"
-                    >
-                      {getSocialIcon(link.platform)}
-                      <span className="text-[11px] font-semibold">{link.title}</span>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
+          <AnimatePresence>{loginError && <motion.div role="alert" id="login-error" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="cd-error"><AlertCircle /><p>{loginError}</p></motion.div>}</AnimatePresence>
+          <form onSubmit={handleLoginSubmit} aria-busy={loginLoading}>
+            <div className="cd-field"><label htmlFor="login-email">{t('auth.email')}</label><div className="cd-input"><Mail /><input id="login-email" name="email" className="cd-latin" type="email" required autoComplete="username" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder={t('auth.emailPlaceholder')} dir="ltr" aria-describedby={loginError ? 'login-error' : undefined} /></div></div>
+            <div className="cd-field"><label htmlFor="login-password">{loginRole === 'manager' ? t('auth.password') : `${t('auth.password')} / PIN`}</label><div className="cd-input"><Lock /><input id="login-password" name="password" type={showPassword ? 'text' : 'password'} required autoComplete="current-password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} placeholder={t('auth.enterPassword')} dir="ltr" className="cd-password" aria-describedby={loginError ? 'login-error' : undefined} /><button className="cd-eye" type="button" onClick={() => setShowPassword(!showPassword)} aria-label={t(showPassword ? 'auth.hidePassword' : 'auth.showPassword')} aria-pressed={showPassword}>{showPassword ? <EyeOff /> : <Eye />}</button></div></div>
+            <button type="submit" className="cd-submit" disabled={loginLoading}>{loginLoading ? <><RefreshCw className="animate-spin" /><span>{t('auth.loginLoading')}</span></> : <><span>{t('auth.loginBtn')}</span>{isEn ? <ArrowRight /> : <ArrowLeft />}</>}</button>
           </form>
-        </div>
-
-        {/* Security Badge */}
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-4 text-xs font-bold text-slate-500">
-          <div className="flex items-center gap-1.5">
-            <ShieldCheck className="h-4 w-4 text-sky-600" />
-            <span>{isEn ? 'Encrypted & Secured System • CoreDentSys' : 'نظام مشفر ومؤمن • CoreDentSys'}</span>
-          </div>
-        </div>
-
-      </div>
+          <div className="cd-trial"><p>{t('auth.newToCoreDentSys')}</p><button type="button" onClick={handleRequestTrial} disabled={!trialPhone} title={!trialPhone ? t('auth.trialNotConfigured') : undefined}><MessageCircle />{t('auth.trialButton')}</button></div>
+          {socialLinks.length > 0 && <div className="cd-support"><div className="cd-support-heading"><Headphones /><span>{t('auth.needHelp')}</span><b>{t('auth.contactSupport')}</b></div><div className="cd-support-links">{socialLinks.map(link => <a key={link.id || link.url} href={link.url} target="_blank" rel="noopener noreferrer" title={link.title}>{getSocialIcon(link.platform)}<span>{link.title}</span></a>)}</div></div>}
+        </div></section>
+        <aside className="cd-visual" aria-label={t('auth.brandPanel')}><img className="cd-emblem" src={loginEmblem} alt={t('auth.emblemAlt')} /><div className="cd-tiny"><span />{t('auth.designedForDentists')}</div><h2>{t('auth.organizedClinic')}<br /><span>{t('auth.bookingToFollowUp')}</span></h2><p className="cd-description">{t('auth.panelDescriptionLine1')}<br />{t('auth.panelDescriptionLine2')}</p></aside>
+      </main>
+      <footer className="cd-footer"><span><bdi>CoreDentSys</bdi> · {t('auth.dentalManagement')}</span></footer>
     </div>
   );
 }
