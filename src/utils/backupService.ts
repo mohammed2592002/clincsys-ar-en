@@ -251,6 +251,16 @@ export async function exportClinicBackup(
     sqlContent += `  delivery_date VARCHAR(50)\n`;
     sqlContent += `);\n\n`;
 
+    sqlContent += `CREATE TABLE IF NOT EXISTS doctor_notes (\n`;
+    sqlContent += `  note_id VARCHAR(100) PRIMARY KEY,\n`;
+    sqlContent += `  patient_id VARCHAR(100),\n`;
+    sqlContent += `  patient_name VARCHAR(255),\n`;
+    sqlContent += `  doctor_name VARCHAR(255),\n`;
+    sqlContent += `  note_text TEXT,\n`;
+    sqlContent += `  created_at VARCHAR(100),\n`;
+    sqlContent += `  edited_at VARCHAR(100)\n`;
+    sqlContent += `);\n\n`;
+
     sqlContent += `CREATE TABLE IF NOT EXISTS staff_members (\n`;
     sqlContent += `  staff_id VARCHAR(100) PRIMARY KEY,\n`;
     sqlContent += `  name VARCHAR(255),\n`;
@@ -274,6 +284,15 @@ export async function exportClinicBackup(
           const costVal = Number(r.cost) || 0;
           const paidVal = Number(r.paid) || 0;
           sqlContent += `INSERT INTO medical_sessions (session_id, patient_id, patient_name, tooth_number, procedure_name, cost, paid, remaining, session_date, notes) VALUES (${escapeSQLVal(r.id)}, ${escapeSQLVal(p.id)}, ${escapeSQLVal(p.name)}, ${escapeSQLVal(r.toothNumber)}, ${escapeSQLVal(r.procedure)}, ${costVal}, ${paidVal}, ${costVal - paidVal}, ${escapeSQLVal(r.date)}, ${escapeSQLVal(r.notes)});\n`;
+        });
+      }
+    });
+
+    sqlContent += `\n-- Inserting Doctor Notes Data\n`;
+    patientsData.forEach((p) => {
+      if (Array.isArray(p.doctorNotes) && p.doctorNotes.length > 0) {
+        p.doctorNotes.forEach((n: any) => {
+          sqlContent += `INSERT INTO doctor_notes (note_id, patient_id, patient_name, doctor_name, note_text, created_at, edited_at) VALUES (${escapeSQLVal(n.id)}, ${escapeSQLVal(p.id)}, ${escapeSQLVal(p.name)}, ${escapeSQLVal(n.doctorName)}, ${escapeSQLVal(n.text)}, ${escapeSQLVal(n.createdAt)}, ${escapeSQLVal(n.updatedAt || '')});\n`;
         });
       }
     });

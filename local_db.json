@@ -1,232 +1,231 @@
 {
+  "schema_migrations": [
+    {
+      "id": "20260810_001_initial_base_schema",
+      "applied_at": "2026-11-21T02:28:09.941Z"
+    },
+    {
+      "id": "20260810_002_fix_sync_events_bigint",
+      "applied_at": "2026-11-21T02:28:09.941Z"
+    },
+    {
+      "id": "20260811_001_remove_demo_data",
+      "applied_at": "2026-11-21T02:28:09.942Z"
+    },
+    {
+      "id": "20260815_001_ensure_renewals_clinic_id",
+      "applied_at": "2026-11-21T02:28:09.942Z"
+    }
+  ],
+  "server_sync_events": [
+    {
+      "id": "ev_abdcoe70cpt",
+      "clinic_id": "clinic_ui_test",
+      "table_name": "patients",
+      "action": "set",
+      "record_id": "pat_ui_1",
+      "created_at": 1795228094160,
+      "payload": "{\"id\":\"pat_ui_1\",\"clinicId\":\"clinic_ui_test\",\"name\":\"مريض تجربة اختبار\",\"phone\":\"01077776666\",\"gender\":\"ذكر\",\"age\":\"30\",\"medicalHistory\":\"سليم\",\"createdAt\":\"2026-11-21T02:28:14.154Z\",\"updatedAt\":\"2026-11-21T02:28:14.154Z\"}"
+    },
+    {
+      "id": "ev_3d1psc6kzlp",
+      "clinic_id": "clinic_ui_test",
+      "table_name": "patients",
+      "action": "update",
+      "record_id": "pat_ui_1",
+      "created_at": 1795228112811,
+      "payload": "{\"id\":\"pat_ui_1\",\"clinicId\":\"clinic_ui_test\",\"clinic_id\":\"clinic_ui_test\",\"patientId\":\"\",\"patient_id\":\"pat_ui_1\",\"created_at\":\"2026-11-21T02:28:14.154Z\",\"createdAt\":\"2026-11-21T02:28:14.154Z\",\"data\":\"{\\\"id\\\":\\\"pat_ui_1\\\",\\\"clinicId\\\":\\\"clinic_ui_test\\\",\\\"name\\\":\\\"مريض تجربة اختبار\\\",\\\"phone\\\":\\\"01077776666\\\",\\\"gender\\\":\\\"ذكر\\\",\\\"age\\\":\\\"30\\\",\\\"medicalHistory\\\":\\\"سليم\\\",\\\"createdAt\\\":\\\"2026-11-21T02:28:14.154Z\\\",\\\"updatedAt\\\":\\\"2026-11-21T02:28:14.154Z\\\"}\",\"path\":\"\",\"name\":\"مريض تجربة اختبار\",\"phone\":\"01077776666\",\"gender\":\"ذكر\",\"age\":\"30\",\"medicalHistory\":\"سليم\",\"updatedAt\":\"2026-11-21T02:28:32.782Z\",\"doctorNotes\":[{\"id\":\"note_mwpsgt59ms2aq\",\"text\":\"الملاحظة الأولى: المريض يعاني من حساسية تجاه البنج الموضعي - يُفضل استخدام بديل.\",\"doctorName\":\"د. محمد\",\"createdAt\":\"2026-11-21T02:28:32.782Z\"}]}"
+    },
+    {
+      "id": "ev_5woa5vxtta3",
+      "clinic_id": "clinic_ui_test",
+      "table_name": "patients",
+      "action": "update",
+      "record_id": "pat_ui_1",
+      "created_at": 1795228118827,
+      "payload": "{\"id\":\"pat_ui_1\",\"clinicId\":\"clinic_ui_test\",\"clinic_id\":\"clinic_ui_test\",\"patientId\":\"\",\"patient_id\":\"pat_ui_1\",\"created_at\":\"2026-11-21T02:28:14.154Z\",\"createdAt\":\"2026-11-21T02:28:14.154Z\",\"data\":\"{\\\"id\\\":\\\"pat_ui_1\\\",\\\"clinicId\\\":\\\"clinic_ui_test\\\",\\\"name\\\":\\\"مريض تجربة اختبار\\\",\\\"phone\\\":\\\"01077776666\\\",\\\"gender\\\":\\\"ذكر\\\",\\\"age\\\":\\\"30\\\",\\\"medicalHistory\\\":\\\"سليم\\\",\\\"createdAt\\\":\\\"2026-11-21T02:28:14.154Z\\\",\\\"updatedAt\\\":\\\"2026-11-21T02:28:14.154Z\\\"}\",\"path\":\"\",\"name\":\"مريض تجربة اختبار\",\"phone\":\"01077776666\",\"gender\":\"ذكر\",\"age\":\"30\",\"medicalHistory\":\"سليم\",\"updatedAt\":\"2026-11-21T02:28:38.801Z\",\"doctorNotes\":[{\"id\":\"note_mwpsgxshnfcqt\",\"text\":\"الضرس 16 يحتاج متابعة بعد الحشو المؤقت.\",\"doctorName\":\"د. محمد\",\"createdAt\":\"2026-11-21T02:28:38.801Z\"},{\"id\":\"note_mwpsgt59ms2aq\",\"text\":\"الملاحظة الأولى: المريض يعاني من حساسية تجاه البنج الموضعي - يُفضل استخدام بديل.\",\"doctorName\":\"د. محمد\",\"createdAt\":\"2026-11-21T02:28:32.782Z\"}]}"
+    },
+    {
+      "id": "ev_lqnwdf64fbf",
+      "clinic_id": "clinic_ui_test",
+      "table_name": "patients",
+      "action": "update",
+      "record_id": "pat_ui_1",
+      "created_at": 1795228122720,
+      "payload": "{\"id\":\"pat_ui_1\",\"clinicId\":\"clinic_ui_test\",\"clinic_id\":\"clinic_ui_test\",\"patientId\":\"\",\"patient_id\":\"pat_ui_1\",\"created_at\":\"2026-11-21T02:28:14.154Z\",\"createdAt\":\"2026-11-21T02:28:14.154Z\",\"data\":\"{\\\"id\\\":\\\"pat_ui_1\\\",\\\"clinicId\\\":\\\"clinic_ui_test\\\",\\\"name\\\":\\\"مريض تجربة اختبار\\\",\\\"phone\\\":\\\"01077776666\\\",\\\"gender\\\":\\\"ذكر\\\",\\\"age\\\":\\\"30\\\",\\\"medicalHistory\\\":\\\"سليم\\\",\\\"createdAt\\\":\\\"2026-11-21T02:28:14.154Z\\\",\\\"updatedAt\\\":\\\"2026-11-21T02:28:14.154Z\\\"}\",\"path\":\"\",\"name\":\"مريض تجربة اختبار\",\"phone\":\"01077776666\",\"gender\":\"ذكر\",\"age\":\"30\",\"medicalHistory\":\"سليم\",\"updatedAt\":\"2026-11-21T02:28:42.665Z\",\"doctorNotes\":[{\"id\":\"note_mwpsgxshnfcqt\",\"text\":\"الضرس 16 يحتاج متابعة بعد الحشو المؤقت. (تم تعديلها)\",\"doctorName\":\"د. محمد\",\"createdAt\":\"2026-11-21T02:28:38.801Z\",\"edited\":true,\"updatedAt\":\"2026-11-21T02:28:42.664Z\"},{\"id\":\"note_mwpsgt59ms2aq\",\"text\":\"الملاحظة الأولى: المريض يعاني من حساسية تجاه البنج الموضعي - يُفضل استخدام بديل.\",\"doctorName\":\"د. محمد\",\"createdAt\":\"2026-11-21T02:28:32.782Z\"}]}"
+    },
+    {
+      "id": "ev_67di8i0r3uc",
+      "clinic_id": "clinic_ui_test",
+      "table_name": "patients",
+      "action": "update",
+      "record_id": "pat_ui_1",
+      "created_at": 1795228126049,
+      "payload": "{\"id\":\"pat_ui_1\",\"clinicId\":\"clinic_ui_test\",\"clinic_id\":\"clinic_ui_test\",\"patientId\":\"\",\"patient_id\":\"pat_ui_1\",\"created_at\":\"2026-11-21T02:28:14.154Z\",\"createdAt\":\"2026-11-21T02:28:14.154Z\",\"data\":\"{\\\"id\\\":\\\"pat_ui_1\\\",\\\"clinicId\\\":\\\"clinic_ui_test\\\",\\\"name\\\":\\\"مريض تجربة اختبار\\\",\\\"phone\\\":\\\"01077776666\\\",\\\"gender\\\":\\\"ذكر\\\",\\\"age\\\":\\\"30\\\",\\\"medicalHistory\\\":\\\"سليم\\\",\\\"createdAt\\\":\\\"2026-11-21T02:28:14.154Z\\\",\\\"updatedAt\\\":\\\"2026-11-21T02:28:14.154Z\\\"}\",\"path\":\"\",\"name\":\"مريض تجربة اختبار\",\"phone\":\"01077776666\",\"gender\":\"ذكر\",\"age\":\"30\",\"medicalHistory\":\"سليم\",\"updatedAt\":\"2026-11-21T02:28:46.017Z\",\"doctorNotes\":[{\"id\":\"note_mwpsgxshnfcqt\",\"text\":\"الضرس 16 يحتاج متابعة بعد الحشو المؤقت. (تم تعديلها)\",\"doctorName\":\"د. محمد\",\"createdAt\":\"2026-11-21T02:28:38.801Z\",\"edited\":true,\"updatedAt\":\"2026-11-21T02:28:42.664Z\"}]}"
+    }
+  ],
   "clinics": [
     {
-      "id": "e1841929-ccf0-489a-abad-5958915d2ca9",
-      "name": "تست",
-      "email": "c@g.com",
-      "nameAr": "تست",
-      "nameEn": "تست",
-      "address": ";;",
-      "logoUrl": "",
+      "id": "clinic_active_demo",
+      "clinicId": "clinic_active_demo",
+      "data": "{\"id\":\"clinic_active_demo\",\"name\":\"عيادة الابتسامة المشرقة (نشط)\",\"nameAr\":\"عيادة الابتسامة المشرقة (نشط)\",\"nameEn\":\"Bright Smile Clinic\",\"email\":\"active-owner@clinic.com\",\"password\":\"password123\",\"isActive\":true,\"subscriptionExpiresAt\":\"2026-12-21T02:28:09.938Z\",\"doctorName\":\"د. أحمد السعيد\",\"doctorPhone\":\"01011112222\",\"doctorSpecialtyAr\":\"استشاري زراعة وتجميل الأسنان\",\"doctorSpecialtyEn\":\"Dental Implant Consultant\",\"clinicHours\":\"12:00 PM - 9:00 PM\",\"address\":\"شارع جامعة الدول العربية، المهندسين\",\"staffPin\":\"1234\",\"createdAt\":\"2026-11-21T02:28:09.939Z\"}",
+      "createdAt": "2026-11-21T02:28:09.939Z"
+    },
+    {
+      "id": "clinic_expired_demo",
+      "clinicId": "clinic_expired_demo",
+      "data": "{\"id\":\"clinic_expired_demo\",\"name\":\"مستوصف الشفاء لطب الأسنان (غير نشط)\",\"nameAr\":\"مستوصف الشفاء لطب الأسنان (غير نشط)\",\"nameEn\":\"Al-Shifa Dental Clinic\",\"email\":\"expired-owner@clinic.com\",\"password\":\"password123\",\"isActive\":false,\"subscriptionExpiresAt\":\"2026-11-16T02:28:09.939Z\",\"doctorName\":\"د. سارة الراوي\",\"doctorPhone\":\"01122223333\",\"doctorSpecialtyAr\":\"أخصائي علاج الجذور والتركيبات\",\"doctorSpecialtyEn\":\"Endodontics Specialist\",\"clinicHours\":\"2:00 PM - 10:00 PM\",\"address\":\"شارع قصر العيني، القاهرة\",\"staffPin\":\"1234\",\"createdAt\":\"2026-11-21T02:28:09.939Z\"}",
+      "createdAt": "2026-11-21T02:28:09.939Z"
+    },
+    {
+      "id": "clinic_alternative_demo",
+      "clinicId": "clinic_alternative_demo",
+      "data": "{\"id\":\"clinic_alternative_demo\",\"name\":\"عيادة كير لتجميل الأسنان (معزولة تماماً)\",\"nameAr\":\"عيادة كير لتجميل الأسنان (معزولة تماماً)\",\"nameEn\":\"Care Dental Clinic\",\"email\":\"dentist-clinic2@clinic.com\",\"password\":\"password123\",\"isActive\":true,\"subscriptionExpiresAt\":\"2026-12-21T02:28:09.938Z\",\"doctorName\":\"د. رامي يوسف\",\"doctorPhone\":\"01233334444\",\"doctorSpecialtyAr\":\"أخصائي طب وجراحة فم وأسنان\",\"doctorSpecialtyEn\":\"GP Dentist\",\"clinicHours\":\"10:00 AM - 6:00 PM\",\"address\":\"مصر الجديدة، القاهرة\",\"staffPin\":\"1234\",\"createdAt\":\"2026-11-21T02:28:09.939Z\"}",
+      "createdAt": "2026-11-21T02:28:09.939Z"
+    },
+    {
+      "id": "clinic_ui_test",
+      "clinicId": "",
+      "clinic_id": "",
+      "patientId": "",
+      "patient_id": "",
+      "created_at": "2026-11-21T02:28:14.066Z",
+      "createdAt": "2026-11-21T02:28:14.066Z",
+      "data": "{\"id\":\"clinic_ui_test\",\"name\":\"عيادة التجربة\",\"email\":\"doctor@test.com\",\"password\":\"scrypt$039677d86d30222141c20ee02eaa09f4$6bb4c669a85db490bebf61ec1d051f562eba79fefb8d3a9027e0fff88f15158a2381e9d4afc5e5fed9d74cad5ec618949d28080788b50bb762c8d4a8f356db0f\",\"staffPin\":\"scrypt$82a3ac6a89a9dc16a84258038f4e308b$08c6c60b7ca1fd3921c21deb1fb41cf6d4aff734ef5f04436ee959f15375d585b6c91b07b29d6e886bb0f468f7506b9c71161ef9c8217bb7e966617deaa37def\",\"isActive\":true,\"doctorName\":\"محمد\",\"createdAt\":\"2026-11-21T02:28:14.066Z\"}",
       "isActive": true,
-      "password": "123123",
-      "createdAt": "2026-08-11T19:05:36.513Z",
-      "doctorName": "تست",
-      "doctorPhone": "010000000000",
-      "allowedFeatures": [
-        "patients",
-        "calendar",
-        "prescriptions",
-        "laboratory",
-        "financials",
-        "financials_daily_closing",
-        "financials_closing_log",
-        "financials_patients_installments",
-        "financials_reports",
-        "financials_expenses"
-      ],
-      "prescriptionStyle": "classic",
-      "subscriptionExpiresAt": "2026-09-10T19:03:00.000Z",
-      "clinicId": "system"
+      "path": ""
     }
   ],
   "users": [
     {
-      "id": "user_e1841929-ccf0-489a-abad-5958915d2ca9",
-      "uid": "user_e1841929-ccf0-489a-abad-5958915d2ca9",
-      "name": "تست",
-      "role": "owner",
-      "email": "c@g.com",
-      "clinicId": "e1841929-ccf0-489a-abad-5958915d2ca9",
-      "createdAt": "2026-08-11T19:22:14.852Z"
+      "id": "user_active_demo",
+      "clinicId": "clinic_active_demo",
+      "data": "{\"uid\":\"user_active_demo\",\"id\":\"user_active_demo\",\"email\":\"active-owner@clinic.com\",\"name\":\"د. أحمد السعيد\",\"clinicId\":\"clinic_active_demo\",\"role\":\"owner\",\"createdAt\":\"2026-11-21T02:28:09.939Z\"}",
+      "createdAt": "2026-11-21T02:28:09.939Z"
+    },
+    {
+      "id": "user_expired_demo",
+      "clinicId": "clinic_expired_demo",
+      "data": "{\"uid\":\"user_expired_demo\",\"id\":\"user_expired_demo\",\"email\":\"expired-owner@clinic.com\",\"name\":\"د. سارة الراوي\",\"clinicId\":\"clinic_expired_demo\",\"role\":\"owner\",\"createdAt\":\"2026-11-21T02:28:09.939Z\"}",
+      "createdAt": "2026-11-21T02:28:09.939Z"
+    },
+    {
+      "id": "user_alternative_demo",
+      "clinicId": "clinic_alternative_demo",
+      "data": "{\"uid\":\"user_alternative_demo\",\"id\":\"user_alternative_demo\",\"email\":\"dentist-clinic2@clinic.com\",\"name\":\"د. رامي يوسف\",\"clinicId\":\"clinic_alternative_demo\",\"role\":\"owner\",\"createdAt\":\"2026-11-21T02:28:09.940Z\"}",
+      "createdAt": "2026-11-21T02:28:09.940Z"
     }
   ],
   "patients": [
     {
-      "id": "patient_iguv023j",
-      "age": "28",
-      "area": "وسط الجيزة",
-      "name": "مريم محمود السعيد",
-      "phone": "01098765432",
-      "gender": "أنثى",
-      "address": "شارع التحرير، الدقي",
-      "clinicId": "e1841929-ccf0-489a-abad-5958915d2ca9",
-      "createdAt": "2026-08-10T09:24:58.233Z",
-      "updatedAt": "2026-08-10T09:24:58.233Z",
-      "occupation": "مهندسة ديكور",
-      "governorate": "الجيزة",
-      "loyaltyPoints": 0,
-      "cityOrDistrict": "الدقي",
-      "medicalHistory": "لا يوجد أمراض مزمنة، حساسية من البنسلين",
-      "whatsappNumber": "01098765432"
+      "id": "patient_1",
+      "clinicId": "clinic_active_demo",
+      "data": "{\"id\":\"patient_1\",\"name\":\"محمد علي أحمد\",\"phone\":\"01020304050\",\"age\":\"34\",\"medicalHistory\":\"لا يوجد حساسية، مريض ضغط دم متحكم به\",\"createdAt\":\"2026-11-21T02:28:09.940Z\",\"updatedAt\":\"2026-11-21T02:28:09.940Z\",\"toothChart\":{\"11\":{\"toothNumber\":11,\"condition\":\"decayed\",\"notes\":\"تسوس بسيط بالسطح الإطباقي\"}}}",
+      "createdAt": "2026-11-21T02:28:09.940Z"
     },
     {
-      "id": "patient_kvl916ss",
-      "age": "42",
-      "area": "شرق القاهرة",
-      "name": "عمر خالد الشريف",
-      "phone": "01155443322",
-      "gender": "ذكر",
-      "address": "شارع مصطفى النحاس، مدينة نصر",
-      "clinicId": "e1841929-ccf0-489a-abad-5958915d2ca9",
-      "createdAt": "2026-08-10T09:24:58.233Z",
-      "updatedAt": "2026-08-10T09:24:58.233Z",
-      "occupation": "محاسب قانوني",
-      "governorate": "القاهرة",
-      "loyaltyPoints": 0,
-      "cityOrDistrict": "مدينة نصر",
-      "medicalHistory": "مرض السكري (مسيطر عليه بالدواء)",
-      "whatsappNumber": "01155443322"
+      "id": "patient_2",
+      "clinicId": "clinic_active_demo",
+      "data": "{\"id\":\"patient_2\",\"name\":\"فاطمة عبد الرحمن\",\"phone\":\"01122334455\",\"age\":\"28\",\"medicalHistory\":\"حساسية من البنسلين\",\"createdAt\":\"2026-11-21T02:28:09.940Z\",\"updatedAt\":\"2026-11-21T02:28:09.940Z\",\"toothChart\":{\"16\":{\"toothNumber\":16,\"condition\":\"filled\",\"notes\":\"حشو بلاتين قديم\"}}}",
+      "createdAt": "2026-11-21T02:28:09.940Z"
     },
     {
-      "id": "patient_99izlea1",
-      "age": "31",
-      "area": "جنوب القاهرة",
-      "name": "نور جلال إبراهيم",
-      "phone": "01288776655",
-      "gender": "أنثى",
-      "address": "شارع النصر، المعادي",
-      "clinicId": "e1841929-ccf0-489a-abad-5958915d2ca9",
-      "createdAt": "2026-08-10T09:24:58.233Z",
-      "updatedAt": "2026-08-10T09:24:58.233Z",
-      "occupation": "معلمة لغة إنجليزية",
-      "governorate": "القاهرة",
-      "loyaltyPoints": 0,
-      "cityOrDistrict": "المعادي",
-      "medicalHistory": "سليمة صحياً",
-      "whatsappNumber": "01288776655"
+      "id": "patient_3",
+      "clinicId": "clinic_active_demo",
+      "data": "{\"id\":\"patient_3\",\"name\":\"أحمد محمود حسن\",\"phone\":\"01223344556\",\"age\":\"45\",\"medicalHistory\":\"مريض سكري\",\"createdAt\":\"2026-11-21T02:28:09.940Z\",\"updatedAt\":\"2026-11-21T02:28:09.940Z\",\"toothChart\":{}}",
+      "createdAt": "2026-11-21T02:28:09.940Z"
     },
     {
-      "id": "patient_gqqid3nf",
-      "age": "25",
-      "area": "حي الجامعة",
-      "name": "يوسف طارق الحسين",
-      "phone": "01012345678",
-      "gender": "ذكر",
-      "address": "حي الجامعة، المنصورة",
-      "clinicId": "e1841929-ccf0-489a-abad-5958915d2ca9",
-      "createdAt": "2026-08-10T09:24:58.233Z",
-      "updatedAt": "2026-08-10T09:24:58.233Z",
-      "occupation": "مطور برمجيات",
-      "governorate": "الدقهلية",
-      "loyaltyPoints": 0,
-      "cityOrDistrict": "المنصورة",
-      "medicalHistory": "لا توجد أمراض مزمنة",
-      "whatsappNumber": "01012345678"
-    },
-    {
-      "id": "patient_8210jyve",
-      "age": "50",
-      "area": "محطة الرمل",
-      "name": "هدى عبد المجيد الباز",
-      "phone": "01544332211",
-      "gender": "أنثى",
-      "address": "شارع سعد زغلول، الإسكندرية",
-      "clinicId": "e1841929-ccf0-489a-abad-5958915d2ca9",
-      "createdAt": "2026-08-10T09:24:58.233Z",
-      "updatedAt": "2026-08-10T09:24:58.233Z",
-      "occupation": "ربّة منزل",
-      "governorate": "الإسكندرية",
-      "loyaltyPoints": 0,
-      "cityOrDistrict": "وسط الإسكندرية",
-      "medicalHistory": "ارتفاع ضغط الدم الخفيف",
-      "whatsappNumber": "01544332211"
-    },
-    {
-      "id": "patient_lu6cxyde",
-      "age": "28",
-      "area": "وسط الجيزة",
-      "name": "مريم محمود السعيد",
-      "phone": "01098765432",
-      "gender": "أنثى",
-      "address": "شارع التحرير، الدقي",
-      "clinicId": "e1841929-ccf0-489a-abad-5958915d2ca9",
-      "createdAt": "2026-08-10T09:24:58.233Z",
-      "updatedAt": "2026-08-10T09:24:58.233Z",
-      "occupation": "مهندسة ديكور",
-      "governorate": "الجيزة",
-      "loyaltyPoints": 0,
-      "cityOrDistrict": "الدقي",
-      "medicalHistory": "لا يوجد أمراض مزمنة، حساسية من البنسلين",
-      "whatsappNumber": "01098765432"
-    },
-    {
-      "id": "patient_xw343lhx",
-      "age": "42",
-      "area": "شرق القاهرة",
-      "name": "عمر خالد الشريف",
-      "phone": "01155443322",
-      "gender": "ذكر",
-      "address": "شارع مصطفى النحاس، مدينة نصر",
-      "clinicId": "e1841929-ccf0-489a-abad-5958915d2ca9",
-      "createdAt": "2026-08-10T09:24:58.233Z",
-      "updatedAt": "2026-08-10T09:24:58.233Z",
-      "occupation": "محاسب قانوني",
-      "governorate": "القاهرة",
-      "loyaltyPoints": 0,
-      "cityOrDistrict": "مدينة نصر",
-      "medicalHistory": "مرض السكري (مسيطر عليه بالدواء)",
-      "whatsappNumber": "01155443322"
-    },
-    {
-      "id": "patient_bf753uew",
-      "age": "31",
-      "area": "جنوب القاهرة",
-      "name": "نور جلال إبراهيم",
-      "phone": "01288776655",
-      "gender": "أنثى",
-      "address": "شارع النصر، المعادي",
-      "clinicId": "e1841929-ccf0-489a-abad-5958915d2ca9",
-      "createdAt": "2026-08-10T09:24:58.233Z",
-      "updatedAt": "2026-08-10T09:24:58.233Z",
-      "occupation": "معلمة لغة إنجليزية",
-      "governorate": "القاهرة",
-      "loyaltyPoints": 0,
-      "cityOrDistrict": "المعادي",
-      "medicalHistory": "سليمة صحياً",
-      "whatsappNumber": "01288776655"
-    },
-    {
-      "id": "patient_yc6am8e6",
-      "age": "25",
-      "area": "حي الجامعة",
-      "name": "يوسف طارق الحسين",
-      "phone": "01012345678",
-      "gender": "ذكر",
-      "address": "حي الجامعة، المنصورة",
-      "clinicId": "e1841929-ccf0-489a-abad-5958915d2ca9",
-      "createdAt": "2026-08-10T09:24:58.233Z",
-      "updatedAt": "2026-08-10T09:24:58.233Z",
-      "occupation": "مطور برمجيات",
-      "governorate": "الدقهلية",
-      "loyaltyPoints": 0,
-      "cityOrDistrict": "المنصورة",
-      "medicalHistory": "لا توجد أمراض مزمنة",
-      "whatsappNumber": "01012345678"
-    },
-    {
-      "id": "patient_tvfovted",
-      "age": "50",
-      "area": "محطة الرمل",
-      "name": "هدى عبد المجيد الباز",
-      "phone": "01544332211",
-      "gender": "أنثى",
-      "address": "شارع سعد زغلول، الإسكندرية",
-      "clinicId": "e1841929-ccf0-489a-abad-5958915d2ca9",
-      "createdAt": "2026-08-10T09:24:58.233Z",
-      "updatedAt": "2026-08-10T09:24:58.233Z",
-      "occupation": "ربّة منزل",
-      "governorate": "الإسكندرية",
-      "loyaltyPoints": 0,
-      "cityOrDistrict": "وسط الإسكندرية",
-      "medicalHistory": "ارتفاع ضغط الدم الخفيف",
-      "whatsappNumber": "01544332211"
+      "id": "pat_ui_1",
+      "clinicId": "clinic_ui_test",
+      "clinic_id": "clinic_ui_test",
+      "patientId": "pat_ui_1",
+      "patient_id": "pat_ui_1",
+      "created_at": "2026-11-21T02:28:14.154Z",
+      "createdAt": "2026-11-21T02:28:14.154Z",
+      "data": "{\"id\":\"pat_ui_1\",\"clinicId\":\"clinic_ui_test\",\"clinic_id\":\"clinic_ui_test\",\"patientId\":\"\",\"patient_id\":\"pat_ui_1\",\"created_at\":\"2026-11-21T02:28:14.154Z\",\"createdAt\":\"2026-11-21T02:28:14.154Z\",\"data\":\"{\\\"id\\\":\\\"pat_ui_1\\\",\\\"clinicId\\\":\\\"clinic_ui_test\\\",\\\"name\\\":\\\"مريض تجربة اختبار\\\",\\\"phone\\\":\\\"01077776666\\\",\\\"gender\\\":\\\"ذكر\\\",\\\"age\\\":\\\"30\\\",\\\"medicalHistory\\\":\\\"سليم\\\",\\\"createdAt\\\":\\\"2026-11-21T02:28:14.154Z\\\",\\\"updatedAt\\\":\\\"2026-11-21T02:28:14.154Z\\\"}\",\"path\":\"\",\"name\":\"مريض تجربة اختبار\",\"phone\":\"01077776666\",\"gender\":\"ذكر\",\"age\":\"30\",\"medicalHistory\":\"سليم\",\"updatedAt\":\"2026-11-21T02:28:46.017Z\",\"doctorNotes\":[{\"id\":\"note_mwpsgxshnfcqt\",\"text\":\"الضرس 16 يحتاج متابعة بعد الحشو المؤقت. (تم تعديلها)\",\"doctorName\":\"د. محمد\",\"createdAt\":\"2026-11-21T02:28:38.801Z\",\"edited\":true,\"updatedAt\":\"2026-11-21T02:28:42.664Z\"}]}",
+      "path": ""
     }
   ],
-  "appointments": [],
-  "records": [],
-  "prescriptions": [],
-  "inventory": [],
-  "laboratories": [],
-  "lab_orders": []
+  "appointments": [
+    {
+      "id": "appointment_1",
+      "clinicId": "clinic_active_demo",
+      "data": "{\"id\":\"appointment_1\",\"patientId\":\"patient_1\",\"patientName\":\"محمد علي أحمد\",\"patientPhone\":\"01020304050\",\"date\":\"2026-11-21\",\"time\":\"17:00\",\"treatmentType\":\"كشف واستشارة\",\"price\":150,\"notes\":\"كشف لأول مرة وشكوى من ألم في الفك العلوي\",\"status\":\"scheduled\",\"paidAmount\":0,\"remainingAmount\":150,\"invoiceStatus\":\"pending_payment\",\"dateTime\":\"2026-11-21T17:00\",\"createdAt\":\"2026-11-21T02:28:09.940Z\"}",
+      "createdAt": "2026-11-21T02:28:09.940Z"
+    },
+    {
+      "id": "appointment_2",
+      "clinicId": "clinic_active_demo",
+      "data": "{\"id\":\"appointment_2\",\"patientId\":\"patient_2\",\"patientName\":\"فاطمة عبد الرحمن\",\"patientPhone\":\"01122334455\",\"date\":\"2026-11-21\",\"time\":\"19:30\",\"treatmentType\":\"حشو تجميلي\",\"price\":600,\"notes\":\"جلسة حشو الضرس 16\",\"status\":\"waiting\",\"paidAmount\":600,\"remainingAmount\":0,\"invoiceStatus\":\"paid\",\"dateTime\":\"2026-11-21T19:30\",\"createdAt\":\"2026-11-21T02:28:09.940Z\"}",
+      "createdAt": "2026-11-21T02:28:09.940Z"
+    }
+  ],
+  "records": [
+    {
+      "id": "record_1",
+      "clinicId": "clinic_active_demo",
+      "patientId": "patient_1",
+      "data": "{\"id\":\"record_1\",\"date\":\"2026-11-21\",\"treatment\":\"كشف مبدئي وأشعة تشخيصية\",\"cost\":150,\"notes\":\"تم عمل فحص كامل وكتابة خطة علاجية لخلع ضرس العقل\",\"invoiceStatus\":\"pending_payment\",\"paymentMethod\":\"cash\",\"createdAt\":\"2026-11-21T02:28:09.940Z\"}",
+      "createdAt": "2026-11-21T02:28:09.940Z"
+    }
+  ],
+  "prescriptions": [
+    {
+      "id": "prescription_1",
+      "clinicId": "clinic_active_demo",
+      "data": "{\"id\":\"prescription_1\",\"patientId\":\"patient_1\",\"patientName\":\"محمد علي أحمد\",\"patientAge\":\"34\",\"date\":\"2026-11-21\",\"medications\":[{\"name\":\"Augmentin 1g\",\"dose\":\"قرص واحد\",\"frequency\":\"كل 12 ساعة\",\"duration\":\"5 أيام\"},{\"name\":\"Brufen 600mg\",\"dose\":\"قرص عند اللزوم\",\"frequency\":\"بعد الأكل\",\"duration\":\"3 أيام\"}],\"notes\":\"يرجى شرب كمية كافية من الماء مع العلاج.\",\"createdAt\":\"2026-11-21T02:28:09.940Z\"}",
+      "createdAt": "2026-11-21T02:28:09.940Z"
+    }
+  ],
+  "custom_medications": [],
+  "custom_categories": [],
+  "inventory": [
+    {
+      "id": "inventory_1",
+      "clinicId": "clinic_active_demo",
+      "data": "{\"id\":\"inventory_1\",\"nameAr\":\"مخدر موضعي (بنج أسنان)\",\"catAr\":\"مواد تخدير\",\"stock\":45,\"price\":250,\"rating\":5,\"descAr\":\"علبة بنج أسنان مخصص لعمليات اللثة والخلع والزراعة\",\"img\":\"\",\"createdAt\":\"2026-11-21T02:28:09.941Z\"}",
+      "createdAt": "2026-11-21T02:28:09.941Z"
+    },
+    {
+      "id": "inventory_2",
+      "clinicId": "clinic_active_demo",
+      "data": "{\"id\":\"inventory_2\",\"nameAr\":\"حشوات ضوئية تجميلية Composite\",\"catAr\":\"حشوات\",\"stock\":12,\"price\":450,\"rating\":4,\"descAr\":\"حقنة كومبوزيت تجميلية بدرجات ألوان متعددة\",\"img\":\"\",\"createdAt\":\"2026-11-21T02:28:09.941Z\"}",
+      "createdAt": "2026-11-21T02:28:09.941Z"
+    }
+  ],
+  "billing": [],
+  "closings": [],
+  "laboratories": [
+    {
+      "id": "lab_1",
+      "clinicId": "clinic_active_demo",
+      "data": "{\"id\":\"lab_1\",\"name\":\"معمل رويال لتركيبات الأسنان\",\"phone\":\"01234567890\",\"email\":\"royal@lab.com\",\"address\":\"وسط البلد، القاهرة\",\"createdAt\":\"2026-11-21T02:28:09.941Z\"}",
+      "createdAt": "2026-11-21T02:28:09.941Z"
+    }
+  ],
+  "lab_orders": [
+    {
+      "id": "lab_order_1",
+      "clinicId": "clinic_active_demo",
+      "data": "{\"id\":\"lab_order_1\",\"doctorId\":\"user_active_demo\",\"doctorName\":\"د. أحمد السعيد\",\"patientId\":\"patient_2\",\"patientName\":\"فاطمة عبد الرحمن\",\"patientPhone\":\"01122334455\",\"laboratoryId\":\"lab_1\",\"laboratoryName\":\"معمل رويال لتركيبات الأسنان\",\"workType\":\"زيركون Zircon Crown\",\"toothNumbers\":\"14\",\"shadeColor\":\"A1\",\"sentDate\":\"2026-11-21\",\"expectedDeliveryDate\":\"2026-11-26\",\"cost\":800,\"paymentStatus\":\"unpaid\",\"status\":\"sent\",\"createdAt\":\"2026-11-21T02:28:09.941Z\"}",
+      "createdAt": "2026-11-21T02:28:09.941Z"
+    }
+  ],
+  "lab_work_types": [],
+  "renewals": [],
+  "shifts": [],
+  "expenses": [],
+  "files": [],
+  "announcements": [],
+  "superadmin_credentials": [],
+  "system_settings": [
+    {
+      "id": "auth_secret",
+      "data": "{\"secret\":\"12b36f0b121436c6d7da9383dc90e0374c4d0fcabee9f90e5b494d60ec408fcf\"}",
+      "createdAt": "2026-11-21T02:28:09.943Z"
+    }
+  ],
+  "xrays": [],
+  "teeth": []
 }
