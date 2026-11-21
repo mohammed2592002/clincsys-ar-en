@@ -3128,116 +3128,66 @@ ${methodsBreakdown}
 
         {/* TAB 5: Expenses (المصروفات التشغيلية) */}
         {activeTab === 'expenses' && (
-          <div className="lg:col-span-12 space-y-6 animate-fade-in text-right">
-            
+          <div className="lg:col-span-12 space-y-5 animate-fade-in">
+
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-4 gap-4">
-              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-rose-500">{isEn ? 'Daily Expenses (Today)' : 'المصروفات اليومية (اليوم)'}</span>
-                  <p className="text-xl font-black text-rose-600 font-mono mt-1">
-                    {(() => {
-                      const todayStr = (() => {
-                        const d = new Date();
-                        const pad = (n: number) => String(n).padStart(2, '0');
-                        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-                      })();
-                      return expenses
-                        .filter(e => e.date === todayStr)
-                        .reduce((sum, e) => sum + e.amount, 0)
-                        .toLocaleString();
-                    })()} <span className="text-xs">{isEn ? 'EGP' : 'ج.م'}</span>
-                  </p>
-                </div>
-                <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl">
-                  <TrendingDown className="h-6 w-6" />
-                </div>
-              </div>
+            {(() => {
+              const d = new Date();
+              const pad = (n: number) => String(n).padStart(2, '0');
+              const todayStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+              const currentMonth = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+              const todayTotal = expenses.filter(e => e.date === todayStr).reduce((s, e) => s + e.amount, 0);
+              const monthTotal = expenses.filter(e => e.date && e.date.substring(0, 7) === currentMonth).reduce((s, e) => s + e.amount, 0);
+              const allTotal = expenses.reduce((s, e) => s + e.amount, 0);
+              const categoryTotals: Record<string, number> = {};
+              expenses.forEach(e => { categoryTotals[e.category] = (categoryTotals[e.category] || 0) + e.amount; });
+              let topCat = '';
+              let maxVal = 0;
+              Object.entries(categoryTotals).forEach(([cat, val]) => { if (val > maxVal) { maxVal = val; topCat = cat; } });
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                  <div className="bg-slate-900 text-white p-6 rounded-3xl shadow-sm">
+                    <span className="text-xs font-bold text-slate-300">{isEn ? 'Total Overall Expenses' : 'إجمالي المصروفات العام'}</span>
+                    <p className="text-4xl font-black font-mono mt-2">
+                      {allTotal.toLocaleString()} <span className="text-sm font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
+                    </p>
+                    <span className="text-xs text-slate-400 block mt-2">{isEn ? 'All documented expense items since start of operation' : 'كل بنود الصرف الموثقة منذ بداية التشغيل'}</span>
+                  </div>
 
-              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-amber-600">{isEn ? 'Monthly Expenses (This Month)' : 'المصروفات الشهرية (الشهر الحالي)'}</span>
-                  <p className="text-xl font-black text-amber-600 font-mono mt-1">
-                    {(() => {
-                      const d = new Date();
-                      const currentMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                      return expenses
-                        .filter(e => e.date.substring(0, 7) === currentMonth)
-                        .reduce((sum, e) => sum + e.amount, 0)
-                        .toLocaleString();
-                    })()} <span className="text-xs">{isEn ? 'EGP' : 'ج.م'}</span>
-                  </p>
-                </div>
-                <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
-                  <Scale className="h-6 w-6" />
-                </div>
-              </div>
+                  <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <span className="text-xs font-bold text-slate-500">{isEn ? "Today's Expenses" : 'مصروفات اليوم'}</span>
+                    <p className="text-3xl font-black text-slate-800 font-mono mt-2">
+                      {todayTotal.toLocaleString()} <span className="text-sm font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
+                    </p>
+                  </div>
 
-              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-indigo-500">{isEn ? 'Total Overall Expenses' : 'إجمالي المصروفات العام'}</span>
-                  <p className="text-xl font-black text-indigo-600 font-mono mt-1">
-                    {expenses.reduce((sum, e) => sum + e.amount, 0).toLocaleString()} <span className="text-xs">{isEn ? 'EGP' : 'ج.م'}</span>
-                  </p>
-                </div>
-                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
-                  <Receipt className="h-6 w-6" />
-                </div>
-              </div>
+                  <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <span className="text-xs font-bold text-slate-500">{isEn ? 'This Month Expenses' : 'مصروفات الشهر الحالي'}</span>
+                    <p className="text-3xl font-black text-rose-600 font-mono mt-2">
+                      {monthTotal.toLocaleString()} <span className="text-sm font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
+                    </p>
+                  </div>
 
-              <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-slate-500">{isEn ? 'Highest Category' : 'الفئة الأكثر استهلاكاً'}</span>
-                  <p className="text-xs font-black text-slate-800 truncate max-w-[150px] mt-1" title={(() => {
-                    const categoryTotals: Record<string, number> = {};
-                    expenses.forEach(e => {
-                      categoryTotals[e.category] = (categoryTotals[e.category] || 0) + e.amount;
-                    });
-                    let topCat = isEn ? 'None' : 'لا يوجد';
-                    let maxVal = 0;
-                    Object.entries(categoryTotals).forEach(([cat, val]) => {
-                      if (val > maxVal) {
-                        maxVal = val;
-                        topCat = cat;
-                      }
-                    });
-                    return topCat;
-                  })()}>
-                    {(() => {
-                      const categoryTotals: Record<string, number> = {};
-                      expenses.forEach(e => {
-                        categoryTotals[e.category] = (categoryTotals[e.category] || 0) + e.amount;
-                      });
-                      let topCat = isEn ? 'None' : 'لا يوجد';
-                      let maxVal = 0;
-                      Object.entries(categoryTotals).forEach(([cat, val]) => {
-                        if (val > maxVal) {
-                          maxVal = val;
-                          topCat = cat;
-                        }
-                      });
-                      return topCat === 'لا يوجد' || topCat === 'None' ? (isEn ? 'None' : 'لا يوجد') : `${topCat} (${maxVal.toLocaleString()} ${isEn ? 'EGP' : 'ج.م'})`;
-                    })()}
-                  </p>
+                  <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                    <span className="text-xs font-bold text-slate-500">{isEn ? 'Top Spending Category' : 'الفئة الأكثر استهلاكاً'}</span>
+                    <p className="text-xl font-black text-slate-800 mt-2 truncate" title={topCat}>
+                      {topCat || (isEn ? 'None' : 'لا يوجد')}
+                    </p>
+                    <span className="text-xs text-slate-400 font-mono block mt-1">{topCat ? `${maxVal.toLocaleString()} ${isEn ? 'EGP' : 'ج.م'}` : ''}</span>
+                  </div>
                 </div>
-                <div className="p-3 bg-slate-50 text-slate-600 rounded-2xl">
-                  <AlertCircle className="h-6 w-6" />
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
-            {/* Sub-Layout: Add form & Table list */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              
+            {/* Sub-Layout: Add form & register */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
               {/* Form panel */}
-              <div className="lg:col-span-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-                <div className="border-b border-slate-100 pb-3 flex items-center gap-2">
-                  <Plus className="h-4 w-4 text-emerald-500" />
-                  <h3 className="text-sm font-black text-slate-800">{isEn ? 'Record New Expense' : 'تسجيل مصروف جديد'}</h3>
-                </div>
+              <div className="lg:col-span-5 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                <h3 className="text-sm font-black text-slate-800">{isEn ? 'Record New Expense' : 'تسجيل مصروف جديد'}</h3>
 
-                <form onSubmit={handleAddExpense} className="space-y-3.5 text-xs text-right">
-                  <div className="space-y-1">
+                <form onSubmit={handleAddExpense} className="space-y-4 text-xs">
+                  <div className="space-y-1.5">
                     <label className="font-bold text-slate-600 block">{isEn ? 'Expense Description / Item *' : 'بيان المصروف / البند *'}</label>
                     <input
                       type="text"
@@ -3245,11 +3195,11 @@ ${methodsBreakdown}
                       placeholder={isEn ? 'e.g. Filling materials, Rent, Electricity bill...' : 'مثال: أدوات ومواد حشوات، إيجار، فاتورة كهرباء...'}
                       value={expenseTitle}
                       onChange={(e) => setExpenseTitle(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-right"
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold bg-slate-50/60"
                     />
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <label className="font-bold text-slate-600 block">{isEn ? 'Amount (EGP) *' : 'القيمة المالية (ج.م) *'}</label>
                     <input
                       type="number"
@@ -3260,46 +3210,54 @@ ${methodsBreakdown}
                       placeholder="0.00"
                       value={expenseAmount}
                       onChange={(e) => setExpenseAmount(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-left"
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono font-bold text-left bg-slate-50/60"
                     />
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <label className="font-bold text-slate-600 block">{isEn ? 'Expense Category *' : 'تصنيف وفئة المصروف *'}</label>
-                    <select
-                      value={expenseCategory}
-                      onChange={(e) => setExpenseCategory(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold bg-white text-right"
-                    >
-                      <option value="مستلزمات طبية">{isEn ? 'Medical Supplies & Clinic' : 'مستلزمات طبية وعيادة'}</option>
-                      <option value="مصاريف معامل">{isEn ? 'Lab Expenses' : 'مصروفات معامل ومختبرات'}</option>
-                      <option value="صيانة وإصلاحات">{isEn ? 'Maintenance & Repairs' : 'صيانة وإصلاحات الأجهزة'}</option>
-                      <option value="رواتب وأجور">{isEn ? 'Salaries & Wages' : 'رواتب وأجور العاملين'}</option>
-                      <option value="إيجار وفواتير">{isEn ? 'Rent & Utilities' : 'إيجار وفواتير (كهرباء/مياه/إنترنت)'}</option>
-                      <option value="دعاية وتسويق">{isEn ? 'Marketing & Ads' : 'دعاية وتسويق وإعلانات'}</option>
-                      <option value="مصاريف إدارية">{isEn ? 'Administrative Expenses' : 'مصروفات إدارية ونثرية'}</option>
-                      <option value="أخرى">{isEn ? 'Other Categories' : 'تصنيفات أخرى'}</option>
-                    </select>
+                    <div className="flex flex-wrap gap-1.5">
+                      {([
+                        { v: 'مستلزمات طبية', ar: 'مستلزمات طبية وعيادة', en: 'Medical Supplies & Clinic' },
+                        { v: 'مصاريف معامل', ar: 'مصاريف معامل', en: 'Lab Expenses' },
+                        { v: 'إيجار وفواتير', ar: 'إيجار وفواتير', en: 'Rent & Utilities' },
+                        { v: 'صيانة وإصلاحات', ar: 'صيانة وإصلاحات', en: 'Maintenance & Repairs' },
+                        { v: 'رواتب وأجور', ar: 'رواتب وأجور', en: 'Salaries & Wages' },
+                        { v: 'دعاية وتسويق', ar: 'دعاية وتسويق', en: 'Marketing & Ads' },
+                        { v: 'مصاريف إدارية', ar: 'مصاريف إدارية', en: 'Administrative' },
+                        { v: 'أخرى', ar: 'أخرى', en: 'Other' }
+                      ] as const).map(c => (
+                        <button
+                          key={c.v}
+                          type="button"
+                          onClick={() => setExpenseCategory(c.v)}
+                          className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition cursor-pointer border ${
+                            expenseCategory === c.v
+                              ? 'bg-emerald-50 border-emerald-500 text-emerald-700'
+                              : 'bg-slate-100 border-transparent text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {isEn ? c.en : c.ar}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <label className="font-bold text-slate-600 block">{isEn ? 'Expense Date *' : 'تاريخ الصرف *'}</label>
                     <input
                       type="date"
                       required
                       value={expenseDate}
                       onChange={(e) => setExpenseDate(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-left"
+                      className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono font-bold text-left bg-slate-50/60"
                     />
                   </div>
 
-                  {/* Two professional custom checkbox cards for funding selection */}
-                  <div className="space-y-2 border border-slate-200 bg-slate-50/50 p-3.5 rounded-2xl">
-                    <label className="font-extrabold text-slate-700 block text-xs mb-2 flex items-center gap-1">
-                      <span>⚙️</span> {isEn ? 'Funding Source Type (Required) *' : 'تحديد نوع ومصدر الصرف (إلزامي) *'}
-                    </label>
-                    <div className="space-y-2">
-                      {/* Checkbox 1: خصم من الوردية */}
+                  {/* Funding source selection */}
+                  <div className="space-y-2">
+                    <label className="font-bold text-slate-600 block">{isEn ? 'Funding Source (Required) *' : 'مصدر الصرف (إلزامي) *'}</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <div
                         onClick={() => {
                           setExpenseType('shift');
@@ -3307,82 +3265,54 @@ ${methodsBreakdown}
                             setExpensePaymentMethod(expenseMethodsList[0] || 'كاش');
                           }
                         }}
-                        className={`p-3 rounded-xl border transition-all duration-200 flex items-center justify-between cursor-pointer ${
+                        className={`p-3.5 rounded-2xl border transition-all duration-200 cursor-pointer ${
                           expenseType === 'shift'
-                            ? 'bg-indigo-50 border-indigo-500 text-indigo-900 font-bold'
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            ? 'bg-emerald-50/60 border-emerald-500'
+                            : 'bg-white border-slate-200 hover:bg-slate-50'
                         }`}
                       >
-                        <div className="flex items-center gap-2">
-                          <span className="text-base">🏪</span>
-                          <div className="text-right">
-                            <span className="text-xs font-bold block">{isEn ? 'Deduct from Active Shift Float' : 'خصم من عهدة الوردية المفتوحة'}</span>
-                            {activeShift && (
-                              <span className="text-xs text-indigo-600 font-medium block">
-                                {isEn ? 'Shift Cashier:' : 'وردية الكاشير:'} {activeShift.cashierName}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all shrink-0 ${
-                          expenseType === 'shift'
-                            ? 'border-indigo-600 bg-indigo-600 text-white'
-                            : 'border-slate-300 bg-white'
-                        }`}>
-                          {expenseType === 'shift' && <Check className="h-2.5 w-2.5 stroke-[3]" />}
-                        </div>
+                        <span className="text-xs font-black text-slate-800 block">{isEn ? 'From Active Shift Float' : 'من عهدة الوردية المفتوحة'}</span>
+                        <span className="text-[11px] text-slate-400 block mt-1">
+                          {activeShift
+                            ? (isEn ? `Deducted from shift cash: ${activeShift.cashierName}` : `يُخصم من كاش وردية: ${activeShift.cashierName}`)
+                            : (isEn ? 'Deducted from the active shift drawer' : 'يُخصم من عهدة الوردية الحالية')}
+                        </span>
                       </div>
 
-                      {/* Checkbox 2: مال خاص */}
                       <div
                         onClick={() => setExpenseType('personal')}
-                        className={`p-3 rounded-xl border transition-all duration-200 flex items-center justify-between cursor-pointer ${
+                        className={`p-3.5 rounded-2xl border transition-all duration-200 cursor-pointer ${
                           expenseType === 'personal'
-                            ? 'bg-amber-50 border-amber-500 text-amber-900 font-bold'
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            ? 'bg-emerald-50/60 border-emerald-500'
+                            : 'bg-white border-slate-200 hover:bg-slate-50'
                         }`}
                       >
-                        <div className="flex items-center gap-2">
-                          <span className="text-base">💼</span>
-                          <div className="text-right">
-                            <span className="text-xs font-bold block">{isEn ? 'Personal Funds / Personal Capital' : 'مال خاص / تمويل شخصي'}</span>
-                            <span className="text-xs text-slate-400 block">
-                              {isEn ? 'Not deducted from drawer cash or shift balance' : 'لا يتم خصمه من رصيد الخزنة أو الوردية'}
-                            </span>
-                          </div>
-                        </div>
-                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all shrink-0 ${
-                          expenseType === 'personal'
-                            ? 'border-amber-600 bg-amber-600 text-white'
-                            : 'border-slate-300 bg-white'
-                        }`}>
-                          {expenseType === 'personal' && <Check className="h-2.5 w-2.5 stroke-[3]" />}
-                        </div>
+                        <span className="text-xs font-black text-slate-800 block">{isEn ? 'Personal Funds / Self-Funded' : 'مال خاص / تمويل شخصي'}</span>
+                        <span className="text-[11px] text-slate-400 block mt-1">{isEn ? 'Not deducted from drawer or shift' : 'لا يُخصم من الخزنة أو الوردية'}</span>
                       </div>
-
-                      {/* Dynamic Payment Method Selection for Open Shift Deductions */}
-                      {expenseType === 'shift' && (
-                        <div className="mt-2 p-3 bg-indigo-50 border border-indigo-200 rounded-xl space-y-1.5 animate-fade-in text-right">
-                          <label className="block text-xs font-black text-indigo-950">
-                            💳 {isEn ? 'Payment Method for Shift Deduction:' : 'طريقة الدفع للخصم من الوردية:'}
-                          </label>
-                          <select
-                            value={expensePaymentMethod || expenseMethodsList[0] || 'كاش'}
-                            onChange={(e) => setExpensePaymentMethod(e.target.value)}
-                            className="w-full px-2.5 py-1.5 border border-indigo-200 rounded-lg text-xs font-bold text-indigo-900 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-right"
-                          >
-                            {expenseMethodsList.map((method, idx) => (
-                              <option key={idx} value={method}>{method}</option>
-                            ))}
-                          </select>
-                          <p className="text-[10px] text-indigo-700 font-medium leading-relaxed mt-1">
-                            💡 {isEn ? 'This expense will be deducted specifically from the chosen payment method and will not affect cash drawer if paid electronically.' : `يتم ربط هذا المصروف وخصمه حصرياً من طريقة الدفع المحددة (${expensePaymentMethod || expenseMethodsList[0] || 'كاش'})، وفي حال الصرف إلكترونياً لا يؤثر على الخزنة النقدية الكاش بالدرج.`}
-                          </p>
-                        </div>
-                      )}
                     </div>
+
+                    {expenseType === 'shift' && (
+                      <div className="p-3 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-1.5 animate-fade-in">
+                        <label className="block text-xs font-black text-emerald-950">
+                          💳 {isEn ? 'Payment Method for Shift Deduction:' : 'طريقة الدفع للخصم من الوردية:'}
+                        </label>
+                        <select
+                          value={expensePaymentMethod || expenseMethodsList[0] || 'كاش'}
+                          onChange={(e) => setExpensePaymentMethod(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-emerald-200 rounded-lg text-xs font-bold text-emerald-900 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        >
+                          {expenseMethodsList.map((method, idx) => (
+                            <option key={idx} value={method}>{method}</option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-emerald-700 font-medium leading-relaxed">
+                          💡 {isEn ? 'This expense is deducted specifically from the chosen payment method and does not affect the cash drawer if paid electronically.' : `يتم ربط هذا المصروف وخصمه حصرياً من طريقة الدفع المحددة (${expensePaymentMethod || expenseMethodsList[0] || 'كاش'})، وفي حال الصرف إلكترونياً لا يؤثر على الخزنة النقدية الكاش بالدرج.`}
+                        </p>
+                      </div>
+                    )}
                     {!expenseType && (
-                      <p className="text-xs text-rose-500 font-bold mt-2 text-center animate-pulse">
+                      <p className="text-xs text-rose-500 font-bold text-center animate-pulse">
                         ⚠️ {isEn ? 'Please select funding source to record expense' : 'يجب تحديد مصدر الصرف لتسجيل البند'}
                       </p>
                     )}
@@ -3392,103 +3322,82 @@ ${methodsBreakdown}
                     whileTap={{ scale: 0.98 }}
                     type="submit"
                     disabled={loading}
-                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl transition shadow-xs cursor-pointer text-sm"
                   >
-                    <Plus className="h-4 w-4" />
                     {loading ? (isEn ? 'Saving...' : 'جاري الحفظ...') : (isEn ? 'Record Expense' : 'تسجيل وحفظ المصروف')}
                   </motion.button>
                 </form>
               </div>
 
-              {/* Table panel */}
-              <div className="lg:col-span-8 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                  <div>
-                    <h3 className="text-sm font-black text-slate-800">{isEn ? 'Logged Expenses Register' : 'سجل المصروفات الموثقة'}</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">{isEn ? 'Browse all logged expense items and invoices with filtering' : 'استعرض كافة بنود الصرف والفواتير المسجلة مع إمكانية الفلترة'}</p>
+              {/* Register panel */}
+              <div className="lg:col-span-7 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+                <h3 className="text-sm font-black text-slate-800">{isEn ? 'Logged Expenses Register' : 'سجل المصروفات الموثقة'}</h3>
+
+                {/* Period pills */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex bg-slate-100 p-1 rounded-full text-xs gap-1 flex-wrap">
+                    {([
+                      { id: 'today', ar: 'اليوم', en: 'Today' },
+                      { id: 'month', ar: 'هذا الشهر', en: 'This Month' },
+                      { id: 'custom_day', ar: 'يوم محدد', en: 'Specific Day' },
+                      { id: 'custom_range', ar: 'فترة مخصصة', en: 'Custom Range' },
+                      { id: 'all', ar: 'الكل', en: 'All' }
+                    ] as const).map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => { setExpenseFilterPeriod(p.id); setExpensesLimit(6); }}
+                        className={`py-1.5 px-3.5 rounded-full font-bold transition cursor-pointer ${
+                          expenseFilterPeriod === p.id
+                            ? 'bg-slate-900 text-white shadow-sm'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        {isEn ? p.en : p.ar}
+                      </button>
+                    ))}
                   </div>
+                </div>
 
-                  {/* Filters block */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Period filters */}
-                    <div className="bg-slate-100 p-1 rounded-xl flex gap-1 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setExpenseFilterPeriod('today');
-                          setExpensesLimit(6);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer ${expenseFilterPeriod === 'today' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
-                      >
-                        {isEn ? 'Today' : 'اليوم'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setExpenseFilterPeriod('month');
-                          setExpensesLimit(6);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer ${expenseFilterPeriod === 'month' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
-                      >
-                        {isEn ? 'This Month' : 'هذا الشهر'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setExpenseFilterPeriod('custom_day');
-                          setExpensesLimit(6);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer ${expenseFilterPeriod === 'custom_day' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
-                      >
-                        {isEn ? 'Specific Day' : 'يوم محدد'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setExpenseFilterPeriod('custom_range');
-                          setExpensesLimit(6);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer ${expenseFilterPeriod === 'custom_range' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
-                      >
-                        {isEn ? 'Custom Range' : 'فترة مخصصة'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setExpenseFilterPeriod('all');
-                          setExpensesLimit(6);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer ${expenseFilterPeriod === 'all' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500'}`}
-                      >
-                        {isEn ? 'All' : 'الكل'}
-                      </button>
-                    </div>
+                {/* Category + search row */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={expenseFilterCategory}
+                    onChange={(e) => {
+                      setExpenseFilterCategory(e.target.value);
+                      setExpensesLimit(6);
+                    }}
+                    className="px-3 py-2 border border-slate-200 rounded-full text-xs font-bold bg-slate-50 text-slate-800 cursor-pointer"
+                  >
+                    <option value="all">{isEn ? 'All Categories' : 'كل الفئات'} ▾</option>
+                    <option value="مستلزمات طبية">{isEn ? 'Medical Supplies & Clinic' : 'مستلزمات طبية وعيادة'}</option>
+                    <option value="مصاريف معامل">{isEn ? 'Lab Expenses' : 'مصاريف معامل'}</option>
+                    <option value="صيانة وإصلاحات">{isEn ? 'Maintenance & Repairs' : 'صيانة وإصلاحات'}</option>
+                    <option value="رواتب وأجور">{isEn ? 'Salaries & Wages' : 'رواتب وأجور'}</option>
+                    <option value="إيجار وفواتير">{isEn ? 'Rent & Utilities' : 'إيجار وفواتير'}</option>
+                    <option value="دعاية وتسويق">{isEn ? 'Marketing & Ads' : 'دعاية وتسويق'}</option>
+                    <option value="مصاريف إدارية">{isEn ? 'Administrative Expenses' : 'مصاريف إدارية'}</option>
+                    <option value="أخرى">{isEn ? 'Other' : 'أخرى'}</option>
+                  </select>
 
-                    {/* Category Filter */}
-                    <select
-                      value={expenseFilterCategory}
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute right-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder={isEn ? 'Search expense description or notes...' : 'ابحث في وصف المصروف أو الملاحظات...'}
+                      value={expenseSearch}
                       onChange={(e) => {
-                        setExpenseFilterCategory(e.target.value);
+                        setExpenseSearch(e.target.value);
                         setExpensesLimit(6);
                       }}
-                      className="px-2.5 py-1.5 border border-slate-200 rounded-xl text-xs font-bold bg-slate-50 text-right text-slate-800"
-                    >
-                      <option value="all">{isEn ? 'All Categories' : 'كل الفئات'}</option>
-                      <option value="مستلزمات طبية">{isEn ? 'Medical Supplies & Clinic' : 'مستلزمات طبية وعيادة'}</option>
-                      <option value="مصاريف معامل">{isEn ? 'Lab Expenses' : 'مصاريف معامل ومختبرات'}</option>
-                      <option value="صيانة وإصلاحات">{isEn ? 'Maintenance & Repairs' : 'صيانة وإصلاحات'}</option>
-                      <option value="رواتب وأجور">{isEn ? 'Salaries & Wages' : 'رواتب وأجور'}</option>
-                      <option value="إيجار وفواتير">{isEn ? 'Rent & Utilities' : 'إيجار وفواتير'}</option>
-                      <option value="دعاية وتسويق">{isEn ? 'Marketing & Ads' : 'دعاية وتسويق'}</option>
-                      <option value="مصاريف إدارية">{isEn ? 'Administrative Expenses' : 'مصاريف إدارية'}</option>
-                      <option value="أخرى">{isEn ? 'Other' : 'أخرى'}</option>
-                    </select>
+                      className="w-full pl-3 pr-9 py-2 border border-slate-200 rounded-full text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-slate-800 bg-slate-50/60"
+                    />
                   </div>
                 </div>
 
                 {/* Custom Date / Range selectors */}
                 {(expenseFilterPeriod === 'custom_day' || expenseFilterPeriod === 'custom_range') && (
-                  <div className="flex flex-wrap items-center justify-start gap-4 bg-slate-50 p-3.5 rounded-2xl border border-slate-150 text-xs font-bold text-right">
+                  <div className="flex flex-wrap items-center justify-start gap-4 bg-slate-50 p-3.5 rounded-2xl border border-slate-150 text-xs font-bold">
                     {expenseFilterPeriod === 'custom_day' && (
                       <div className="space-y-1">
                         <span className="text-xs text-slate-500 block">{isEn ? 'Select Specific Day:' : 'اختر اليوم المحدد:'}</span>
@@ -3496,7 +3405,7 @@ ${methodsBreakdown}
                           type="date"
                           value={expenseFilterSpecificDate}
                           onChange={(e) => setExpenseFilterSpecificDate(e.target.value)}
-                          className="px-3 py-2 border border-slate-200 rounded-xl font-mono text-xs focus:ring-2 focus:ring-indigo-500 outline-none text-left bg-white text-slate-800"
+                          className="px-3 py-2 border border-slate-200 rounded-xl font-mono text-xs focus:ring-2 focus:ring-emerald-500 outline-none text-left bg-white text-slate-800"
                         />
                       </div>
                     )}
@@ -3508,7 +3417,7 @@ ${methodsBreakdown}
                             type="date"
                             value={expenseFilterStartDate}
                             onChange={(e) => setExpenseFilterStartDate(e.target.value)}
-                            className="px-3 py-2 border border-slate-200 rounded-xl font-mono text-xs focus:ring-2 focus:ring-indigo-500 outline-none text-left bg-white text-slate-800"
+                            className="px-3 py-2 border border-slate-200 rounded-xl font-mono text-xs focus:ring-2 focus:ring-emerald-500 outline-none text-left bg-white text-slate-800"
                           />
                         </div>
                         <span className="text-slate-400 mt-4 font-normal">{isEn ? 'to' : 'إلى'}</span>
@@ -3518,7 +3427,7 @@ ${methodsBreakdown}
                             type="date"
                             value={expenseFilterEndDate}
                             onChange={(e) => setExpenseFilterEndDate(e.target.value)}
-                            className="px-3 py-2 border border-slate-200 rounded-xl font-mono text-xs focus:ring-2 focus:ring-indigo-500 outline-none text-left bg-white text-slate-800"
+                            className="px-3 py-2 border border-slate-200 rounded-xl font-mono text-xs focus:ring-2 focus:ring-emerald-500 outline-none text-left bg-white text-slate-800"
                           />
                         </div>
                       </div>
@@ -3526,43 +3435,20 @@ ${methodsBreakdown}
                   </div>
                 )}
 
-                {/* Search field */}
-                <div className="relative">
-                  <Search className="absolute right-3 top-2.5 h-4 w-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder={isEn ? 'Search expense description or notes...' : 'ابحث في وصف المصروف أو الملاحظات...'}
-                    value={expenseSearch}
-                    onChange={(e) => {
-                      setExpenseSearch(e.target.value);
-                      setExpensesLimit(6);
-                    }}
-                    className="w-full pl-3 pr-9 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-right text-slate-800"
-                  />
-                </div>
-
-                {/* Expenses Table */}
+                {/* Expenses list */}
                 {(() => {
                   const filtered = expenses.filter(e => {
-                    const matchesSearch = e.title.toLowerCase().includes(expenseSearch.toLowerCase()) || 
+                    const matchesSearch = e.title.toLowerCase().includes(expenseSearch.toLowerCase()) ||
                                           (e.notes && e.notes.toLowerCase().includes(expenseSearch.toLowerCase()));
-                    
                     const matchesCategory = expenseFilterCategory === 'all' || e.category === expenseFilterCategory;
-                    
                     let matchesPeriod = true;
                     if (expenseFilterPeriod === 'today') {
-                      const todayStr = (() => {
-                        const d = new Date();
-                        const pad = (n: number) => String(n).padStart(2, '0');
-                        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-                      })();
-                      matchesPeriod = e.date === todayStr;
+                      const d = new Date();
+                      const pad = (n: number) => String(n).padStart(2, '0');
+                      matchesPeriod = e.date === `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
                     } else if (expenseFilterPeriod === 'month') {
-                      const currentMonth = (() => {
-                        const d = new Date();
-                        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                      })();
-                      matchesPeriod = e.date.substring(0, 7) === currentMonth;
+                      const d = new Date();
+                      matchesPeriod = e.date.substring(0, 7) === `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
                     } else if (expenseFilterPeriod === 'custom_day') {
                       matchesPeriod = e.date === expenseFilterSpecificDate;
                     } else if (expenseFilterPeriod === 'custom_range') {
@@ -3576,20 +3462,13 @@ ${methodsBreakdown}
                         matchesPeriod = e.date <= end;
                       }
                     }
-                    
                     return matchesSearch && matchesCategory && matchesPeriod;
                   });
 
                   const filteredTotal = filtered.reduce((sum, e) => sum + e.amount, 0);
 
                   return (
-                    <div className="space-y-4">
-                      {/* Show active filter total */}
-                      <div className="bg-slate-50/80 px-4 py-2.5 rounded-2xl border border-slate-100 flex items-center justify-between text-xs font-bold text-slate-700">
-                        <span>{isEn ? 'Total Filtered Expenses:' : 'إجمالي المصروفات المفلترة:'}</span>
-                        <span className="font-mono text-rose-600 font-black text-sm">{filteredTotal.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
-                      </div>
-
+                    <div className="space-y-3">
                       {filtered.length === 0 ? (
                         <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                           <TrendingDown className="h-8 w-8 text-slate-300 mx-auto mb-2" />
@@ -3597,90 +3476,70 @@ ${methodsBreakdown}
                         </div>
                       ) : (
                         <>
-                          <div className="overflow-x-auto rounded-2xl border border-slate-100">
-                            <table className="w-full text-right border-collapse text-xs">
-                              <thead>
-                                <tr className="bg-slate-50 text-slate-600 border-b border-slate-100 font-bold">
-                                  <th className="p-3">{isEn ? 'Date' : 'التاريخ'}</th>
-                                  <th className="p-3">{isEn ? 'Description' : 'بيان المصروف'}</th>
-                                  <th className="p-3 text-center">{isEn ? 'Category' : 'الفئة'}</th>
-                                  <th className="p-3 text-left">{isEn ? 'Amount' : 'القيمة المالية'}</th>
-                                  <th className="p-3">{isEn ? 'Source / Notes' : 'ملاحظات'}</th>
-                                  <th className="p-3 text-center">{isEn ? 'Actions' : 'الإجراءات'}</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {filtered.slice(0, expensesLimit).map((item, idx) => (
-                                  <tr key={item.id || idx} className="hover:bg-slate-50/50 border-b border-slate-100 transition duration-150">
-                                    <td className="p-3 font-mono font-bold text-slate-500">{item.date}</td>
-                                    <td className="p-3 font-black text-slate-800">{item.title}</td>
-                                    <td className="p-3 text-center">
-                                      <span className={`px-2.5 py-1 rounded-full font-bold text-xs ${
-                                        item.category === 'مستلزمات طبية' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                                        item.category === 'مصاريف معامل' ? 'bg-pink-50 text-pink-700 border border-pink-100' :
-                                        item.category === 'رواتب وأجور' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
-                                        item.category === 'إيجار وفواتير' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
-                                        item.category === 'صيانة وإصلاحات' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
-                                        item.category === 'دعاية وتسويق' ? 'bg-sky-50 text-sky-700 border border-sky-100' :
-                                        'bg-slate-100 text-slate-700 border border-slate-200'
-                                      }`}>
-                                        {item.category}
-                                      </span>
-                                    </td>
-                                    <td className={`p-3 text-left font-black font-mono ${item.amount < 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                      {item.amount.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
-                                    </td>
-                                    <td className="p-3">
-                                      <div className="flex flex-col gap-1 text-right">
-                                        {item.type === 'shift' ? (
-                                          <div className="flex flex-col gap-1">
-                                            <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-extrabold text-xs w-fit border border-indigo-100">
-                                              <span>🏪</span> {isEn ? 'Shift Deduction' : 'خصم من الوردية'}
-                                            </span>
-                                            {item.paymentMethod && (
-                                              <span className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 px-2.5 py-0.5 rounded-md font-black text-xs w-fit border border-teal-150">
-                                                💳 {item.paymentMethod}
-                                              </span>
-                                            )}
-                                          </div>
-                                        ) : item.type === 'personal' ? (
-                                          <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md font-extrabold text-xs w-fit border border-amber-100">
-                                            <span>💼</span> {isEn ? 'Personal Funds' : 'مال خاص'}
-                                          </span>
-                                        ) : (
-                                          <span className="inline-flex items-center gap-1 bg-slate-50 text-slate-600 px-2 py-0.5 rounded-md font-bold text-xs w-fit border border-slate-200">
-                                            {item.notes || (isEn ? 'Not specified' : 'غير محدد')}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </td>
-                                    <td className="p-3 text-center">
-                                      {!isStaff && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleDeleteExpense(item)}
-                                          className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                                          title={isEn ? 'Delete Expense' : 'حذف المصروف'}
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </button>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                          <div className="divide-y divide-slate-100">
+                            {filtered.slice(0, expensesLimit).map((item, idx) => (
+                              <div key={item.id || idx} className="py-3 flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <span className="font-black text-slate-800 text-sm block">{item.title}</span>
+                                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                    <span className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] ${
+                                      item.category === 'مستلزمات طبية' ? 'bg-blue-50 text-blue-700' :
+                                      item.category === 'مصاريف معامل' ? 'bg-orange-50 text-orange-700' :
+                                      item.category === 'رواتب وأجور' ? 'bg-indigo-50 text-indigo-700' :
+                                      item.category === 'إيجار وفواتير' ? 'bg-rose-50 text-rose-700' :
+                                      item.category === 'صيانة وإصلاحات' ? 'bg-amber-50 text-amber-700' :
+                                      item.category === 'دعاية وتسويق' ? 'bg-sky-50 text-sky-700' :
+                                      'bg-slate-100 text-slate-700'
+                                    }`}>
+                                      {item.category}
+                                    </span>
+                                    <span className="text-[11px] text-slate-400">
+                                      {isEn ? item.date : formatArabicDate(item.date)}
+                                      {' · '}
+                                      {item.type === 'shift'
+                                        ? (isEn ? `Deducted from shift float${activeShift ? ` · ${activeShift.cashierName}` : ''}` : `خُصم من عهدة الوردية${activeShift ? ` · ${activeShift.cashierName}` : ''}`)
+                                        : item.type === 'personal'
+                                          ? (isEn ? 'Personal funds' : 'مال خاص / تمويل شخصي')
+                                          : (item.notes || (isEn ? 'Not specified' : 'غير محدد'))}
+                                      {item.type === 'shift' && item.paymentMethod ? ` · ${item.paymentMethod}` : ''}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className={`font-black font-mono text-sm ${item.amount < 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {item.amount < 0 ? '' : '-'}{Math.abs(item.amount).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
+                                  </span>
+                                  {!isStaff && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteExpense(item)}
+                                      className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                      title={isEn ? 'Delete Expense' : 'حذف المصروف'}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
                           </div>
+
+                          {/* Filtered total footer */}
+                          <div className="bg-slate-50 px-4 py-3 rounded-2xl border border-slate-100 flex items-center justify-between text-xs font-bold text-slate-700">
+                            <span>{isEn ? 'Total Filtered Expenses' : 'إجمالي المصروفات المفلترة'}</span>
+                            <span className="font-mono text-rose-600 font-black text-sm">{filteredTotal.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
+                          </div>
+
                           {filtered.length > expensesLimit && (
                             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200">
                               <span className="text-xs font-bold text-slate-500">
-                                {isEn ? `Showing ${Math.min(expensesLimit, filtered.length)} of ${filtered.length} expense items` : <>يتم عرض <span className="font-mono font-black text-indigo-600">{Math.min(expensesLimit, filtered.length)}</span> من أصل <span className="font-mono font-black text-slate-800">{filtered.length}</span> حركة مصروف</>}
+                                {isEn ? `Showing ${Math.min(expensesLimit, filtered.length)} of ${filtered.length} expense items` : <>يتم عرض <span className="font-mono font-black text-emerald-600">{Math.min(expensesLimit, filtered.length)}</span> من أصل <span className="font-mono font-black text-slate-800">{filtered.length}</span> حركة مصروف</>}
                               </span>
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() => setExpensesLimit(prev => prev + 5)}
-                                  className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+                                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
                                 >
                                   <RefreshCw className="h-3.5 w-3.5" />
                                   <span>{isEn ? 'Show 5 More (+5)' : 'عرض 5 مصروفات إضافية (+5)'}</span>
