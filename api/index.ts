@@ -3375,7 +3375,9 @@ app.post('/api/get-upload-url', async (req, res) => {
       uploadUrl,
       publicUrl,
       key: fileKey,
-      fileKey
+      fileKey,
+      // The browser must send this exact Content-Type on the PUT: it is signed.
+      contentType,
     });
   } catch (error: any) {
     console.error('[Cloudflare R2 Presigned URL Error]', error);
@@ -3412,11 +3414,52 @@ app.get('/api/get-upload-url', async (req, res) => {
       uploadUrl,
       publicUrl,
       key: fileKey,
-      fileKey
+      fileKey,
+      // The browser must send this exact Content-Type on the PUT: it is signed.
+      contentType: fileType,
     });
   } catch (error: any) {
     console.error('[Cloudflare R2 Presigned URL Error]', error);
     return res.status(500).json({ error: error.message || 'Error generating presigned R2 upload URL' });
+  }
+});
+
+// Confirm a direct browser->R2 upload: records the file in the files table after the
+// browser finished its presigned PUT. Ownership rules match /api/upload: the stored
+// clinic always comes from the authenticated token, and the key must live under that
+// clinic's prefix, so one clinic cannot register another clinic's objects.
+const R2_KEY_PATTERN = /^clinics\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9._-]+$/;
+app.post('/api/confirm-upload', async (req, res) => {
+  const auth = await getRequestAuth(req);
+  if (!auth) return res.status(401).json({ error: 'authentication_required' });
+  try {
+    const { key, clinicId } = req.body || {};
+    const fileKey = String(key || '').trim();
+    if (!R2_KEY_PATTERN.test(fileKey)) {
+      return res.status(400).json({ error: 'invalid_file_key' });
+    }
+    const owner = resolveUploadClinicId(auth, clinicId);
+    if ('errorStatus' in owner) return res.status(owner.errorStatus).json({ error: 'forbidden' });
+    if (!fileKey.startsWith(`clinics/${owner.clinicId}/`)) {
+      return res.status(403).json({ error: 'forbidden', message: 'لا يمكن تسجيل ملف لعيادة أخرى' });
+    }
+    // Mime is derived from the verified extension, never from client input.
+    const rule = UPLOAD_TYPES[path.extname(fileKey).toLowerCase()];
+    if (!rule) return res.status(400).json({ error: 'file_type_not_allowed' });
+
+    const { publicUrlBase } = getR2ClientConfig();
+    const publicUrl = `${publicUrlBase}/${fileKey}`;
+
+    await dbClient.execute({
+      sql: `INSERT OR REPLACE INTO files (path, mimeType, data, clinicId) VALUES (?, ?, ?, ?)`,
+      args: [publicUrl, rule.mime, '', owner.clinicId]
+    });
+
+    console.log(`[Cloudflare R2 Direct Upload Confirmed] File key: ${fileKey}`);
+    return res.json({ success: true, publicUrl, key: fileKey, mode: 'r2-direct' });
+  } catch (error: any) {
+    console.error('[Cloudflare R2 Confirm Upload Error]', error);
+    return res.status(500).json({ error: error.message || 'Error confirming direct R2 upload' });
   }
 });
 

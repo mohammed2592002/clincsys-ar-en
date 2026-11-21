@@ -54,8 +54,58 @@ export async function uploadFileToR2(
     }
   }
 
+  // The compressed file carries the extension that matches its real content
+  // (e.g. .webp after compression), so prefer its name over the original's.
+  const uploadName = (fileToUpload as File).name || fileName;
+
+  // Preferred path: direct browser -> Cloudflare R2 upload through a presigned URL.
+  // The server only authorizes and records the upload; the file bytes never pass
+  // through it, so server memory stays flat no matter how many uploads run at once.
+  // Any failure here (presign down, R2 CORS not configured yet, confirm error)
+  // falls back to the classic server-side /api/upload below.
+  try {
+    const presignRes = await fetch('/api/get-upload-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        fileName: uploadName,
+        category: targetCategory,
+        ...(targetClinicId ? { clinicId: targetClinicId } : {}),
+      }),
+    });
+    if (presignRes.ok) {
+      const presign = await presignRes.json();
+      if (presign.uploadUrl && presign.key) {
+        const putRes = await fetch(presign.uploadUrl, {
+          method: 'PUT',
+          // The Content-Type is part of the signature and must match exactly.
+          headers: { 'Content-Type': presign.contentType || fileToUpload.type || 'application/octet-stream' },
+          body: fileToUpload,
+        });
+        if (putRes.ok) {
+          const confirmRes = await fetch('/api/confirm-upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify({
+              key: presign.key,
+              ...(targetClinicId ? { clinicId: targetClinicId } : {}),
+            }),
+          });
+          if (confirmRes.ok) {
+            const confirmData = await confirmRes.json();
+            if (confirmData.publicUrl) {
+              return confirmData.publicUrl;
+            }
+          }
+        }
+      }
+    }
+  } catch (directErr) {
+    console.warn('Direct R2 upload unavailable, falling back to server upload:', directErr);
+  }
+
   const formData = new FormData();
-  formData.append('file', fileToUpload, fileName);
+  formData.append('file', fileToUpload, uploadName);
   formData.append('category', targetCategory);
   if (targetClinicId) {
     formData.append('clinicId', targetClinicId);

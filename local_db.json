@@ -152,13 +152,15 @@
       "id": "appointment_1",
       "clinicId": "clinic_active_demo",
       "data": "{\"id\":\"appointment_1\",\"patientId\":\"patient_1\",\"patientName\":\"محمد علي أحمد\",\"patientPhone\":\"01020304050\",\"date\":\"2026-11-21\",\"time\":\"17:00\",\"treatmentType\":\"كشف واستشارة\",\"price\":150,\"notes\":\"كشف لأول مرة وشكوى من ألم في الفك العلوي\",\"status\":\"scheduled\",\"paidAmount\":0,\"remainingAmount\":150,\"invoiceStatus\":\"pending_payment\",\"dateTime\":\"2026-11-21T17:00\",\"createdAt\":\"2026-11-21T02:28:09.940Z\"}",
-      "createdAt": "2026-11-21T02:28:09.940Z"
+      "createdAt": "2026-11-21T02:28:09.940Z",
+      "patientId": "patient_1"
     },
     {
       "id": "appointment_2",
       "clinicId": "clinic_active_demo",
       "data": "{\"id\":\"appointment_2\",\"patientId\":\"patient_2\",\"patientName\":\"فاطمة عبد الرحمن\",\"patientPhone\":\"01122334455\",\"date\":\"2026-11-21\",\"time\":\"19:30\",\"treatmentType\":\"حشو تجميلي\",\"price\":600,\"notes\":\"جلسة حشو الضرس 16\",\"status\":\"waiting\",\"paidAmount\":600,\"remainingAmount\":0,\"invoiceStatus\":\"paid\",\"dateTime\":\"2026-11-21T19:30\",\"createdAt\":\"2026-11-21T02:28:09.940Z\"}",
-      "createdAt": "2026-11-21T02:28:09.940Z"
+      "createdAt": "2026-11-21T02:28:09.940Z",
+      "patientId": "patient_2"
     }
   ],
   "records": [
@@ -175,7 +177,8 @@
       "id": "prescription_1",
       "clinicId": "clinic_active_demo",
       "data": "{\"id\":\"prescription_1\",\"patientId\":\"patient_1\",\"patientName\":\"محمد علي أحمد\",\"patientAge\":\"34\",\"date\":\"2026-11-21\",\"medications\":[{\"name\":\"Augmentin 1g\",\"dose\":\"قرص واحد\",\"frequency\":\"كل 12 ساعة\",\"duration\":\"5 أيام\"},{\"name\":\"Brufen 600mg\",\"dose\":\"قرص عند اللزوم\",\"frequency\":\"بعد الأكل\",\"duration\":\"3 أيام\"}],\"notes\":\"يرجى شرب كمية كافية من الماء مع العلاج.\",\"createdAt\":\"2026-11-21T02:28:09.940Z\"}",
-      "createdAt": "2026-11-21T02:28:09.940Z"
+      "createdAt": "2026-11-21T02:28:09.940Z",
+      "patientId": "patient_1"
     }
   ],
   "custom_medications": [],
