@@ -2012,15 +2012,15 @@ ${methodsBreakdown}
           </div>
         </div>
 
-        <div className="flex flex-wrap bg-slate-100 p-1.5 rounded-2xl text-xs gap-1">
+        <div className="flex flex-wrap p-1.5 rounded-2xl text-xs gap-2">
           {isTabAllowed('shift_closure') && (
             <motion.button
               whileTap={{ scale: 0.98 }}
               onClick={() => setActiveTab('shift_closure')}
-              className={`py-2 px-4 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
+              className={`py-2 px-4 rounded-full font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
                 activeTab === 'shift_closure' 
-                  ? 'bg-white text-slate-800 shadow-sm border-slate-200/40' 
-                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-white/40'
+                  ? 'bg-slate-900 text-white shadow-sm border-slate-900' 
+                  : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:border-slate-300'
               }`}
             >
               <Clock className="h-4 w-4 text-indigo-600" />
@@ -2031,10 +2031,10 @@ ${methodsBreakdown}
             <motion.button
               whileTap={{ scale: 0.98 }}
               onClick={() => setActiveTab('shift_history')}
-              className={`py-2 px-4 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
+              className={`py-2 px-4 rounded-full font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
                 activeTab === 'shift_history' 
-                  ? 'bg-white text-slate-800 shadow-sm border-slate-200/40' 
-                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-white/40'
+                  ? 'bg-slate-900 text-white shadow-sm border-slate-900' 
+                  : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:border-slate-300'
               }`}
             >
               <Archive className="h-4 w-4 text-amber-600" />
@@ -2048,10 +2048,10 @@ ${methodsBreakdown}
                 setActiveTab('revenues');
                 setRevenuesLimit(10);
               }}
-              className={`py-2 px-4 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
+              className={`py-2 px-4 rounded-full font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
                 activeTab === 'revenues' 
-                  ? 'bg-white text-slate-800 shadow-sm border-slate-200/40' 
-                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-white/40'
+                  ? 'bg-slate-900 text-white shadow-sm border-slate-900' 
+                  : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:border-slate-300'
               }`}
             >
               <TrendingUp className="h-4 w-4 text-emerald-600" />
@@ -2065,10 +2065,10 @@ ${methodsBreakdown}
                 setActiveTab('installments');
                 setInstallmentsLimit(6); // Reset limit to 6 when clicked
               }}
-              className={`py-2 px-4 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
+              className={`py-2 px-4 rounded-full font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
                 activeTab === 'installments' 
-                  ? 'bg-white text-slate-800 shadow-sm border-slate-200/40' 
-                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-white/40'
+                  ? 'bg-slate-900 text-white shadow-sm border-slate-900' 
+                  : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:border-slate-300'
               }`}
             >
               <Receipt className="h-4 w-4 text-rose-500" />
@@ -2081,10 +2081,10 @@ ${methodsBreakdown}
               onClick={() => {
                 setActiveTab('expenses');
               }}
-              className={`py-2 px-4 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
+              className={`py-2 px-4 rounded-full font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer border ${
                 activeTab === 'expenses' 
-                  ? 'bg-white text-slate-800 shadow-sm border-slate-200/40' 
-                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-white/40'
+                  ? 'bg-slate-900 text-white shadow-sm border-slate-900' 
+                  : 'border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:border-slate-300'
               }`}
             >
               <TrendingDown className="h-4 w-4 text-rose-500" />
@@ -2278,130 +2278,110 @@ ${methodsBreakdown}
             ) : (
               // Shift IS OPEN / ACTIVE
               <>
-                {/* Shift Calculations & Booking List Linked (col-span-8) */}
-                <div className="lg:col-span-8 space-y-4 animate-fade-in">
-                  <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-5">
-                    
-                    {/* Active Shift Header Banner */}
-                    <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-right">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center shadow-sm">
-                          <Unlock className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <span className="text-xs font-extrabold text-indigo-900 block">{isEn ? 'Current Shift is Active & Open' : 'الوردية الحالية نشطة ومفتوحة'}</span>
-                          <p className="text-[10px] text-indigo-700 mt-0.5">
-                            {isEn ? 'Operator:' : 'المسؤول:'} <strong>{activeShift.cashierName}</strong> | {isEn ? 'Started:' : 'بدءاً من:'} {new Date(activeShift.openedAt).toLocaleTimeString(isEn ? 'en-US' : 'ar-EG', {hour: '2-digit', minute:'2-digit'})} ({new Date(activeShift.openedAt).toLocaleDateString(isEn ? 'en-US' : 'ar-EG')})
-                          </p>
+                <div className="lg:col-span-12 space-y-5 animate-fade-in">
+                  {/* Active shift status strip */}
+                  <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-2xl px-4 py-2.5 text-xs font-bold flex items-center gap-2 flex-wrap">
+                    <span className="w-2 h-2 rounded-full bg-blue-600 inline-block shrink-0"></span>
+                    <span>{isEn ? 'Current shift is open' : 'الوردية الحالية مفتوحة'}</span>
+                    <span className="text-blue-300">•</span>
+                    <span>{activeShift.cashierName}</span>
+                    <span className="text-blue-300">•</span>
+                    <span>{new Date(activeShift.openedAt).toLocaleDateString(isEn ? 'en-US' : 'ar-EG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} {isEn ? 'from' : 'من'} {new Date(activeShift.openedAt).toLocaleTimeString(isEn ? 'en-US' : 'ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                    {/* Expected cash green card */}
+                    <div className="lg:col-span-5 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-3xl p-6 flex flex-col justify-between gap-6 shadow-lg shadow-emerald-500/20">
+                      <div className="space-y-2">
+                        <span className="text-sm font-bold text-emerald-50/90">{isEn ? 'Expected cash in drawer now' : 'المتوقع كاش في الدرج دلوقتي'}</span>
+                        <div className="text-4xl font-black font-mono tracking-tight">
+                          {(Number(activeShift.startCash || 0) + dailyCashAmount - cashExpenses).toLocaleString()} <span className="text-lg font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
                         </div>
                       </div>
-                      <div className="text-left">
-                        <span className="text-[10px] bg-indigo-100/80 text-indigo-700 font-bold px-2.5 py-1 rounded-lg">{isEn ? 'Workday:' : 'يوم عمل:'} {activeShift.date}</span>
+                      <div className="space-y-3">
+                        <p className="text-[11px] text-emerald-50/80 font-medium leading-relaxed">
+                          {isEn ? 'Count the cash present in the drawer and record it below to close the shift.' : 'عدّ الفلوس اللي في الدرج وسجّلها تحت عشان تقفل الوردية'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => document.getElementById('shift-closure-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                          className="bg-white text-emerald-700 hover:bg-emerald-50 text-xs font-black px-4 py-2.5 rounded-xl transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Check className="h-4 w-4" />
+                          {isEn ? 'Count Drawer & Close Shift' : 'عدّ الدرج وإقفال الوردية'}
+                        </button>
                       </div>
                     </div>
 
-                    {/* Sequential Breakdown Rectangles Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                      {/* 1. المحصل كله بكل الطرق */}
-                      <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-200/80 text-right space-y-1.5">
-                        <span className="text-xs font-black text-emerald-900 block flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-                          {isEn ? 'Total Collected (All Methods)' : 'المحصل كله بكل الطرق'}
-                        </span>
-                        <span className="text-xl font-black text-emerald-700 font-mono block">
-                          {dailyExpectedCash.toLocaleString()} <span className="text-xs font-normal text-emerald-500">{isEn ? 'EGP' : 'ج.م'}</span>
+                    {/* 2x2 stats */}
+                    <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-2">
+                        <span className="text-xs font-bold text-slate-500 block">{isEn ? 'Total Collected (All Methods)' : 'المحصل كله بكل الطرق'}</span>
+                        <span className="text-2xl font-black text-emerald-600 font-mono block">
+                          {dailyExpectedCash.toLocaleString()} <span className="text-sm font-bold text-slate-400">{isEn ? 'EGP' : 'ج.م'}</span>
                         </span>
                       </div>
-
-                      {/* 2. الأقساط الباقية */}
-                      <div className="bg-amber-50/50 p-4 rounded-2xl border border-amber-200/80 text-right space-y-1.5">
-                        <span className="text-xs font-black text-amber-900 block flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
-                          {isEn ? 'Installments & Due Balances' : 'الأقساط والمتبقي'}
-                        </span>
-                        <span className="text-xl font-black text-amber-700 font-mono block">
-                          {dailyRemainingCash.toLocaleString()} <span className="text-xs font-normal text-amber-500">{isEn ? 'EGP' : 'ج.م'}</span>
+                      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-2">
+                        <span className="text-xs font-bold text-slate-500 block">{isEn ? 'Installments & Due Balances' : 'الأقساط والمتبقي على المرضى'}</span>
+                        <span className="text-2xl font-black text-amber-600 font-mono block">
+                          {dailyRemainingCash.toLocaleString()} <span className="text-sm font-bold text-slate-400">{isEn ? 'EGP' : 'ج.م'}</span>
                         </span>
                       </div>
-
-                      {/* 3. المصاريف */}
-                      <div className="bg-rose-50/50 p-4 rounded-2xl border border-rose-200/80 text-right space-y-1.5">
-                        <span className="text-xs font-black text-rose-900 block flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
-                          {isEn ? 'Deducted Expenses' : 'المصاريف المخصومة'}
-                        </span>
-                        <span className="text-xl font-black text-rose-600 font-mono block">
-                          {activeShiftExpensesTotal.toLocaleString()} <span className="text-xs font-normal text-rose-400">{isEn ? 'EGP' : 'ج.م'}</span>
+                      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-2">
+                        <span className="text-xs font-bold text-slate-500 block">{isEn ? 'Deducted Expenses' : 'المصاريف المخصومة'}</span>
+                        <span className="text-2xl font-black text-rose-600 font-mono block">
+                          {activeShiftExpensesTotal.toLocaleString()} <span className="text-sm font-bold text-slate-400">{isEn ? 'EGP' : 'ج.م'}</span>
                         </span>
                       </div>
-
-                      {/* 4. المتوقع كاش بالدرج */}
-                      <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-200/80 text-right space-y-1.5">
-                        <span className="text-xs font-black text-indigo-900 block flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block"></span>
-                          {isEn ? 'Expected Cash in Drawer' : 'المتوقع كاش بالدرج'}
-                        </span>
-                        <span className="text-xl font-black text-indigo-700 font-mono block">
-                          {(Number(activeShift.startCash || 0) + dailyCashAmount - cashExpenses).toLocaleString()} <span className="text-xs font-normal text-indigo-400">{isEn ? 'EGP' : 'ج.م'}</span>
+                      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-2">
+                        <span className="text-xs font-bold text-slate-500 block">{isEn ? "Today's Operations Count" : 'عدد العمليات النهاردة'}</span>
+                        <span className="text-2xl font-black text-blue-600 font-mono block">
+                          {activeShiftPaymentRecords.length} <span className="text-sm font-bold text-slate-400">{isEn ? 'operations' : 'عملية'}</span>
                         </span>
                       </div>
                     </div>
+                  </div>
 
-                    {/* Clear Breakdown of All Payment Methods */}
-                    <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-150 space-y-3">
-                      <div className="text-xs font-extrabold text-slate-700 flex items-center justify-between border-b border-slate-200/60 pb-2">
-                        <span className="flex items-center gap-1.5">
-                          <DollarSign className="h-4 w-4 text-indigo-600" />
-                          {isEn ? 'Shift Revenue Details by Payment Method' : 'تفاصيل الإيرادات المحصلة بالوردية حسب طريقة الدفع'}
-                        </span>
-                        <span className="text-[10px] bg-emerald-100/80 text-emerald-800 px-2.5 py-0.5 rounded-md font-bold">
-                          {isEn ? `Total Collected: ${dailyExpectedCash.toLocaleString()} EGP` : `إجمالي المحصل: ${dailyExpectedCash.toLocaleString()} ج.م`}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
-                        {activeMethodsList.map((method, idx) => {
-                          const isLoyalty = normalizePaymentMethod(method) === 'نقاط الولاء';
-                          const rev = dynamicRevenues[method] || 0;
-                          const exp = dynamicExpenses[method] || 0;
-                          const net = rev - exp;
-                          const displayMethodName = isEn ? (
-                            method === 'كاش' ? 'Cash' :
-                            method === 'فيزا' ? 'Visa / Card' :
-                            method === 'إنستاباي' ? 'InstaPay' :
-                            method === 'محفظة' ? 'E-Wallet' : method
-                          ) : method;
-                          return (
-                            <div key={idx} className="bg-white p-3 rounded-xl border border-slate-200 flex flex-col justify-between hover:border-indigo-200 transition duration-150 shadow-2xs">
-                              <div className="flex items-center justify-between mb-1 border-b border-slate-100 pb-1">
-                                <span className="text-[11px] font-black text-slate-800">
-                                  {isLoyalty ? (isEn ? '🎁 Loyalty Points' : '🎁 نقاط الولاء') : displayMethodName}
-                                </span>
-                                <span className="text-xs">
-                                  {isLoyalty ? '🎁' : method === 'كاش' ? '💵' : method === 'فيزا' ? '💳' : method === 'إنستاباي' ? '⚡' : method === 'محفظة' ? '📱' : '💼'}
-                                </span>
-                              </div>
-                              <div className="space-y-1 mt-1 text-[10px]">
-                                <div className="flex justify-between text-slate-500">
-                                  <span>{isLoyalty ? (isEn ? 'Points Discount:' : 'خصم النقاط:') : (isEn ? 'In:' : 'وارد:')}</span>
-                                  <span className="font-mono font-bold text-emerald-600">{(rev).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
-                                </div>
-                                {!isLoyalty && (
-                                  <div className="flex justify-between text-slate-500">
-                                    <span>{isEn ? 'Expenses:' : 'مصروف:'}</span>
-                                    <span className="font-mono font-bold text-rose-600">{(exp).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
-                                  </div>
-                                )}
-                                <div className="flex justify-between font-black text-slate-800 border-t border-slate-100 pt-1 mt-1">
-                                  <span>{isLoyalty ? (isEn ? 'Settlement:' : 'تسوية الخصم:') : (isEn ? 'Net:' : 'صافي:')}</span>
-                                  <span className="font-mono text-indigo-600">{(net).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
-                                </div>
-                              </div>
+                  {/* Collections by payment method with bars */}
+                  <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 space-y-2">
+                    <div className="flex items-center justify-between pb-2">
+                      <h3 className="text-sm font-black text-slate-800">{isEn ? "Today's Collections by Payment Method" : 'المحصل النهاردة حسب طريقة الدفع'}</h3>
+                      <span className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-3 py-1 rounded-full">
+                        {isEn ? 'Total:' : 'إجمالي:'} {dailyExpectedCash.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {activeMethodsList.map((method, idx) => {
+                        const isLoyalty = normalizePaymentMethod(method) === 'نقاط الولاء';
+                        const rev = dynamicRevenues[method] || 0;
+                        const exp = dynamicExpenses[method] || 0;
+                        const net = rev - exp;
+                        const maxRev = Math.max(1, ...activeMethodsList.map(m => dynamicRevenues[m] || 0));
+                        const displayMethodName = isEn ? (
+                          method === 'كاش' ? 'Cash' :
+                          method === 'فيزا' ? 'Visa / Card' :
+                          method === 'إنستاباي' ? 'InstaPay' :
+                          method === 'محفظة' ? 'E-Wallet' : method
+                        ) : method;
+                        return (
+                          <div key={idx} className="flex items-center gap-4 py-3">
+                            <span className="w-20 shrink-0 text-xs font-bold text-slate-800">
+                              {isLoyalty ? (isEn ? 'Loyalty Points' : 'نقاط الولاء') : displayMethodName}
+                            </span>
+                            <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-gradient-to-l from-emerald-500 to-teal-500 rounded-full transition-all" style={{ width: `${Math.round((rev / maxRev) * 100)}%` }} />
                             </div>
-                          );
-                        })}
-                      </div>
+                            <div className="w-36 shrink-0 text-end">
+                              <span className="text-xs font-black text-slate-800 font-mono">{rev.toLocaleString()} {isEn ? 'EGP' : 'ج.م'} <span className="font-bold text-slate-400">{isLoyalty ? (isEn ? 'discount' : 'خصم') : (isEn ? 'in' : 'وارد')}</span></span>
+                              {exp > 0 && (
+                                <span className="block text-[10px] text-slate-400 font-bold">{isEn ? 'Exp:' : 'مصروف:'} {exp.toLocaleString()} • {isEn ? 'Net:' : 'صافي:'} {net.toLocaleString()}</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
+                  </div>
 
                     {/* Interactive Booking List */}
                     <div className="space-y-3">
@@ -2515,11 +2495,9 @@ ${methodsBreakdown}
                         </div>
                       )}
                     </div>
-                  </div>
-                </div>
 
                 {/* Shift Closure Drawer matching area (col-span-4) - Closing form */}
-                <div className="lg:col-span-4 animate-fade-in">
+                <div id="shift-closure-form" className="animate-fade-in scroll-mt-24">
                   <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
                     <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-3">
                       <Scale className="h-5 w-5 text-indigo-600" />
@@ -2638,6 +2616,7 @@ ${methodsBreakdown}
                       </div>
                     </div>
                   </div>
+                </div>
                 </div>
               </>
             )}
