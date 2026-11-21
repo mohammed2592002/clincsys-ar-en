@@ -1558,7 +1558,7 @@ async function runMigrations() {
             `CREATE TABLE IF NOT EXISTS renewals (id TEXT PRIMARY KEY, clinicId TEXT, data TEXT, createdAt TEXT);`,
             `CREATE TABLE IF NOT EXISTS shifts (id TEXT PRIMARY KEY, clinicId TEXT, data TEXT, createdAt TEXT);`,
             `CREATE TABLE IF NOT EXISTS expenses (id TEXT PRIMARY KEY, clinicId TEXT, data TEXT, createdAt TEXT);`,
-            `CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, mimeType TEXT, data TEXT);`,
+            `CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, mimeType TEXT, data TEXT, clinicId TEXT);`,
             `CREATE TABLE IF NOT EXISTS announcements (id TEXT PRIMARY KEY, content TEXT, bgColor TEXT, textColor TEXT, isActive INTEGER, createdAt TEXT);`,
             `CREATE TABLE IF NOT EXISTS superadmin_credentials (id TEXT PRIMARY KEY, email TEXT, password TEXT, updatedAt TEXT);`,
             `CREATE TABLE IF NOT EXISTS system_settings (id TEXT PRIMARY KEY, data TEXT, createdAt TEXT);`,
@@ -1616,6 +1616,7 @@ async function runMigrations() {
             { table: 'renewals', column: 'clinicId', type: 'TEXT' },
             { table: 'renewals', column: 'createdAt', type: 'TEXT' },
             { table: 'shifts', column: 'createdAt', type: 'TEXT' },
+            { table: 'files', column: 'clinicId', type: 'TEXT' },
             { table: 'announcements', column: 'bgColor', type: 'TEXT' },
             { table: 'announcements', column: 'textColor', type: 'TEXT' }
           ];
@@ -3196,6 +3197,16 @@ if (!fs.existsSync(uploadsFolder)) {
 // Local uploads are served through the authenticated /api/files endpoint only.
 // (Direct static serving of /uploads was removed so patient files are never public.)
 
+// Resolve which clinic an upload belongs to. Non-admin callers can only upload
+// into their own clinic: a mismatched requested clinicId is rejected instead of
+// trusted, and the stored ownership always comes from the authenticated token.
+function resolveUploadClinicId(auth: AuthInfo, requested?: string): { clinicId: string } | { errorStatus: number } {
+  const requestedId = (requested || '').trim();
+  if (auth.type === 'admin') return { clinicId: requestedId || 'global' };
+  if (requestedId && auth.clinicId && requestedId !== auth.clinicId) return { errorStatus: 403 };
+  return { clinicId: auth.clinicId || requestedId || 'global' };
+}
+
 // Helper to construct R2 File Key according to standard structure: clinics/{clinicId}/{category}/{fileName}
 function buildR2FileKey(rawClinicId?: string, rawCategory?: string, rawFolder?: string, fileName?: string): string {
   let clinicId = (rawClinicId || '').trim();
@@ -3214,7 +3225,8 @@ function buildR2FileKey(rawClinicId?: string, rawCategory?: string, rawFolder?: 
 
   const cleanClinicId = (clinicId || 'global').replace(/[^a-zA-Z0-9_-]/g, '_');
   const cleanCategory = (category || 'attachments').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const cleanName = `${Date.now()}_${(fileName || `file_${Date.now()}`).replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+  // Random segment makes stored keys (and therefore public R2 URLs) unguessable.
+  const cleanName = `${Date.now()}_${crypto.randomBytes(8).toString('hex')}_${(fileName || `file_${Date.now()}`).replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 
   return `clinics/${cleanClinicId}/${cleanCategory}/${cleanName}`;
 }
@@ -3225,11 +3237,10 @@ app.post('/api/get-upload-url', async (req, res) => {
   if (!auth) return res.status(401).json({ error: 'authentication_required' });
   try {
     const { fileName, fileType, folder, category, clinicId } = req.body || {};
-    if (auth.type !== 'admin' && clinicId && auth.clinicId !== clinicId) {
-      return res.status(403).json({ error: 'forbidden' });
-    }
+    const owner = resolveUploadClinicId(auth, clinicId);
+    if ('errorStatus' in owner) return res.status(owner.errorStatus).json({ error: 'forbidden' });
     const contentType = fileType || 'application/octet-stream';
-    const fileKey = buildR2FileKey(clinicId, category, folder, fileName);
+    const fileKey = buildR2FileKey(owner.clinicId, category, folder, fileName);
     const { client, bucketName, publicUrlBase } = getR2ClientConfig();
 
     const command = new PutObjectCommand({
@@ -3262,7 +3273,9 @@ app.get('/api/get-upload-url', async (req, res) => {
     const folder = req.query.folder as string;
     const category = req.query.category as string;
     const clinicId = req.query.clinicId as string;
-    const fileKey = buildR2FileKey(clinicId, category, folder, fileName);
+    const owner = resolveUploadClinicId(auth, clinicId);
+    if ('errorStatus' in owner) return res.status(owner.errorStatus).json({ error: 'forbidden' });
+    const fileKey = buildR2FileKey(owner.clinicId, category, folder, fileName);
     const { client, bucketName, publicUrlBase } = getR2ClientConfig();
 
     const command = new PutObjectCommand({
@@ -3300,9 +3313,12 @@ app.post('/api/upload', async (req, res) => {
   
   const folder = (req.body && req.body.folder) || (req.query && (req.query.folder as string)) || '';
   const category = (req.body && req.body.category) || (req.query && (req.query.category as string)) || '';
-  const clinicId = (req.body && req.body.clinicId) || (req.query && (req.query.clinicId as string)) || '';
+  const requestedClinicId = (req.body && req.body.clinicId) || (req.query && (req.query.clinicId as string)) || '';
+  const owner = resolveUploadClinicId(auth, requestedClinicId);
+  if ('errorStatus' in owner) return res.status(owner.errorStatus).json({ error: 'forbidden', message: 'لا يمكن الرفع لعيادة أخرى' });
+  const ownerClinicId = owner.clinicId;
 
-  const fileKeyName = buildR2FileKey(clinicId, category, folder, originalName);
+  const fileKeyName = buildR2FileKey(ownerClinicId, category, folder, originalName);
   const cleanFileName = path.basename(fileKeyName);
 
   // Helper to save file locally on disk and DB
@@ -3321,8 +3337,8 @@ app.post('/api/upload', async (req, res) => {
       const publicUrl = `/api/files?path=${encodeURIComponent(cleanFileName)}`;
 
       await dbClient.execute({
-        sql: `INSERT OR REPLACE INTO files (path, mimeType, data) VALUES (?, ?, ?)`,
-        args: [cleanFileName, uploadedFile.mimetype || 'image/png', '']
+        sql: `INSERT OR REPLACE INTO files (path, mimeType, data, clinicId) VALUES (?, ?, ?, ?)`,
+        args: [cleanFileName, uploadedFile.mimetype || 'image/png', '', ownerClinicId]
       });
 
       console.log(`[File Upload] Saved locally to server disk (${reason || 'local fallback'}). Public URL: ${publicUrl}`);
@@ -3348,8 +3364,8 @@ app.post('/api/upload', async (req, res) => {
       const publicUrl = `${publicUrlBase}/${fileKeyName}`;
 
       await dbClient.execute({
-        sql: `INSERT OR REPLACE INTO files (path, mimeType, data) VALUES (?, ?, ?)`,
-        args: [publicUrl, uploadedFile.mimetype || 'image/png', '']
+        sql: `INSERT OR REPLACE INTO files (path, mimeType, data, clinicId) VALUES (?, ?, ?, ?)`,
+        args: [publicUrl, uploadedFile.mimetype || 'image/png', '', ownerClinicId]
       });
 
       console.log(`[File Upload R2 Success] File key: ${fileKeyName}, URL: ${publicUrl}`);
@@ -3394,7 +3410,41 @@ app.get('/api/files', async (req, res) => {
   if (!filePath) {
     return res.status(400).send('File path is required');
   }
-  
+
+  // Multi-tenant ownership check: a file recorded with a clinic owner is only
+  // served to that clinic's users (or the superadmin). 404 (not 403) so a
+  // probing clinic cannot tell whether another clinic's file exists.
+  // Files recorded before this check (no clinicId) or shared 'global' uploads
+  // stay readable by any authenticated user for backward compatibility.
+  try {
+    const baseName = path.basename(filePath);
+    let ownerRow: any = null;
+    try {
+      const ownerResult = await dbClient.execute({
+        sql: `SELECT clinicId FROM files WHERE path = ?`,
+        args: [filePath]
+      });
+      ownerRow = ownerResult.rows[0] || null;
+      if (!ownerRow && baseName !== filePath) {
+        const altResult = await dbClient.execute({
+          sql: `SELECT clinicId FROM files WHERE path = ?`,
+          args: [baseName]
+        });
+        ownerRow = altResult.rows[0] || null;
+      }
+    } catch (ownerErr) {
+      // Legacy schema without the clinicId column: keep serving (fail-open) and
+      // log loudly; the startup migration adds the column.
+      console.warn('[File Access] Ownership lookup failed (pre-migration schema?), serving without clinic check:', ownerErr);
+    }
+    const ownerClinicId = ownerRow && ownerRow.clinicId ? String(ownerRow.clinicId) : '';
+    if (ownerClinicId && ownerClinicId !== 'global' && auth.type !== 'admin' && auth.clinicId !== ownerClinicId) {
+      return res.status(404).send('File not found');
+    }
+  } catch (accessErr) {
+    console.error('[File Access] Ownership check error:', accessErr);
+  }
+
   try {
     const fileName = path.basename(filePath);
     const fullPath = path.join(process.cwd(), 'uploads', fileName);
