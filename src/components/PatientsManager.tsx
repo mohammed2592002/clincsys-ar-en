@@ -5,7 +5,8 @@ import { Patient, PatientQuestionnaire, Clinic, QuestionnaireQuestion, DEFAULT_Q
 import { 
   Users, UserPlus, Search, Phone, Edit, Trash2, Heart, Sparkles, 
   AlertCircle, RefreshCw, FileText, Coins, MapPin, Briefcase, Building2,
-  MessageSquare, BarChart3, PieChart, Target, CheckCircle2, Copy, Globe, Activity, ShieldAlert, Filter
+  MessageSquare, BarChart3, PieChart, Target, CheckCircle2, Copy, Globe, Activity, ShieldAlert, Filter,
+  MoreHorizontal, AlertTriangle
 } from 'lucide-react';
 import { useDialogs } from './DialogContext';
 import PatientFinancialsModal from './PatientFinancialsModal';
@@ -136,6 +137,7 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
   const [medicalHistory, setMedicalHistory] = useState('');
 
   const [deletingPatientId, setDeletingPatientId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   // Display states
   const [visibleCount, setVisibleCount] = useState<number>(5);
@@ -694,6 +696,42 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
     ? filteredPatients.slice(0, visibleCount)
     : filteredPatients;
 
+  // Header stats chips (total + new this month) — based on loaded records
+  const patientStats = useMemo(() => {
+    const source = allPatients.length > 0 ? allPatients : patients;
+    const now = new Date();
+    const m = now.getMonth();
+    const y = now.getFullYear();
+    const newThisMonth = source.filter(p => {
+      if (!p.createdAt) return false;
+      const d = new Date(p.createdAt);
+      return !isNaN(d.getTime()) && d.getMonth() === m && d.getFullYear() === y;
+    }).length;
+    return {
+      total: source.length,
+      newThisMonth,
+      complete: allPatients.length > 0 || !hasMore
+    };
+  }, [allPatients, patients, hasMore]);
+
+  // Health-status badges derived from the medical questionnaire flags
+  const getHealthBadges = (p: Patient): { key: string; label: string }[] => {
+    const q = p.questionnaire || {};
+    const isYes = (v: any) => v === 'نعم' || v === true || (v && typeof v === 'object' && v.answer === 'نعم');
+    const badges: { key: string; label: string }[] = [];
+    if (isYes(q.hasDiabetes)) badges.push({ key: 'diabetes', label: t('patients.health.diabetes') });
+    if (isYes(q.hasHeartDisease)) badges.push({ key: 'heart', label: t('patients.health.heart') });
+    if (isYes(q.thyroidIssue)) badges.push({ key: 'thyroid', label: t('patients.health.thyroid') });
+    if (isYes(q.chronicDiseases)) badges.push({ key: 'chronic', label: t('patients.health.chronic') });
+    if (isYes(q.allergies)) badges.push({ key: 'allergies', label: t('patients.health.allergies') });
+    return badges;
+  };
+
+  const hasMeaningfulHistory = (p: Patient) => {
+    const mh = (p.medicalHistory || '').trim();
+    return mh.length > 0 && !mh.startsWith('سليم');
+  };
+
   // --- Marketing & Geographic Analytics Computation ---
   const analyticsData = useMemo(() => {
     const list = allPatients.length > 0 ? allPatients : patients;
@@ -791,11 +829,22 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
     <div className="space-y-6 animate-fade-in text-start">
       {/* Header & Main Navigation Tabs */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
+        <div className="flex flex-col gap-2.5">
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <Users className="h-6 w-6 text-emerald-600" />
             {t('patients.title')}
           </h2>
+          {/* Quick stats chips */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200/70 text-[11px] px-3 py-1.5 rounded-full font-bold">
+              <Users className="h-3.5 w-3.5 text-emerald-600" />
+              {t('patients.stats.total')}: {patientStats.total}{patientStats.complete ? '' : '+'}
+            </span>
+            <span className="inline-flex items-center gap-1.5 bg-sky-50 text-sky-700 border border-sky-200/70 text-[11px] px-3 py-1.5 rounded-full font-bold">
+              <UserPlus className="h-3.5 w-3.5 text-sky-600" />
+              {t('patients.stats.newThisMonth')}: {patientStats.newThisMonth}
+            </span>
+          </div>
         </div>
 
         {/* Navigation Tabs (Records vs Marketing Analytics) */}
@@ -1213,11 +1262,10 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
                 <table className="w-full text-start border-collapse">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                      <th className="p-4 text-start">{t('patients.table.name')}</th>
+                      <th className="p-4 text-start">{t('patients.table.patient')}</th>
                       <th className="p-4 text-start">{t('patients.table.phone')}</th>
-                      <th className="p-4 text-start">{t('patients.table.location')}</th>
                       <th className="p-4 text-start">{t('patients.table.occupation')}</th>
-                      <th className="p-4 text-start">{t('patients.table.questionnaire')}</th>
+                      <th className="p-4 text-start">{t('patients.table.healthStatus')}</th>
                       <th className="p-4 text-end">{t('patients.table.actions')}</th>
                     </tr>
                   </thead>
@@ -1259,99 +1307,124 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
                           </div>
                         </td>
 
-                        {/* Governorate, Center & Detailed Address */}
+                        {/* Age & Occupation */}
                         <td className="p-4">
-                          <div>
-                            {p.governorate || p.cityOrDistrict || p.area ? (
-                              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200/60 text-xs px-2.5 py-1 rounded-xl font-bold">
-                                <MapPin className="h-3 w-3 text-amber-600 shrink-0" />
-                                {formatLocationDisplayName(p.governorate, p.cityOrDistrict, p.area, isEn)}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-slate-400">{t('common.notSpecified')}</span>
-                            )}
-                            {p.address && (
-                              <p className="text-[11px] text-slate-500 mt-1 truncate max-w-[170px]" title={p.address}>{p.address}</p>
-                            )}
+                          <div className="flex items-center gap-1.5 text-xs whitespace-nowrap">
+                            <span className="font-bold text-slate-700">{p.age ? `${p.age} ${t('common.years')}` : t('common.notSpecified')}</span>
+                            <span className="text-slate-300">·</span>
+                            <span className="font-semibold text-slate-500">{p.occupation || t('common.notSpecified')}</span>
                           </div>
                         </td>
 
-                        {/* Occupation & Age */}
-                        <td className="p-4">
-                          <div className="text-xs">
-                            <p className="font-bold text-slate-700">{p.occupation || t('common.notSpecified')}</p>
-                            <p className="text-[11px] text-slate-500 mt-0.5">{p.age ? `${p.age} ${t('common.years')}` : t('common.notSpecified')}</p>
-                          </div>
-                        </td>
-
-                        {/* Medical Questionnaire Summary */}
+                        {/* Health Status Badges */}
                         <td className="p-4 max-w-xs">
-                          {p.medicalHistory ? (
-                            <div className="bg-rose-50/60 border border-rose-100 p-2 rounded-xl text-xs text-rose-800 flex items-start gap-1.5">
-                              <Heart className="h-3.5 w-3.5 text-rose-500 shrink-0 mt-0.5" />
-                              <span className="line-clamp-2 font-medium">{p.medicalHistory}</span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-400">— {t('common.healthy')}</span>
-                          )}
+                          {(() => {
+                            const badges = getHealthBadges(p);
+                            if (badges.length === 0 && !hasMeaningfulHistory(p)) {
+                              return (
+                                <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200/70 text-[11px] px-2.5 py-1 rounded-full font-bold">
+                                  <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                                  {t('common.healthy')}
+                                </span>
+                              );
+                            }
+                            return (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {badges.map(b => (
+                                  <span key={b.key} className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200/70 text-[11px] px-2.5 py-1 rounded-full font-bold">
+                                    <AlertTriangle className="h-3 w-3 text-rose-500" />
+                                    {b.label}
+                                  </span>
+                                ))}
+                                {hasMeaningfulHistory(p) && (
+                                  <span className="text-[11px] text-rose-600 font-semibold line-clamp-1" title={p.medicalHistory}>{p.medicalHistory}</span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* Action buttons */}
                         <td className="p-4 text-end">
-                          <div className="flex justify-end gap-1">
-                            <button
-                              onClick={() => setFinancialModalPatient(p)}
-                              className="p-2 text-amber-700 hover:bg-amber-50 rounded-xl transition flex items-center gap-1 font-bold text-xs border border-amber-200/60 bg-amber-50/40 cursor-pointer"
-                              title={t('patients.buttons.financials')}
-                            >
-                              <Coins className="h-4 w-4 shrink-0" />
-                              <span className="hidden lg:inline">{t('patients.buttons.financials')}</span>
-                            </button>
-
+                          <div className="flex justify-end items-center gap-1.5">
                             <button
                               onClick={() => onOpenMedicalFile?.(p.id)}
-                              className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition flex items-center gap-1 font-bold text-xs cursor-pointer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200/70 rounded-lg font-bold text-[11px] transition cursor-pointer"
                               title={t('patients.buttons.medicalFile')}
                             >
-                              <FileText className="h-4 w-4" />
+                              <FileText className="h-3.5 w-3.5 shrink-0" />
                               <span className="hidden sm:inline">{t('patients.buttons.medicalFile')}</span>
                             </button>
 
                             <button
-                              onClick={() => handleEdit(p)}
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition cursor-pointer"
-                              title={t('patients.buttons.edit')}
+                              onClick={() => setFinancialModalPatient(p)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/70 rounded-lg font-bold text-[11px] transition cursor-pointer"
+                              title={t('patients.buttons.financials')}
                             >
-                              <Edit className="h-4 w-4" />
+                              <Coins className="h-3.5 w-3.5 shrink-0" />
+                              <span className="hidden sm:inline">{t('patients.buttons.financials')}</span>
                             </button>
 
-                            {!isStaff && (deletingPatientId === p.id ? (
-                              <div className="flex items-center gap-1 bg-rose-50 p-1 rounded-lg border border-rose-100 animate-fade-in">
-                                <button
-                                  onClick={() => {
-                                    handleDelete(p.id);
-                                    setDeletingPatientId(null);
-                                  }}
-                                  className="bg-rose-600 hover:bg-rose-700 text-white text-[10px] px-2 py-1 rounded font-bold transition cursor-pointer"
-                                >
-                                  {t('patients.buttons.confirmDelete')}
-                                </button>
-                                <button
-                                  onClick={() => setDeletingPatientId(null)}
-                                  className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] px-2 py-1 rounded font-bold transition cursor-pointer"
-                                >
-                                  {t('patients.buttons.cancelDelete')}
-                                </button>
-                              </div>
-                            ) : (
+                            {/* More actions menu (edit / delete) */}
+                            <div className="relative">
                               <button
-                                onClick={() => setDeletingPatientId(p.id)}
-                                className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
-                                title={t('patients.buttons.delete')}
+                                type="button"
+                                onClick={() => setOpenMenuId(openMenuId === p.id ? null : p.id)}
+                                className={`p-1.5 rounded-lg transition cursor-pointer ${openMenuId === p.id ? 'bg-slate-200 text-slate-700' : 'text-slate-500 hover:bg-slate-100'}`}
+                                title={t('patients.buttons.more')}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <MoreHorizontal className="h-4 w-4" />
                               </button>
-                            ))}
+                              {openMenuId === p.id && (
+                                <>
+                                  <div className="fixed inset-0 z-10 cursor-default" onClick={() => setOpenMenuId(null)} />
+                                  <div className="absolute end-0 top-full mt-1 z-20 w-36 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden animate-fade-in text-start">
+                                    {deletingPatientId === p.id ? (
+                                      <div className="p-1.5 flex gap-1">
+                                        <button
+                                          onClick={() => {
+                                            handleDelete(p.id);
+                                            setDeletingPatientId(null);
+                                            setOpenMenuId(null);
+                                          }}
+                                          className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-[10px] px-2 py-1.5 rounded-lg font-bold transition cursor-pointer"
+                                        >
+                                          {t('patients.buttons.confirmDelete')}
+                                        </button>
+                                        <button
+                                          onClick={() => setDeletingPatientId(null)}
+                                          className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] px-2 py-1.5 rounded-lg font-bold transition cursor-pointer"
+                                        >
+                                          {t('patients.buttons.cancelDelete')}
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <button
+                                          onClick={() => {
+                                            setOpenMenuId(null);
+                                            handleEdit(p);
+                                          }}
+                                          className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                                        >
+                                          <Edit className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                                          {t('patients.buttons.edit')}
+                                        </button>
+                                        {!isStaff && (
+                                          <button
+                                            onClick={() => setDeletingPatientId(p.id)}
+                                            className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                                            {t('patients.buttons.delete')}
+                                          </button>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </td>
                       </tr>

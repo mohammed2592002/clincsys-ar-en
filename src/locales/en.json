@@ -103,11 +103,13 @@
     "searchPlaceholder": "Search by name, phone, governorate, district, or occupation...",
     "table": {
       "name": "Patient Info & Gender",
-      "phone": "Contact & WhatsApp",
+      "phone": "Contact Number",
       "location": "Location & Address",
-      "occupation": "Occupation / Age",
+      "occupation": "Age / Occupation",
       "questionnaire": "Medical Questionnaire",
-      "actions": "Actions"
+      "actions": "Actions",
+      "patient": "Patient",
+      "healthStatus": "Health Status"
     },
     "buttons": {
       "financials": "Financials",
@@ -116,7 +118,7 @@
       "delete": "Delete",
       "confirmDelete": "Confirm",
       "cancelDelete": "Cancel",
-      "whatsapp": "Clinic WhatsApp",
+      "whatsapp": "WhatsApp",
       "showInitial5": "Show 5 Patients",
       "showMore": "Show More (+5 Patients)",
       "showAll": "Show All Patients",
@@ -125,7 +127,8 @@
       "currentlyShowing": "Currently displaying:",
       "outOf": "out of",
       "matchingSearch": "matching search",
-      "patientsCount": "patients"
+      "patientsCount": "patients",
+      "more": "More"
     },
     "analytics": {
       "totalPatients": "Total Clinic Patients",
@@ -182,6 +185,17 @@
       "desc": "Start registering your first patient to manage appointments, medical files, and prescriptions.",
       "registerFirst": "Register First Patient Now",
       "noSearchResults": "No matching search results"
+    },
+    "stats": {
+      "total": "Total Patients",
+      "newThisMonth": "New This Month"
+    },
+    "health": {
+      "diabetes": "Diabetes",
+      "heart": "BP & Heart",
+      "thyroid": "Thyroid",
+      "chronic": "Chronic",
+      "allergies": "Allergies"
     }
   },
   "calendar": {

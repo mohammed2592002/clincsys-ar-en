@@ -103,11 +103,13 @@
     "searchPlaceholder": "ابحث بالاسم، رقم الموبايل، المحافظة، المركز أو الوظيفة...",
     "table": {
       "name": "بيانات المريض والنوع",
-      "phone": "رقم التواصل والواتساب",
+      "phone": "رقم التواصل",
       "location": "المحافظة والمركز والعنوان",
-      "occupation": "الوظيفة / السن",
+      "occupation": "السن / الوظيفة",
       "questionnaire": "نتائج الاستبيان الطبي",
-      "actions": "العمليات"
+      "actions": "العمليات",
+      "patient": "المريض",
+      "healthStatus": "الحالة الصحية"
     },
     "buttons": {
       "financials": "المالية",
@@ -116,7 +118,7 @@
       "delete": "حذف",
       "confirmDelete": "تأكيد",
       "cancelDelete": "تراجع",
-      "whatsapp": "واتساب العيادة",
+      "whatsapp": "واتساب",
       "showInitial5": "عرض 5 مرضى",
       "showMore": "إظهار المزيد من المرضى (+5 مرضى)",
       "showAll": "عرض جميع المرضى",
@@ -125,7 +127,8 @@
       "currentlyShowing": "المعروض حالياً:",
       "outOf": "من أصل",
       "matchingSearch": "مريض مطابق للبحث",
-      "patientsCount": "مريض"
+      "patientsCount": "مريض",
+      "more": "المزيد"
     },
     "analytics": {
       "totalPatients": "إجمالي المرضى بالعيادة",
@@ -182,6 +185,17 @@
       "desc": "ابدأ بتسجيل أول مريض بالعيادة لإدارة المواعيد والملفات الطبية والروشتات.",
       "registerFirst": "تسجيل أول مريض الآن",
       "noSearchResults": "لا توجد نتائج بحث مطابقة"
+    },
+    "stats": {
+      "total": "إجمالي المرضى",
+      "newThisMonth": "جدد هذا الشهر"
+    },
+    "health": {
+      "diabetes": "سكري",
+      "heart": "ضغط وقلب",
+      "thyroid": "غدة درقية",
+      "chronic": "أمراض مزمنة",
+      "allergies": "حساسية"
     }
   },
   "calendar": {
