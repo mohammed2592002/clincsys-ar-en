@@ -786,7 +786,7 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
         order.laboratoryName.toLowerCase().includes(orderSearch.toLowerCase()) ||
         (order.toothNumbers && order.toothNumbers.includes(orderSearch));
 
-      const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+      const matchesStatus = statusFilter === 'all' || (statusFilter === '__out' ? (order.status === 'received' || order.status === 'installed') : order.status === statusFilter);
       const matchesPayment = paymentFilter === 'all' || order.paymentStatus === paymentFilter;
       const matchesLab = labFilter === 'all' || order.laboratoryId === labFilter;
 
@@ -811,19 +811,34 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
     return labOrders.filter(o => isOrderDelayed(o)).length;
   }, [labOrders]);
 
+  // Orders still with the lab (active)
+  const sentOrdersCount = React.useMemo(() => {
+    return labOrders.filter(o => o.status === 'sent').length;
+  }, [labOrders]);
+
+  // Orders back from the lab (received or installed)
+  const outOrdersCount = React.useMemo(() => {
+    return labOrders.filter(o => o.status === 'received' || o.status === 'installed').length;
+  }, [labOrders]);
+
+  // Long localized delivery date (e.g. الأحد 22 أغسطس 2026)
+  const formatDeliveryDate = (d: string) => {
+    const dt = new Date(d);
+    if (!d || isNaN(dt.getTime())) return d || '—';
+    return dt.toLocaleDateString(isEn ? 'en-GB' : 'ar-EG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  };
+
   return (
     <div className="space-y-6">
-      {/* Header section - Compact & Light Theme */}
-      <div className="bg-slate-100 border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-base sm:text-lg font-black text-slate-800 flex items-center gap-2">
-            <Beaker className="h-5 w-5 text-slate-600 animate-pulse" />
-            <span>{isEn ? 'Dental Laboratory Tracking & Orders' : 'متابعة وإدارة طلبات المعامل'}</span>
-          </h2>
-        </div>
-        
-        <div className="shrink-0 flex flex-row gap-2 w-full md:w-auto">
-          <button 
+      {/* Header section - Plain title + action buttons */}
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <h2 className="text-lg sm:text-xl font-black text-slate-800 flex items-center gap-2">
+          <Beaker className="h-6 w-6 text-slate-700" />
+          <span>{isEn ? 'Lab Orders Tracking' : 'متابعة طلبات المعامل'}</span>
+        </h2>
+
+        <div className="shrink-0 flex flex-row flex-wrap gap-2 w-full md:w-auto">
+          <button
             onClick={() => {
               resetOrderForm();
               setIsOrderModalOpen(true);
@@ -831,113 +846,119 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
             className="flex-1 md:flex-none px-4 py-2.5 bg-slate-800 hover:bg-slate-950 text-white font-black rounded-xl text-xs sm:text-sm shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <Plus className="h-4 w-4" />
-            <span>{isEn ? 'Create New Lab Order' : 'إنشاء طلب معمل جديد'}</span>
+            <span>{isEn ? 'Create Lab Order' : 'إنشاء طلب معمل'}</span>
           </button>
-          <button 
-            onClick={() => {
-              setLabForm({ name: '', phone: '', email: '', address: '' });
-              setSelectedLab(null);
-              setIsLabModalOpen(true);
-            }}
+          <button
+            onClick={() => setActiveSubTab('laboratories')}
             className="flex-1 md:flex-none px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-black rounded-xl text-xs sm:text-sm shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
           >
-            <span>+ {isEn ? 'Register Partner Lab' : 'تسجيل معمل جديد'}</span>
+            <span>{isEn ? 'Labs Directory' : 'دليل المعامل'}</span>
+          </button>
+          <button
+            onClick={() => setActiveSubTab('lab_work_types')}
+            className="flex-1 md:flex-none px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-black rounded-xl text-xs sm:text-sm shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <span>{isEn ? 'Work Types' : 'أنواع التركيبات'}</span>
           </button>
         </div>
       </div>
 
-      {/* Compact Sub-Tabs Bar */}
-      <div className="flex flex-wrap gap-2 pb-1.5 border-b border-slate-200">
-        <button
-          onClick={() => setActiveSubTab('dashboard_orders')}
-          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 cursor-pointer border ${
-            activeSubTab === 'dashboard_orders'
-              ? 'bg-slate-200 text-slate-800 border-slate-300 shadow-xs'
-              : 'bg-transparent text-slate-500 border-transparent hover:bg-slate-100 hover:text-slate-800'
-          }`}
-        >
-          <span>📋</span>
-          <span>{isEn ? 'Lab Orders' : 'طلبات المعامل'}</span>
-          <span className={`font-mono text-xs px-2 py-0.5 rounded-md font-bold ${
-            activeSubTab === 'dashboard_orders' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-700'
-          }`}>{labOrders.length}</span>
-        </button>
-        
-        <button
-          onClick={() => setActiveSubTab('laboratories')}
-          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 cursor-pointer border ${
-            activeSubTab === 'laboratories'
-              ? 'bg-slate-200 text-slate-800 border-slate-300 shadow-xs'
-              : 'bg-transparent text-slate-500 border-transparent hover:bg-slate-100 hover:text-slate-800'
-          }`}
-        >
-          <span>🏢</span>
-          <span>{isEn ? 'Partner Labs Directory' : 'دليل المعامل'}</span>
-          <span className={`font-mono text-xs px-2 py-0.5 rounded-md font-bold ${
-            activeSubTab === 'laboratories' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-700'
-          }`}>{laboratories.length}</span>
-        </button>
+      {/* Quick filter tabs (orders view) or back navigation (other views) */}
+      {activeSubTab === 'dashboard_orders' ? (
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => { setStatusFilter('sent'); setTimeFilter('all'); }}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 cursor-pointer border ${
+              statusFilter === 'sent' && timeFilter === 'all'
+                ? 'bg-slate-800 text-white border-slate-800 shadow-xs'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-800'
+            }`}
+          >
+            <span>{isEn ? 'Lab Orders' : 'طلبات المعامل'}</span>
+            <span className={`font-mono text-xs px-2 py-0.5 rounded-md font-bold ${
+              statusFilter === 'sent' && timeFilter === 'all' ? 'bg-slate-600 text-white' : 'bg-slate-100 text-slate-600'
+            }`}>{sentOrdersCount}</span>
+          </button>
 
-        <button
-          onClick={() => setActiveSubTab('lab_work_types')}
-          className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 cursor-pointer border ${
-            activeSubTab === 'lab_work_types'
-              ? 'bg-slate-200 text-slate-800 border-slate-300 shadow-xs'
-              : 'bg-transparent text-slate-500 border-transparent hover:bg-slate-100 hover:text-slate-800'
-          }`}
-        >
-          <span>⚙️</span>
-          <span>{isEn ? 'Work Types & Procedures' : 'أنواع التركيبات والإجراءات'}</span>
-          <span className={`font-mono text-xs px-2 py-0.5 rounded-md font-bold ${
-            activeSubTab === 'lab_work_types' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-700'
-          }`}>{labWorkTypes.length}</span>
-        </button>
-      </div>
+          <button
+            onClick={() => { setStatusFilter('all'); setTimeFilter('delayed'); }}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 cursor-pointer border ${
+              timeFilter === 'delayed'
+                ? 'bg-slate-800 text-white border-slate-800 shadow-xs'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-800'
+            }`}
+          >
+            <span>{isEn ? 'Delayed' : 'المتأخر'}</span>
+            <span className={`font-mono text-xs px-2 py-0.5 rounded-md font-bold ${
+              timeFilter === 'delayed' ? 'bg-slate-600 text-white' : 'bg-slate-100 text-slate-600'
+            }`}>{delayedOrdersCount}</span>
+          </button>
 
-      {/* Financial Statistics Row - Beautiful, Light & Inline side-by-side */}
-      <div className="bg-slate-100 border border-slate-200 p-4 rounded-2xl shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex items-center gap-2.5">
-          <span className="p-2 bg-slate-200 text-slate-600 rounded-xl border border-slate-300">
-            <Coins className="h-4 w-4" />
-          </span>
-          <div>
-            <h3 className="font-black text-xs sm:text-sm text-slate-700 flex items-center gap-1.5">
-              <span>{isEn ? 'Lab Costs & Dues' : 'تكاليف ومستحقات المعامل'}</span>
-              <span>💰</span>
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">{isEn ? 'Details of lab expenses, payments, and remaining balances' : 'تفاصيل المصروفات والمدفوعات والمستحقات المتبقية'}</p>
-          </div>
+          <button
+            onClick={() => { setStatusFilter('__out'); setTimeFilter('all'); }}
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 cursor-pointer border ${
+              statusFilter === '__out'
+                ? 'bg-slate-800 text-white border-slate-800 shadow-xs'
+                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-800'
+            }`}
+          >
+            <span>{isEn ? 'Out of Lab' : 'خرج'}</span>
+            <span className={`font-mono text-xs px-2 py-0.5 rounded-md font-bold ${
+              statusFilter === '__out' ? 'bg-slate-600 text-white' : 'bg-slate-100 text-slate-600'
+            }`}>{outOrdersCount}</span>
+          </button>
         </div>
-        
-        <div className="flex flex-wrap items-stretch gap-3 w-full lg:w-auto">
-          {/* Total Cost */}
-          <div className="flex-1 lg:flex-none min-w-[120px] bg-white px-4 py-2 rounded-xl border border-slate-200/60 text-right">
-            <p className="text-xs text-slate-400 font-bold mb-0.5">{isEn ? 'Total Lab Costs' : 'إجمالي تكاليف المعامل'}</p>
-            <span className="font-sans text-xs sm:text-sm font-black text-slate-700">{totalLabExpenses.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setActiveSubTab('dashboard_orders')}
+            className="px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 cursor-pointer border bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-800"
+          >
+            <span>{isEn ? '← Back to Lab Orders' : '→ العودة إلى طلبات المعامل'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Financial Summary - Dark Navy Card */}
+      <div className="bg-slate-800 rounded-2xl p-5 sm:p-6 shadow-md">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          {/* Remaining balance (highlighted) */}
+          <div className="order-first lg:order-none">
+            <p className="text-xs text-slate-400 font-bold mb-1">{isEn ? 'Unpaid Balance to Labs' : 'المتبقي غير المدفوع للمعامل'}</p>
+            <p className={`text-2xl sm:text-3xl font-black font-sans ${labDebt > 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
+              {labDebt.toLocaleString()} <span className="text-base font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
+            </p>
+            {delayedOrdersCount > 0 && (
+              <button
+                type="button"
+                onClick={() => { setActiveSubTab('dashboard_orders'); setStatusFilter('all'); setTimeFilter('delayed'); }}
+                className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-400/40 bg-rose-500/10 text-rose-300 text-[11px] font-black transition hover:bg-rose-500/20 cursor-pointer"
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {isEn
+                  ? `${delayedOrdersCount} order${delayedOrdersCount > 1 ? 's' : ''} delayed past delivery date`
+                  : delayedOrdersCount === 1
+                    ? 'طلب واحد متأخر عن موعد الاستلام'
+                    : delayedOrdersCount === 2
+                      ? 'طلبان متأخران عن موعد الاستلام'
+                      : `${delayedOrdersCount} طلبات متأخرة عن موعد الاستلام`}
+              </button>
+            )}
           </div>
 
-          {/* Paid Amount */}
-          <div className="flex-1 lg:flex-none min-w-[120px] bg-white px-4 py-2 rounded-xl border border-slate-200/60 text-right">
-            <p className="text-xs text-slate-400 font-bold mb-0.5">{isEn ? 'Paid Amount' : 'المبلغ المسدد'}</p>
-            <span className="font-sans text-xs sm:text-sm font-black text-emerald-600">{(totalLabExpenses - labDebt).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
-          </div>
-
-          {/* Remaining (Unpaid) */}
-          <div className={`flex-1 lg:flex-none min-w-[160px] px-4 py-2 rounded-xl border text-right transition-all duration-300 bg-white ${
-            labDebt > 0 
-              ? 'border-rose-200 text-rose-700' 
-              : 'border-emerald-200 text-emerald-700'
-          }`}>
-            <p className="text-xs text-slate-400 font-bold mb-0.5">{isEn ? 'Remaining Balance' : 'متبقي غير مدفوع'}</p>
-            <div className="flex items-center justify-between gap-1.5">
-              <span className={`font-sans text-xs sm:text-sm font-black ${labDebt > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                {labDebt.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
-              </span>
-              <span className={`px-1.5 py-0.5 rounded text-xs font-black ${
-                labDebt > 0 ? 'bg-rose-50 text-rose-800' : 'bg-emerald-50 text-emerald-800'
-              }`}>
-                {labDebt > 0 ? (isEn ? '⚠️ Overdue Dues' : '⚠️ مستحقات متأخرة') : (isEn ? '✓ Fully Paid' : '✓ خالص تماماً')}
-              </span>
+          {/* Chips: total cost / paid / active orders */}
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+            <div className="text-center">
+              <p className="font-sans text-lg sm:text-xl font-black text-white">{totalLabExpenses.toLocaleString()} <span className="text-xs font-bold text-slate-400">{isEn ? 'EGP' : 'ج.م'}</span></p>
+              <p className="text-[11px] text-slate-400 font-bold mt-0.5">{isEn ? 'Total Lab Costs' : 'إجمالي التكاليف'}</p>
+            </div>
+            <div className="text-center">
+              <p className="font-sans text-lg sm:text-xl font-black text-emerald-400">{(totalLabExpenses - labDebt).toLocaleString()} <span className="text-xs font-bold text-slate-400">{isEn ? 'EGP' : 'ج.م'}</span></p>
+              <p className="text-[11px] text-slate-400 font-bold mt-0.5">{isEn ? 'Paid' : 'المسدد'}</p>
+            </div>
+            <div className="text-center">
+              <p className="font-sans text-lg sm:text-xl font-black text-white">{sentOrdersCount}</p>
+              <p className="text-[11px] text-slate-400 font-bold mt-0.5">{isEn ? 'Active Orders' : 'طلب جاري'}</p>
             </div>
           </div>
         </div>
@@ -997,6 +1018,7 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
                 <option value="received">{isEn ? 'Received at Clinic' : 'تم الاستلام بالعيادة'}</option>
                 <option value="installed">{isEn ? 'Installed on Patient' : 'تم التركيب للمريض'}</option>
                 <option value="cancelled">{isEn ? 'Cancelled' : 'ملغي'}</option>
+                <option value="__out">{isEn ? 'Out of Lab (Received/Installed)' : 'خرج (مستلم / مركب)'}</option>
               </select>
 
               {/* Payment Filter */}
@@ -1011,7 +1033,7 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
                 <option value="paid">{isEn ? 'Fully Paid' : 'مدفوع بالكامل'}</option>
               </select>
 
-              {/* Critical Alerts Filter Buttons */}
+              {/* Critical Alerts Filter Button */}
               <button
                 onClick={() => setTimeFilter(timeFilter === 'critical' ? 'all' : 'critical')}
                 className={`px-3 py-2 border rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
@@ -1022,18 +1044,6 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
               >
                 <AlertTriangle className="h-3.5 w-3.5" />
                 <span>{isEn ? `Critical (${criticalOrdersCount})` : `حرِج (${criticalOrdersCount})`}</span>
-              </button>
-
-              <button
-                onClick={() => setTimeFilter(timeFilter === 'delayed' ? 'all' : 'delayed')}
-                className={`px-3 py-2 border rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                  timeFilter === 'delayed'
-                    ? 'bg-red-600 border-red-600 text-white shadow-sm'
-                    : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'
-                }`}
-              >
-                <Clock className="h-3.5 w-3.5" />
-                <span>{isEn ? `Delayed (${delayedOrdersCount})` : `متأخر (${delayedOrdersCount})`}</span>
               </button>
             </div>
           </div>
@@ -1060,11 +1070,11 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
               <table className={`w-full ${isEn ? 'text-left' : 'text-right'} border-collapse`}>
                 <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                   <tr>
-                    <th className="px-5 py-4">{isEn ? 'Patient & Tooth Details' : 'المريض وتفاصيل السن'}</th>
-                    <th className="px-5 py-4">{isEn ? 'Laboratory & Work Type' : 'المعمل والتركيبة'}</th>
-                    <th className="px-5 py-4">{isEn ? 'Dates & Appointments' : 'التواريخ والمواعيد'}</th>
-                    <th className="px-5 py-4">{isEn ? 'Finances & Payment' : 'الحسابات والدفع'}</th>
-                    <th className="px-5 py-4 text-center">{isEn ? 'Status & Controls' : 'حالة الطلب والتحكم'}</th>
+                    <th className="px-5 py-4">{isEn ? 'Patient / Order' : 'المريض / الطلب'}</th>
+                    <th className="px-5 py-4">{isEn ? 'Lab & Work Type' : 'المعمل والتركيبة'}</th>
+                    <th className="px-5 py-4">{isEn ? 'Delivery Date' : 'موعد الاستلام'}</th>
+                    <th className="px-5 py-4">{isEn ? 'Account' : 'الحساب'}</th>
+                    <th className="px-5 py-4 text-center">{isEn ? 'Status' : 'الحالة'}</th>
                   </tr>
                 </thead>
                 <tbody className="text-xs divide-y divide-slate-100">
@@ -1081,55 +1091,49 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
                       
                       return (
                         <tr key={order.id} className={`hover:bg-slate-50/50 transition border-b border-slate-100 ${critical ? 'bg-amber-50/25' : delayed ? 'bg-red-50/25' : ''}`}>
-                          {/* Col 1: Patient & Tooth Details */}
+                          {/* Col 1: Patient / Order */}
                           <td className="px-5 py-4">
                             <div className="flex flex-col gap-1">
                               <p className="font-black text-slate-800 text-sm">{order.patientName}</p>
-                              {order.patientPhone && <p className="text-xs text-slate-400 font-mono">{order.patientPhone}</p>}
-                              <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                                {order.toothNumbers && (
-                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs font-bold font-mono border border-slate-200/50">
-                                    {isEn ? 'Teeth: ' : 'الأسنان: '}{order.toothNumbers}
-                                  </span>
-                                )}
-                                {order.shadeColor && (
-                                  <span className="px-2 py-0.5 bg-indigo-50/70 text-indigo-600 rounded text-xs font-bold font-mono border border-indigo-100/50">
-                                    {isEn ? 'Shade: ' : 'اللون: '}{order.shadeColor}
-                                  </span>
-                                )}
-                              </div>
+                              {(order.toothNumbers || order.shadeColor) && (
+                                <p className="text-[11px] text-slate-400 font-bold">
+                                  {order.toothNumbers && <span className="font-mono">{isEn ? 'Teeth: ' : 'الأسنان: '}{order.toothNumbers}</span>}
+                                  {order.toothNumbers && order.shadeColor && <span className="mx-1">·</span>}
+                                  {order.shadeColor && <span className="font-mono">{isEn ? 'Shade: ' : 'اللون: '}{order.shadeColor}</span>}
+                                </p>
+                              )}
+                              {order.patientPhone && <p className="text-[11px] text-slate-400 font-mono" dir="ltr">{order.patientPhone}</p>}
                             </div>
                           </td>
 
                           {/* Col 2: Laboratory & Work Type */}
                           <td className="px-5 py-4">
                             <div className="flex flex-col gap-1">
-                              <p className="font-bold text-slate-700">{order.laboratoryName}</p>
-                              <p className="text-xs text-slate-400">{isEn ? 'By: ' : 'بواسطة: '}{order.doctorName || (isEn ? 'Clinic Doctor' : 'طبيب العيادة')}</p>
-                              <div className="mt-1">
-                                <span className="inline-block px-2.5 py-0.5 bg-slate-100 text-slate-800 rounded-lg text-xs font-bold border border-slate-200/80">
-                                  {order.workType}
-                                </span>
-                              </div>
+                              <p className="font-black text-slate-800">{order.laboratoryName}</p>
+                              <p className="text-[11px] text-slate-400 font-bold">
+                                <span>{order.workType}</span>
+                                <span className="mx-1">·</span>
+                                <span>{order.doctorName || (isEn ? 'Clinic Doctor' : 'طبيب العيادة')}</span>
+                              </p>
                             </div>
                           </td>
 
-                          {/* Col 3: Dates & Alerts */}
+                          {/* Col 3: Delivery Date & Alerts */}
                           <td className="px-5 py-4">
                             <div className="flex flex-col gap-1">
-                              <p className="text-xs text-slate-500 font-medium">{isEn ? 'Sent: ' : 'إرسال: '}{order.sentDate}</p>
                               <p className={`text-xs font-black ${critical ? 'text-amber-600' : delayed ? 'text-red-600 animate-pulse' : 'text-slate-700'}`}>
-                                {isEn ? 'Expected: ' : 'استلام متوقع: '}{order.expectedDeliveryDate}
+                                {formatDeliveryDate(order.expectedDeliveryDate)}
                               </p>
-                              <div className="flex flex-wrap gap-1 mt-1">
+                              <p className="text-[11px] text-slate-400 font-medium">{isEn ? 'Sent: ' : 'إرسال: '}{order.sentDate}</p>
+                              <div className="flex flex-wrap gap-1 mt-0.5">
                                 {critical && (
-                                  <span className="px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded text-xs font-black border border-amber-200 flex items-center gap-0.5">
-                                    <AlertTriangle className="h-2 w-2" /> {isEn ? 'Critical Date!' : 'موعد حرِج!'}
+                                  <span className="px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded text-[10px] font-black border border-amber-200 flex items-center gap-0.5">
+                                    <AlertTriangle className="h-2.5 w-2.5" /> {isEn ? 'Critical Date!' : 'موعد حرِج!'}
                                   </span>
                                 )}
                                 {delayed && !critical && (
-                                  <span className="px-1.5 py-0.5 bg-red-100 text-red-600 rounded text-xs font-black border border-red-200 animate-pulse flex items-center gap-0.5">
-                                    <Clock className="h-2 w-2" /> {isEn ? 'Delayed' : 'متأخر'}
+                                  <span className="px-1.5 py-0.5 bg-red-100 text-red-600 rounded text-[10px] font-black border border-red-200 animate-pulse flex items-center gap-0.5">
+                                    <Clock className="h-2.5 w-2.5" /> {isEn ? 'Delayed' : 'متأخر'}
                                   </span>
                                 )}
                               </div>
@@ -1139,22 +1143,12 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
                           {/* Col 4: Cost & Payment */}
                           <td className="px-5 py-4">
                             <div className="flex flex-col gap-1.5 min-w-[210px] max-w-[250px]">
-                              {/* Headers */}
-                              <div className="grid grid-cols-3 gap-1 text-center text-xs text-slate-400 font-extrabold pb-1 border-b border-slate-100">
-                                <div>{isEn ? 'Cost' : 'التكلفة'}</div>
-                                <div>{isEn ? 'Paid' : 'المدفوع'}</div>
-                                <div>{isEn ? 'Remaining' : 'المتبقي'}</div>
-                              </div>
-                              
-                              {/* Values and Input */}
-                              <div className="grid grid-cols-3 gap-1 items-center text-center">
-                                {/* Total Cost */}
-                                <div className="font-mono font-black text-slate-800 text-xs">
-                                  {order.cost.toLocaleString()}
-                                </div>
-                                
-                                {/* Paid (Editable Input) */}
-                                <div className="flex items-center justify-center">
+                              {/* Cost / Paid / Remaining — compact line layout */}
+                              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs font-bold text-slate-500">
+                                <span>{isEn ? 'Cost: ' : 'التكلفة: '}<b className="font-mono text-slate-800">{order.cost.toLocaleString()}</b></span>
+                                <span className="text-slate-300">·</span>
+                                <span className="inline-flex items-center gap-1">
+                                  {isEn ? 'Paid: ' : 'المدفوع: '}
                                   <input
                                     type="number"
                                     min="0"
@@ -1167,28 +1161,29 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
                                         handleSavePaidAmount(order);
                                       }
                                     }}
-                                    className="w-16 px-1 py-0.5 border border-slate-200 rounded-lg text-center text-xs font-mono font-black text-slate-700 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white"
+                                    className="w-16 px-1 py-0.5 border border-slate-200 rounded-lg text-center text-xs font-mono font-black text-emerald-700 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white"
                                     placeholder="0"
                                   />
-                                </div>
-                                
-                                {/* Remaining (Calculated) */}
-                                <div className={`font-mono font-black text-xs ${
-                                  (() => {
-                                    const currentPaid = editingPaidAmounts[order.id] !== undefined 
-                                      ? Number(editingPaidAmounts[order.id]) || 0 
-                                      : (order.paidAmount ?? 0);
-                                    const remaining = Math.max(0, order.cost - currentPaid);
-                                    return remaining > 0 ? 'text-rose-600' : 'text-emerald-600';
-                                  })()
-                                }`}>
-                                  {(() => {
-                                    const currentPaid = editingPaidAmounts[order.id] !== undefined 
-                                      ? Number(editingPaidAmounts[order.id]) || 0 
-                                      : (order.paidAmount ?? 0);
-                                    return Math.max(0, order.cost - currentPaid).toLocaleString();
-                                  })()}
-                                </div>
+                                </span>
+                              </div>
+
+                              {/* Remaining (Calculated) */}
+                              <div className={`font-mono font-black text-xs ${
+                                (() => {
+                                  const currentPaid = editingPaidAmounts[order.id] !== undefined
+                                    ? Number(editingPaidAmounts[order.id]) || 0
+                                    : (order.paidAmount ?? 0);
+                                  const remaining = Math.max(0, order.cost - currentPaid);
+                                  return remaining > 0 ? 'text-rose-600' : 'text-emerald-600';
+                                })()
+                              }`}>
+                                {(() => {
+                                  const currentPaid = editingPaidAmounts[order.id] !== undefined
+                                    ? Number(editingPaidAmounts[order.id]) || 0
+                                    : (order.paidAmount ?? 0);
+                                  const remaining = Math.max(0, order.cost - currentPaid);
+                                  return isEn ? `Remaining: ${remaining.toLocaleString()} EGP` : `المتبقي ${remaining.toLocaleString()} ج.م`;
+                                })()}
                               </div>
 
                               {/* Payment Method Selector */}
@@ -1246,7 +1241,7 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
                                 onChange={(e) => handleUpdateOrderStatus(order, e.target.value as any)}
                                 className={`px-2.5 py-0.5 rounded-full text-xs font-black text-center cursor-pointer border ${
                                   order.status === 'sent'
-                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                                     : order.status === 'received'
                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                     : order.status === 'installed'
