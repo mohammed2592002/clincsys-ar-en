@@ -1418,6 +1418,8 @@ export default function InteractiveCalendar({
     const pad = (num: number) => String(num).padStart(2, '0');
     const isoDate = `${y}-${pad(m + 1)}-${pad(d)}`;
     const unpaddedDate = `${y}-${m + 1}-${d}`;
+    // When day and month are already 2-digit both keys are identical - count once, never double
+    if (isoDate === unpaddedDate) return appointmentCounts[isoDate] || 0;
     return (appointmentCounts[isoDate] || 0) + (appointmentCounts[unpaddedDate] || 0);
   };
 

@@ -1382,12 +1382,12 @@ export default function App() {
             <LanguageSwitcher variant="pill" />
 
             {isOnline ? (
-              <span className="text-xs bg-white text-slate-700 border border-slate-200/80 shadow-2xs font-mono px-3 py-1.5 rounded-xl flex items-center gap-2" dir="ltr">
+              <span className="text-xs bg-white text-slate-700 border border-slate-200/80 shadow-2xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
-                ID: {currentClinicId}
+                {t('common.online')}
               </span>
             ) : (
               <span className="text-xs bg-amber-50 text-amber-700 border border-amber-100 font-mono px-3 py-1.5 rounded-xl flex items-center gap-2" dir="ltr">

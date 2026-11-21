@@ -141,7 +141,7 @@ export default function DailyBackupReminderBanner({ session }: DailyBackupRemind
             <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
               {session.type === 'admin'
                 ? 'حان موعد أخذ النسخة الاحتياطية الشاملة لكافة العيادات والسيستم للحفاظ على سلامة البيانات.'
-                : 'تذكرة أمان: حان موعد أخذ النسخة الاحتياطية اليومية لبيانات العيادة والمرضى.'}
+                : 'تذكير أمان: حان موعد أخذ النسخة الاحتياطية اليومية لبيانات العيادة والمرضى.'}
             </p>
           </div>
         </div>
