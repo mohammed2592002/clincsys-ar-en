@@ -1855,10 +1855,6 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* Elegant Footer */}
-      <footer className="py-6 border-t border-slate-200/60 text-center text-xs text-slate-400">
-        Clinic Management System Multi-Tenant SaaS Platform • كل عيادة بياناتها معزولة بشكل آمن ومستقل في قاعدة بيانات Turso ومستضافة على Vercel
-      </footer>
     </div>
   );
 }
