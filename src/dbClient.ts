@@ -1204,7 +1204,7 @@ export async function getDocsSmart(q: any, forceRefresh = false) {
     }
   }
 
-  const result = await getDocs(q);
+  const result = await getDocs(q, forceRefresh);
   const cacheKey = getQueryCacheKey(q);
   if (cacheKey) {
     smartDocsCache.set(cacheKey, result);
@@ -1222,7 +1222,7 @@ export async function getDocSmart(docRef: any, forceRefresh = false) {
     }
   }
 
-  const result = await getDoc(docRef);
+  const result = await getDoc(docRef, forceRefresh);
   const cacheKey = docRef?.path || '';
   if (cacheKey) {
     smartDocCache.set(cacheKey, result);
