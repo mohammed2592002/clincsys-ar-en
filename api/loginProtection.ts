@@ -116,7 +116,7 @@ export interface RateLimitOptions {
 export function createRateLimiter(options: RateLimitOptions, nowFn: () => number = Date.now) {
   const hits = new Map<string, RateEntry>();
 
-  function isLimited(key: string): boolean {
+  function check(key: string) {
     const now = nowFn();
     let e = hits.get(key);
     if (!e || e.resetAt <= now) {
@@ -131,14 +131,29 @@ export function createRateLimiter(options: RateLimitOptions, nowFn: () => number
       }
       if (hits.size > MAX_ENTRIES * 2) hits.clear();
     }
-    return e.count > options.max;
+    return {limited:e.count>options.max,retryAfterSeconds:Math.max(1,Math.ceil((e.resetAt-now)/1000))};
   }
 
-  return { isLimited };
+  return {check,isLimited:(key:string)=>check(key).limited};
 }
 
 export function getClientIp(req: any): string {
-  const fwd = req?.headers?.['x-forwarded-for'];
-  const raw = (typeof fwd === 'string' && fwd) || req?.socket?.remoteAddress || 'unknown';
-  return String(raw).split(',')[0].trim() || 'unknown';
+  // Express computes req.ip from the socket and ONLY configured trusted proxies.
+  // Never parse a client-controlled X-Forwarded-For header ourselves.
+  return String(req?.ip || req?.socket?.remoteAddress || 'unknown');
+}
+
+export function isApiWrite(req: any): boolean {
+  if (['GET','HEAD','OPTIONS'].includes(req.method)) return false;
+  const path=String(req.path || req.originalUrl || '').split('?')[0];
+  if (path === '/api/db') return !['getDocs','getDoc','getCount','getAppointmentsCounts'].includes(req.body?.action);
+  if (path === '/api/finance') return !['read','calendar_summary','inspect_pending'].includes(req.body?.action);
+  if (path === '/api/backups') return !['export_clinic','export_full','export_system'].includes(req.body?.action);
+  return true;
+}
+export function apiUserKey(auth: any): string | null {
+  if(!auth)return null;
+  if(auth.type==='staff')return auth.clinicId&&auth.staffId?'staff:'+auth.clinicId+':'+auth.staffId:null;
+  if(auth.type==='manager')return auth.clinicId?'manager:'+auth.clinicId:null;
+  return auth.type==='admin'?'admin':null;
 }

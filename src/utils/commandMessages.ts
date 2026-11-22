@@ -1,6 +1,7 @@
 export function commandMessage(message: string, english: boolean): string {
   if (!english || !/[\u0600-\u06ff]/.test(message || "")) return message;
   const rules: [string, string][] = [
+    ['الطلب محفوظ وسيعاد تلقائياً', 'Saved on this device. It will retry automatically after the request limit resets. Do not enter it again.'],
     ['يلزم الاتصال لتحديث طرق الدفع', 'Connect to update payment methods and verify historical financial amounts.'],
     ['لا يمكن حذف طريقة الدفع', 'This payment method cannot be deleted because it has historical financial amounts, even after a refund or cancellation.'],
     ['طريقة الدفع غير موجودة', 'This payment method is not in clinic settings. Refresh the list or add it in Settings.'],

@@ -102,7 +102,7 @@ try {
       throw Error("Offline client build failed");
     const testOffline = spawn(
       process.execPath,
-      [resolve(process.env.TEST_LIVE_BUGS ? "tests/live-bugs.integration.cjs" : "tests/offline.integration.cjs")],
+      [resolve(process.env.TEST_OFFLINE_ENTRY || (process.env.TEST_LIVE_BUGS ? "tests/live-bugs.integration.cjs" : "tests/offline.integration.cjs"))],
       { env: { ...env, OFFLINE_TEST_BUNDLE: bundle }, stdio: "inherit" },
     );
     if ((await new Promise((r) => testOffline.on("exit", r))) !== 0)

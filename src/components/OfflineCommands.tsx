@@ -337,7 +337,7 @@ export default function OfflineCommands({
           disabled={busy}
           onClick={() =>
             run(async () => {
-              await flushDurableCommands();
+              await flushDurableCommands({manual:true});
               await processSyncQueue();
             })
           }

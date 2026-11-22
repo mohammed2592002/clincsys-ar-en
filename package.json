@@ -34,7 +34,10 @@
     "test:backup-credentials": "npm run lint && npm run build && node tests/backup-credentials.integration.mjs",
     "test:backups": "npm run lint && npm run build && tsx tests/backup-rollback.test.ts && node tests/backup-credentials.integration.mjs && node tests/backups.integration.mjs && TEST_UI_ENTRY=tests/financial-print.integration.cjs TEST_ARTIFACT_DIR=/downloads/backup-print-proof node tests/run-payment-methods.mjs",
     "test:screen-activity": "npm run lint && npm run build && tsx tests/screen-activity.test.ts && node tests/run-screen-activity.mjs",
-    "test:finance:concurrency": "node tests/finance-concurrency.mjs"
+    "test:finance:concurrency": "node tests/finance-concurrency.mjs",
+    "test:api-limits": "tsx tests/api-limits.test.ts && node tests/scoped-fixes.integration.mjs",
+    "test:clinic-delete:postgres": "node tests/clinic-delete-postgres.mjs",
+    "test:patient-search": "TEST_UI=1 TEST_UI_ENTRY=tests/patient-search.ui.cjs node tests/run-finance.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1108.0",

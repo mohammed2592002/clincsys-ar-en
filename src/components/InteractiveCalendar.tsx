@@ -1598,6 +1598,8 @@ export default function InteractiveCalendar({
               {!isNewPatient && (
                 <div className="space-y-2 animate-fade-in">
                   <PatientSearchSelect
+                    clinicId={clinic.id}
+                    onPatientLoaded={patient=>setPatients(previous=>previous.some(p=>p.id===patient.id)?previous:[...previous,patient])}
                     patients={patients}
                     selectedPatientId={selectedPatientId}
                     onSelectPatient={setSelectedPatientId}

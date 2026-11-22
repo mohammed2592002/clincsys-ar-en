@@ -937,11 +937,8 @@ const base = process.env.TEST_BASE || "http://localhost:3100";
     await page.waitForFunction(() =>
       document.body.innerText.includes("Patient could not be deleted:"),
     );
-    assert(
-      (await page.evaluate(() => document.body.innerText)).includes(
-        "cannot be deleted because",
-      ),
-    );
+    const deletionText=await page.evaluate(() => document.body.innerText);
+    assert(deletionText.includes("cannot be deleted because"),deletionText.slice(-2000));
     await page.screenshot({
       path: "/downloads/offline-patient-delete-blocked-en.png",
       fullPage: true,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, FormEvent, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getPatientsRef, getAppointmentsRef, OperationType, handleDbError, getDocsSmart as getDocs, getDocSmart as getDoc, db, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, startAfter, where, clearQueryCache } from '../dbClient';
+import { searchClinicPatients, getClinicPatientStats, getPatientsRef, getAppointmentsRef, OperationType, handleDbError, getDocsSmart as getDocs, getDocSmart as getDoc, db, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, startAfter, where, clearQueryCache } from '../dbClient';
 import { Patient, PatientQuestionnaire, Clinic, QuestionnaireQuestion, DEFAULT_QUESTIONNAIRE_QUESTIONS } from '../types';
 import { 
   Users, UserPlus, Search, Phone, Edit, Trash2, Heart, Sparkles, 
@@ -167,6 +167,9 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
     };
   };
 
+  const [serverStats,setServerStats]=useState({total:0,newThisMonth:0,complete:false});
+  const [searchResults,setSearchResults]=useState<Patient[]>([]);
+  const [searchTotal,setSearchTotal]=useState(0);
   const PAGE_SIZE = 5;
   const patientLoadVersion = useRef(0);
 
@@ -180,14 +183,9 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
       const q = query(ref, orderBy('createdAt', 'desc'), limit(PAGE_SIZE));
       let snap;
       try {
-        // The full collection drives analytics. A page is only for the table.
-        const [pageSnap, fullSnap] = await Promise.all([
-          getDocs(q), getDocs(query(ref, orderBy('createdAt', 'desc')), true)
-        ]);
-        if (version !== patientLoadVersion.current) return;
-        snap = pageSnap;
-        setAllPatients(fullSnap.docs.map(mapPatientDocData));
-        setHasLoadedAllForSearch(!fullSnap.fromCache);
+        snap=await getDocs(q);
+        if(version!==patientLoadVersion.current)return;
+        getClinicPatientStats(clinic.id).then(stats=>{if(version===patientLoadVersion.current)setServerStats(stats);}).catch(()=>{});
       } catch (err: any) {
         handleDbError(err, OperationType.LIST, `clinics/${clinic.id}/patients`);
       }
@@ -248,23 +246,7 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
         });
       }
 
-      // If cursor pagination returned 0 items but we might have more, fallback to fetching all
-      if (list.length === 0) {
-        const qAll = query(ref, orderBy('createdAt', 'desc'));
-        const allSnap = await getDocs(qAll);
-        const fullList: Patient[] = [];
-        allSnap?.forEach((docSnap: any) => {
-          fullList.push(mapPatientDocData(docSnap));
-        });
-        setAllPatients(fullList);
-        setHasLoadedAllForSearch(true);
-
-        const currentCount = patients.length;
-        const nextBatch = fullList.slice(0, currentCount + PAGE_SIZE);
-        setPatients(nextBatch);
-        setHasMore(fullList.length > nextBatch.length);
-        return;
-      }
+      if(list.length===0){setHasMore(false);return;}
 
       // Filter out duplicates and append
       let addedNew = false;
@@ -666,54 +648,23 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
 
   const isSearchReady = (term: string) => term.trim().length >= 3;
 
-  useEffect(() => {
-    if (isSearchReady(searchTerm)) {
-      fetchAllPatientsForSearch();
-    }
-  }, [searchTerm]);
-
-  const filteredPatients = useMemo(() => {
-    if (isSearchReady(searchTerm)) {
-      const term = searchTerm.toLowerCase();
-      return allPatients.filter(
-        (p) =>
-          p.name.toLowerCase().includes(term) ||
-          p.phone.includes(term) ||
-          (p.governorate && p.governorate.toLowerCase().includes(term)) ||
-          (p.cityOrDistrict && p.cityOrDistrict.toLowerCase().includes(term)) ||
-          (p.area && p.area.toLowerCase().includes(term)) ||
-          (p.address && p.address.toLowerCase().includes(term)) ||
-          (p.occupation && p.occupation.toLowerCase().includes(term))
-      );
-    } else if (searchTerm.trim().length > 0) {
-      return [];
-    }
-
-    return patients;
-  }, [patients, allPatients, searchTerm]);
+  useEffect(()=>{
+    if(activeTab==='analytics')void fetchAllPatientsForSearch();
+  },[activeTab,clinic.id,hasLoadedAllForSearch]);
+  useEffect(()=>{
+    if(!isSearchReady(searchTerm)){setSearchResults([]);setSearchTotal(0);return;}
+    const controller=new AbortController();setSearching(true);
+    const timer=setTimeout(()=>{(async()=>{const items:any[]=[];let total=0;for(let offset=0;offset<visibleCount;offset+=100){const page=await searchClinicPatients(clinic.id,searchTerm,{limit:Math.min(100,visibleCount-offset),offset,signal:controller.signal});items.push(...page.items);total=page.total;if(items.length>=total)break;}return {items,total};})().then(r=>{if(!controller.signal.aborted){setSearchResults(r.items.map(p=>mapPatientDocData({id:p.id,data:()=>p})));setSearchTotal(r.total);}}).catch(()=>{if(!controller.signal.aborted)setError(isEn?'Search unavailable. Try again.':'تعذر البحث، حاول مرة أخرى.');}).finally(()=>{if(!controller.signal.aborted)setSearching(false);});},250);
+    return()=>{clearTimeout(timer);controller.abort();};
+  },[searchTerm,visibleCount,clinic.id,isEn]);
+  const filteredPatients = isSearchReady(searchTerm)?searchResults:searchTerm.trim()?[]:patients;
 
   const isFilteringActive = isSearchReady(searchTerm);
   const displayPatients = isFilteringActive
     ? filteredPatients.slice(0, visibleCount)
     : filteredPatients;
 
-  // Header stats use the full collection, independently of the table page.
-  const patientStats = useMemo(() => {
-    const source = allPatients.length > 0 ? allPatients : patients;
-    const now = new Date();
-    const m = now.getMonth();
-    const y = now.getFullYear();
-    const newThisMonth = source.filter(p => {
-      if (!p.createdAt) return false;
-      const d = new Date(p.createdAt);
-      return !isNaN(d.getTime()) && d.getMonth() === m && d.getFullYear() === y;
-    }).length;
-    return {
-      total: source.length,
-      newThisMonth,
-      complete: hasLoadedAllForSearch
-    };
-  }, [allPatients, patients, hasMore, hasLoadedAllForSearch]);
+  const patientStats=serverStats;
 
   // Health-status badges derived from the medical questionnaire flags
   const getHealthBadges = (p: Patient): { key: string; label: string }[] => {
@@ -932,7 +883,7 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
               {isSearchReady(searchTerm) ? (
                 <span className="text-emerald-600 font-bold flex items-center gap-1.5 animate-fade-in bg-emerald-50/40 px-3.5 py-2 rounded-xl border border-emerald-100/50 w-full">
                   <Sparkles className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
-                  {isEn ? `Search results: (Found ${filteredPatients.length} patients)` : `نتائج البحث في قاعدة البيانات: (تم العثور على ${filteredPatients.length} من المرضى)`}
+                  {isEn ? `Search results: (Found ${searchTotal} patients)` : `نتائج البحث في قاعدة البيانات: (تم العثور على ${searchTotal} من المرضى)`}
                 </span>
               ) : (
                 <span className="text-amber-600 font-bold flex items-center gap-1.5 animate-fade-in bg-amber-50/40 px-3.5 py-2 rounded-xl border border-amber-100/50 w-full">
@@ -1439,10 +1390,10 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
             {isFilteringActive ? (
               <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50">
                 <span className="text-xs text-slate-500 font-medium">
-                  {t('patients.buttons.currentlyShowing')} <b className="text-slate-800">{Math.min(visibleCount, filteredPatients.length)}</b> {t('patients.buttons.outOf')} <b className="text-slate-800">{filteredPatients.length}</b> {t('patients.buttons.matchingSearch')}
+                  {t('patients.buttons.currentlyShowing')} <b className="text-slate-800">{Math.min(visibleCount, filteredPatients.length)}</b> {t('patients.buttons.outOf')} <b className="text-slate-800">{searchTotal}</b> {t('patients.buttons.matchingSearch')}
                 </span>
                 <div className="flex flex-wrap items-center gap-2">
-                  {filteredPatients.length > visibleCount ? (
+                  {searchTotal > visibleCount ? (
                     <button
                       type="button"
                       onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}

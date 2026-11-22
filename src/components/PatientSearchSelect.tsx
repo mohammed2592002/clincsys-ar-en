@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Patient } from '../types';
+import { searchClinicPatients } from '../dbClient';
 import { Search, X, User, ChevronDown } from 'lucide-react';
 
 interface PatientSearchSelectProps {
+  clinicId?: string;
+  onPatientLoaded?: (patient:Patient)=>void;
   patients: Patient[];
   selectedPatientId: string;
   onSelectPatient: (patientId: string) => void;
@@ -14,6 +17,8 @@ interface PatientSearchSelectProps {
 
 export default function PatientSearchSelect({
   patients,
+  clinicId,
+  onPatientLoaded,
   selectedPatientId,
   onSelectPatient,
   placeholder,
@@ -25,6 +30,9 @@ export default function PatientSearchSelect({
   const defaultPlaceholder = isEn ? 'Search patient by name or phone...' : 'ابحث باسم المريض أو رقم الهاتف...';
   const actualPlaceholder = placeholder || defaultPlaceholder;
   const [searchQuery, setSearchQuery] = useState('');
+  const [serverPatients,setServerPatients]=useState<Patient[]>([]);
+  const [searching,setSearching]=useState(false);
+  const [searchError,setSearchError]=useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -65,14 +73,21 @@ export default function PatientSearchSelect({
   const isCurrentlySelected = selectedPatient && searchQuery === selectedPatient.name;
   const isSearchLengthReady = queryClean.length >= 3;
 
+  useEffect(()=>{
+    if(!clinicId||!isOpen||!isSearchLengthReady||isCurrentlySelected){setServerPatients([]);setSearching(false);return;}
+    const controller=new AbortController();setSearching(true);setSearchError(false);setServerPatients([]);
+    const timer=setTimeout(()=>{searchClinicPatients(clinicId,searchQuery,{booking:true,limit:15,signal:controller.signal}).then(r=>{if(!controller.signal.aborted)setServerPatients(r.items);}).catch(()=>{if(!controller.signal.aborted)setSearchError(true);}).finally(()=>{if(!controller.signal.aborted)setSearching(false);});},250);
+    return()=>{clearTimeout(timer);controller.abort();};
+  },[clinicId,isOpen,searchQuery,isCurrentlySelected]);
+
   const filteredPatients = shouldShowDropdown && (isCurrentlySelected || isSearchLengthReady)
-    ? patients.filter((p) => {
+    ? (clinicId&&!isCurrentlySelected?serverPatients:patients).filter((p) => {
         if (isCurrentlySelected) {
           return p.id === selectedPatient.id;
         }
         return (
           p.name.toLowerCase().includes(queryClean) ||
-          p.phone.includes(queryClean)
+          (p.phone||'').includes(queryClean)
         );
       }).slice(0, 15) // Show top 15 matches for speed and style
     : [];
@@ -87,6 +102,7 @@ export default function PatientSearchSelect({
   };
 
   const handleSelect = (patient: Patient) => {
+    onPatientLoaded?.(patient);
     onSelectPatient(patient.id);
     setSearchQuery(patient.name);
     setIsOpen(false);
@@ -148,7 +164,7 @@ export default function PatientSearchSelect({
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
               {isEn ? "Type 3 or more characters to search..." : "يرجى كتابة 3 أحرف أو أكثر للبدء بالبحث..."}
             </div>
-          ) : filteredPatients.length > 0 ? (
+          ) : searching ? (<div role="status" className="p-4 text-sm">{isEn?'Searching...':'جاري البحث...'}</div>) : searchError ? (<div role="alert" className="p-4 text-sm">{isEn?'Search unavailable. Check your connection and try again.':'تعذر البحث. تحقق من الاتصال وحاول مرة أخرى.'}</div>) : filteredPatients.length > 0 ? (
             filteredPatients.map((p) => {
               const isSelected = p.id === selectedPatientId;
               return (

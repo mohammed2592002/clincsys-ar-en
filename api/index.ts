@@ -15,7 +15,7 @@ import compression from 'compression';
 import helmet from 'helmet';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { createLoginLockout, createRateLimiter, getClientIp, parseLockDurationsEnv } from './loginProtection';
+import { createLoginLockout, createRateLimiter, getClientIp, isApiWrite, apiUserKey, parseLockDurationsEnv } from './loginProtection';
 const { Pool } = pg;
 
 function getR2ClientConfig() {
@@ -41,6 +41,11 @@ function getR2ClientConfig() {
 
 
 const app = express();
+// Safe default: trust the directly connected socket only. Configure exact proxy
+// addresses/subnets after checking the deployed network; never trust all XFF.
+const trustedProxyRanges=(process.env.TRUSTED_PROXY_RANGES||'').split(',').map(s=>s.trim()).filter(Boolean);
+if(trustedProxyRanges.some(s=>['true','false','0','0.0.0.0/0','::/0'].includes(s)))throw new Error('TRUSTED_PROXY_RANGES must name trusted proxy addresses or narrow subnets');
+app.set('trust proxy',trustedProxyRanges.length?trustedProxyRanges:false);
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Apply security and performance middlewares
@@ -54,13 +59,17 @@ app.use(compression());
 
 app.use(cors());
 
-// ---- Global API rate limit (moderate): 300 requests / minute / IP ----
-// Protects every endpoint from request floods; per-endpoint rules still apply on top.
-const globalApiLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 300 });
+// IP flood ceiling is independent of authenticated per-user limits.
+const globalApiLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 2500 });
+const userApiLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 400 });
+const userWriteLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 120 });
+function apiLimitResponse(res:express.Response,retryAfterSeconds:number,scope:string){
+  res.setHeader('Retry-After',String(retryAfterSeconds));
+  return res.status(429).json({error:'rate_limited',scope,retryAfterSeconds,message:'طلبات كثيرة جداً، يرجى المحاولة بعد قليل'});
+}
 app.use('/api', (req, res, next) => {
-  if (globalApiLimiter.isLimited(getClientIp(req))) {
-    return res.status(429).json({ error: 'rate_limited', message: 'طلبات كثيرة جداً، يرجى المحاولة بعد قليل' });
-  }
+  const limit=globalApiLimiter.check(getClientIp(req));
+  if(limit.limited)return apiLimitResponse(res,limit.retryAfterSeconds,'ip');
   next();
 });
 
@@ -97,6 +106,22 @@ app.use(async (req, res, next) => {
     }
   }
   next();
+});
+
+app.use('/api',async(req,res,next)=>{
+  try{
+    const key=apiUserKey(await getRequestAuth(req));
+    if(key){
+      const total=userApiLimiter.check(key);
+      if(total.limited)return apiLimitResponse(res,total.retryAfterSeconds,'user');
+      // originalUrl includes /api even inside a mounted middleware.
+      if(isApiWrite({method:req.method,body:req.body,path:req.originalUrl.split('?')[0]})){
+        const writes=userWriteLimiter.check(key);
+        if(writes.limited)return apiLimitResponse(res,writes.retryAfterSeconds,'writes');
+      }
+    }
+    next();
+  }catch(error){next(error);}
 });
 
 app.get('/api/db-status', async (req, res) => {
@@ -272,12 +297,20 @@ async function verifyAuthToken(token: string): Promise<AuthInfo | null> {
   }
 }
 
-async function getRequestAuth(req: express.Request): Promise<AuthInfo | null> {
+const requestAuthCache=new WeakMap<express.Request,Promise<AuthInfo|null>>();
+async function getRequestAuth(req:express.Request):Promise<AuthInfo|null>{
+  let result=requestAuthCache.get(req);
+  if(!result){result=readRequestAuth(req);requestAuthCache.set(req,result);}
+  return result;
+}
+async function readRequestAuth(req: express.Request): Promise<AuthInfo | null> {
   const header = (req.headers.authorization || '') as string;
   let token = header.startsWith('Bearer ') ? header.substring(7).trim() : '';
   if (!token && typeof req.query.token === 'string') token = req.query.token; // for <img>/WS URLs
   if (!token) return null;
-  return verifyAuthToken(token);
+  const auth=await verifyAuthToken(token);
+  if(auth && auth.type!=='admin' && (!auth.clinicId || !(await getExistingClinicData(auth.clinicId))))return null;
+  return auth;
 }
 
 // ---- Per-IP rate limiter for login endpoints (30 attempts / 10 min / IP) ----
@@ -680,9 +713,9 @@ class LocalJsonDbEmulator {
             const olderThan = args[0];
             this.data[tableName] = this.data[tableName].filter(r => (r.created_at || r.createdAt) >= olderThan);
           } else {
-            const pkCol = lowerSql.includes('where path') ? 'path' : 'id';
+            const key=cleanSql.match(/where\s+([a-zA-Z0-9_]+)\s*=/i)?.[1] || 'id';
             const pkVal = args[0];
-            this.data[tableName] = this.data[tableName].filter(r => r[pkCol] !== pkVal);
+            this.data[tableName] = this.data[tableName].filter(r => {const col=Object.keys(r).find(k=>k.toLowerCase()===key.toLowerCase());if(col&&String(r[col])===String(pkVal))return false;if(lowerSql.includes('json_extract')){const d=safeParseJson(r.data);if(d.clinicId===pkVal||d.clinic_id===pkVal)return false;}return true;});
           }
           this.save();
         }
@@ -900,6 +933,8 @@ class LocalJsonDbEmulator {
         });
       }
 
+      const offsetMatch=lowerSql.match(/offset\s+(\d+)/);
+      if(offsetMatch)table=table.slice(Number(offsetMatch[1]));
       // Limit
       if (lowerSql.includes('limit')) {
         const limitMatch = lowerSql.match(/limit\s+(\d+)/);
@@ -1348,6 +1383,8 @@ async function publishSyncEvent(clinicId: string, tableName: string, action: str
   const now = Date.now();
   const payloadStr = fullData ? JSON.stringify(fullData) : '';
   try {
+    return await dbClient.financeTransaction(clinicId,async()=>{
+    if(!(await getExistingClinicData(clinicId)))return null;
     await dbClient.execute({
       sql: `INSERT INTO server_sync_events (id, clinic_id, table_name, action, record_id, created_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       args: [eventId, clinicId, tableName, action, recordId || '', now, payloadStr]
@@ -1365,6 +1402,7 @@ async function publishSyncEvent(clinicId: string, tableName: string, action: str
     }).catch(err => console.error('[Sync Engine] Error cleaning up old events:', err));
     
     return eventId;
+    });
   } catch (err) {
     console.error('[Sync Engine] Failed to publish sync event:', err);
     return null;
@@ -2420,6 +2458,7 @@ async function writeClinicDocument(action: string, id: string, input: any, optio
   await finance.ensureSchema();
   return dbClient.financeTransaction(id, async () => {
     const existing = await getExistingClinicData(id);
+    if (!existing && auth.type !== 'admin') throw Object.assign(new Error('Clinic not found / العيادة غير موجودة'),{status:404});
     let next = action === 'updateDoc' || options?.merge ? {...existing,...input,id} : {...input,id};
     next = await secureClinicPayload(next, existing);
     next.paymentMethods = await finance.validateClinicPaymentMethods(id, next.paymentMethods === undefined ? existing?.paymentMethods ?? DEFAULT_PAYMENT_METHODS : next.paymentMethods, auth);
@@ -2431,6 +2470,58 @@ async function writeClinicDocument(action: string, id: string, input: any, optio
     return sanitizeClinicRecord(next);
   });
 }
+
+async function clinicMutation(clinicId:string|null|undefined,fn:()=>Promise<any>){
+  if(!clinicId)return fn();
+  return dbClient.financeTransaction(clinicId,async()=>{
+    if(!(await getExistingClinicData(clinicId)))throw Object.assign(new Error('Clinic not found / العيادة غير موجودة'),{status:404});
+    return fn();
+  });
+}
+
+async function deleteClinicDatabase(finalId:string) {
+        await finance.ensureSchema();
+        await dbClient.financeTransaction(finalId,async()=>{
+          const cascadeTables=['users','patients','appointments','records','prescriptions','custom_medications','custom_categories','inventory','billing','closings','laboratories','lab_orders','lab_work_types','shifts','expenses','teeth','xrays','renewals','files'];
+          for(const table of cascadeTables)await dbClient.execute({sql:`DELETE FROM ${table} WHERE clinicId = ?${table==='files'?'':" OR json_extract(data, '$.clinicId') = ? OR json_extract(data, '$.clinic_id') = ?"}`,args:table==='files'?[finalId]:[finalId,finalId,finalId]});
+          await dbClient.execute({sql:'DELETE FROM finance_state WHERE id = ?',args:[finalId]});
+          await dbClient.execute({sql:'DELETE FROM server_sync_events WHERE clinic_id = ?',args:[finalId]});
+          await dbClient.execute({sql:'DELETE FROM clinics WHERE id = ?',args:[finalId]});
+        });
+        const sockets=wsClients.get(finalId);if(sockets)for(const client of sockets)client.close(4401,'Clinic deleted');
+
+}
+
+// Bounded patient lookup searches the whole authorized clinic, not a loaded page.
+app.get('/api/patients/search',async(req,res)=>{
+  const auth=await getRequestAuth(req),cid=String(req.query.clinicId||'');
+  if(!auth)return res.status(401).json({error:'authentication_required'});
+  if(!cid||(auth.type!=='admin'&&auth.clinicId!==cid))return res.status(403).json({error:'forbidden'});
+  const term=String(req.query.q||'').trim().slice(0,120).replace(/[%_\\]/g,'').trim();
+  const size=Math.min(100,Math.max(1,Number(req.query.limit)||15));
+  const offset=Math.min(1000000,Math.max(0,Math.floor(Number(req.query.offset)||0)));
+  if(term.length<3)return res.json({items:[],total:0});
+  const fields=req.query.scope==='booking'?['name','phone']:['name','phone','governorate','cityOrDistrict','area','address','occupation'];
+  const op=dbClient.getIsPostgres()?'ILIKE':'LIKE';
+  const filter=`clinicId = ? AND (${fields.map(f=>`json_extract(data, '$.${f}') ${op} ?`).join(' OR ')})`;
+  const args=[cid,...fields.map(()=>'%'+term+'%')];
+  try{
+    const count=await dbClient.execute({sql:`SELECT COUNT(*) as count FROM patients WHERE ${filter}`,args});
+    const found=await dbClient.execute({sql:`SELECT * FROM patients WHERE ${filter} ORDER BY createdAt DESC, id DESC LIMIT ${Math.floor(size)} OFFSET ${offset}`,args});
+    return res.json({items:found.rows.map(row=>({...row,...safeParseJson(row.data),data:undefined,id:row.id})),total:Number(count.rows[0]?.count||0)});
+  }catch(e){return res.status(500).json({message:'Patient search failed / تعذر البحث عن المريض'});}
+});
+app.get('/api/patients/stats',async(req,res)=>{
+  const auth=await getRequestAuth(req),cid=String(req.query.clinicId||'');
+  if(!auth)return res.status(401).json({error:'authentication_required'});
+  if(!cid||(auth.type!=='admin'&&auth.clinicId!==cid))return res.status(403).json({error:'forbidden'});
+  const prefix=String(req.query.month||'');if(!/^\d{4}-\d{2}$/.test(prefix))return res.status(400).json({error:'invalid_month'});
+  try{
+    const all=await dbClient.execute({sql:'SELECT COUNT(*) as count FROM patients WHERE clinicId = ?',args:[cid]});
+    const month=await dbClient.execute({sql:"SELECT COUNT(*) as count FROM patients WHERE clinicId = ? AND json_extract(data, '$.createdAt') LIKE ?",args:[cid,prefix+'%']});
+    return res.json({total:Number(all.rows[0]?.count||0),newThisMonth:Number(month.rows[0]?.count||0),complete:true});
+  }catch(e){return res.status(500).json({message:'Patient stats unavailable'});}
+});
 
 app.post('/api/db', async (req, res) => {
   const { action, path: pathStr, constraints, id, data } = req.body;
@@ -2736,7 +2827,7 @@ app.post('/api/db', async (req, res) => {
         sql = `INSERT OR REPLACE INTO ${tableName} (${cols.join(', ')}) VALUES (${placeholders})`;
       }
       
-      await dbClient.execute({ sql, args: vals });
+      await clinicMutation(targetClinicId,()=>dbClient.execute({ sql, args: vals }));
 
       if (targetClinicId) {
         const evId = 'ev_' + Math.random().toString(36).substring(2, 15);
@@ -2810,7 +2901,7 @@ app.post('/api/db', async (req, res) => {
         sql = `INSERT OR REPLACE INTO ${tableName} (${cols.join(', ')}) VALUES (${placeholders})`;
       }
       
-      await dbClient.execute({ sql, args: vals });
+      await clinicMutation(targetClinicId,()=>dbClient.execute({ sql, args: vals }));
 
       if (targetClinicId) {
         const evId = 'ev_' + Math.random().toString(36).substring(2, 15);
@@ -2867,7 +2958,7 @@ app.post('/api/db', async (req, res) => {
       
       setVals.push(finalId);
       const updateSql = `UPDATE ${tableName} SET ${setParts.join(', ')} WHERE ${pkCol} = ?`;
-      await dbClient.execute({ sql: updateSql, args: setVals });
+      await clinicMutation(clinicId,()=>dbClient.execute({ sql: updateSql, args: setVals }));
 
       const targetClinicId = clinicId || updated?.clinicId || updated?.clinic_id || data?.clinicId || data?.clinic_id;
       if (targetClinicId) {
@@ -2890,31 +2981,8 @@ app.post('/api/db', async (req, res) => {
 
       // Perform cascading deletes before/after deleting the parent record
       if (tableName === 'clinics') {
-        const cascadeTables = [
-          'users',
-          'patients',
-          'appointments',
-          'records',
-          'prescriptions',
-          'custom_medications',
-          'custom_categories',
-          'inventory',
-          'billing',
-          'closings',
-          'laboratories',
-          'lab_orders',
-          'lab_work_types',
-          'shifts',
-          'expenses'
-        ];
-        for (const t of cascadeTables) {
-          try {
-            await dbClient.execute({ sql: `DELETE FROM ${t} WHERE clinicId = ?`, args: [finalId] });
-            console.log(`[PostgreSQL Cascade] Cleaned up ${t} records for deleted clinic: ${finalId}`);
-          } catch (cascadeErr) {
-            console.error(`[PostgreSQL Cascade] Error cleaning up ${t} for clinic ${finalId}:`, cascadeErr);
-          }
-        }
+        await deleteClinicDatabase(finalId);
+        return res.json({success:true});
       } else if (tableName === 'patients') {
         const patientCascadeTables = ['records', 'appointments', 'prescriptions', 'xrays', 'teeth'];
         for (const t of patientCascadeTables) {
@@ -3002,6 +3070,8 @@ app.post('/api/db/batch', async (req, res) => {
       continue;
     }
 
+    if(tableName==='clinics'&&action==='deleteDoc'){try{await deleteClinicDatabase(String(docId||parsedDocId||data?.id||''));if(itemId!==undefined)processedIds.push(itemId);}catch(e:any){errors.push({itemId,error:e.message});}continue;}
+
     if (['appointments','expenses','shifts','lab_orders','patients','records','billing','prescriptions','xrays','teeth','inventory','custom_medications','custom_categories','laboratories','lab_work_types'].includes(tableName)) { errors.push({itemId,error:'financial_sync_requires_review',message:'حركة قديمة معلقة تحتاج مراجعة، لم يتم حفظها على السيرفر'}); continue; }
 
     try {
@@ -3057,7 +3127,7 @@ app.post('/api/db/batch', async (req, res) => {
           sql = `INSERT OR REPLACE INTO ${tableName} (${cols.join(', ')}) VALUES (${placeholders})`;
         }
 
-        await dbClient.execute({ sql, args: vals });
+        await clinicMutation(clinicId,()=>dbClient.execute({ sql, args: vals }));
         if (itemId !== undefined) processedIds.push(itemId);
       } else if (action === 'updateDoc') {
         if (!finalId) continue;
@@ -3105,7 +3175,7 @@ app.post('/api/db/batch', async (req, res) => {
           sql = `INSERT OR REPLACE INTO ${tableName} (${cols.join(', ')}) VALUES (${placeholders})`;
         }
 
-        await dbClient.execute({ sql, args: vals });
+        await clinicMutation(clinicId,()=>dbClient.execute({ sql, args: vals }));
         if (itemId !== undefined) processedIds.push(itemId);
       } else if (action === 'deleteDoc') {
         if (!finalId) continue;
@@ -3495,10 +3565,10 @@ app.post('/api/confirm-upload', async (req, res) => {
     const { publicUrlBase } = getR2ClientConfig();
     const publicUrl = `${publicUrlBase}/${fileKey}`;
 
-    await dbClient.execute({
+    await clinicMutation(owner.clinicId,()=>dbClient.execute({
       sql: `INSERT OR REPLACE INTO files (path, mimeType, data, clinicId) VALUES (?, ?, ?, ?)`,
       args: [publicUrl, rule.mime, '', owner.clinicId]
-    });
+    }));
 
     console.log(`[Cloudflare R2 Direct Upload Confirmed] File key: ${fileKey}`);
     return res.json({ success: true, publicUrl, key: fileKey, mode: 'r2-direct' });
@@ -3552,10 +3622,10 @@ app.post('/api/upload', async (req, res) => {
 
       const publicUrl = `/api/files?path=${encodeURIComponent(cleanFileName)}`;
 
-      await dbClient.execute({
+      await clinicMutation(ownerClinicId,()=>dbClient.execute({
         sql: `INSERT OR REPLACE INTO files (path, mimeType, data, clinicId) VALUES (?, ?, ?, ?)`,
         args: [cleanFileName, uploadedFile.mimetype || 'image/png', '', ownerClinicId]
-      });
+      }));
 
       console.log(`[File Upload] Saved locally to server disk (${reason || 'local fallback'}). Public URL: ${publicUrl}`);
       return res.json({ path: publicUrl, publicUrl, success: true, mode: 'local' });
@@ -3579,10 +3649,10 @@ app.post('/api/upload', async (req, res) => {
       await client.send(command);
       const publicUrl = `${publicUrlBase}/${fileKeyName}`;
 
-      await dbClient.execute({
+      await clinicMutation(ownerClinicId,()=>dbClient.execute({
         sql: `INSERT OR REPLACE INTO files (path, mimeType, data, clinicId) VALUES (?, ?, ?, ?)`,
         args: [publicUrl, uploadedFile.mimetype || 'image/png', '', ownerClinicId]
-      });
+      }));
 
       console.log(`[File Upload R2 Success] File key: ${fileKeyName}, URL: ${publicUrl}`);
       return res.json({ path: publicUrl, publicUrl, key: fileKeyName, success: true, mode: 'r2' });

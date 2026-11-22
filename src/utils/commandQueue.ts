@@ -20,6 +20,9 @@ export interface DurableCommand {
   entityName?: string;
   conflict?: any;
   sequence?: number;
+  lastHttpStatus?: number;
+  retryAt?: number;
+  retryAttempts?: number;
 }
 let database: Promise<IDBDatabase> | null = null;
 function open() {
