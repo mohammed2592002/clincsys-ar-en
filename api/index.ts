@@ -1074,26 +1074,29 @@ class PostgresDbClient {
   }
 
   private financeContext = new AsyncLocalStorage<any>();
-  private financeTail: Promise<any> = Promise.resolve();
+  // The JSON emulator snapshots one shared file, so it alone needs a global queue.
+  // PostgreSQL isolates each transaction and serializes only the matching clinic
+  // with its existing advisory lock. Do not queue unrelated clinics in Node.
+  private localFinanceTail: Promise<void> = Promise.resolve();
   async financeTransaction<T>(clinicId: string, fn: () => Promise<T>): Promise<T> {
     if (this.financeContext.getStore()) return fn();
-    const previous = this.financeTail;
+    if (this.isPostgres) {
+      if (!this.pgPool) this.createPool();
+      const client = await this.pgPool!.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['finance:' + clinicId]);
+        const result = await this.financeContext.run(client, fn);
+        await client.query('COMMIT');
+        return result;
+      } catch (e) { await client.query('ROLLBACK'); throw e; }
+      finally { client.release(); }
+    }
+    const previous = this.localFinanceTail;
     let release!: () => void;
-    this.financeTail = new Promise<void>(r => release = r);
+    this.localFinanceTail = new Promise<void>(r => release = r);
     await previous;
     try {
-      if (this.isPostgres) {
-        if (!this.pgPool) this.createPool();
-        const client = await this.pgPool!.connect();
-        try {
-          await client.query('BEGIN');
-          await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['finance:' + clinicId]);
-          const result = await this.financeContext.run(client, fn);
-          await client.query('COMMIT');
-          return result;
-        } catch (e) { await client.query('ROLLBACK'); throw e; }
-        finally { client.release(); }
-      }
       if (!this.localDb) this.localDb = new LocalJsonDbEmulator();
       const snapshot = this.localDb.beginTransaction();
       try { const result = await this.financeContext.run({local: true}, fn); this.localDb.finishTransaction(snapshot, true); return result; }
