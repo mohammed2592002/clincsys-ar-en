@@ -1,6 +1,12 @@
 export function commandMessage(message: string, english: boolean): string {
   if (!english || !/[\u0600-\u06ff]/.test(message || "")) return message;
   const rules: [string, string][] = [
+    ['يلزم الاتصال لتحديث طرق الدفع', 'Connect to update payment methods and verify historical financial amounts.'],
+    ['لا يمكن حذف طريقة الدفع', 'This payment method cannot be deleted because it has historical financial amounts, even after a refund or cancellation.'],
+    ['طريقة الدفع غير موجودة', 'This payment method is not in clinic settings. Refresh the list or add it in Settings.'],
+    ['اختر طريقة دفع من', 'Choose a payment method from clinic settings.'],
+    ['قائمة طرق الدفع غير صالحة', 'The payment-method list is invalid. Use names up to 80 characters.'],
+    ['طرق الدفع مكررة', 'Payment methods must be unique. Loyalty points use their separate payment action.'],
     [
       "لا يمكن حذف المريض",
       "This patient cannot be deleted because appointments, financial transactions or treatment history are linked to the record.",

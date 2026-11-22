@@ -1,3 +1,4 @@
+import { getClinicPaymentMethods, paymentMethodLabel } from '../utils/paymentMethods';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'motion/react';
@@ -98,7 +99,7 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
     cost: 0,
     paymentStatus: 'unpaid' as 'paid' | 'unpaid' | 'partial',
     paidAmount: 0,
-    paymentMethod: isEn ? 'Cash' : 'كاش',
+    paymentMethod: getClinicPaymentMethods(clinic.paymentMethods)[0] || '',
     status: 'sent' as 'sent' | 'received' | 'installed' | 'cancelled',
     notes: ''
   });
@@ -108,11 +109,12 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
   const [editingPaidAmounts, setEditingPaidAmounts] = useState<Record<string, string>>({});
   const [editingPaymentMethods, setEditingPaymentMethods] = useState<Record<string, string>>({});
 
-  const paymentMethodsList = React.useMemo(() => {
-    return (clinic as any)?.paymentMethods?.length
-      ? (clinic as any).paymentMethods
-      : (isEn ? ['Cash', 'Visa', 'InstaPay', 'Wallet'] : ['كاش', 'فيزا', 'إنستاباي', 'محفظة']);
-  }, [(clinic as any)?.paymentMethods, isEn]);
+  const paymentMethodsList = React.useMemo(() => getClinicPaymentMethods(clinic.paymentMethods), [clinic.paymentMethods]);
+
+  useEffect(() => {
+    if (!paymentMethodsList.includes(orderForm.paymentMethod)) setOrderForm(form => ({...form,paymentMethod:paymentMethodsList[0] || ''}));
+    setEditingPaymentMethods(previous => Object.fromEntries(Object.entries(previous).filter(([,method]) => paymentMethodsList.includes(method))));
+  }, [paymentMethodsList]);
 
   // Load All Data
   const loadAllData = async () => {
@@ -360,7 +362,7 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
         cost: Number(orderForm.cost) || 0,
         paymentStatus: orderForm.paymentStatus,
         paidAmount: orderForm.paymentStatus === 'unpaid' ? 0 : (orderForm.paymentStatus === 'paid' ? (Number(orderForm.paidAmount) || Number(orderForm.cost) || 0) : (Number(orderForm.paidAmount) || 0)),
-        paymentMethod: orderForm.paymentMethod || (isEn ? 'Cash' : 'كاش'),
+        paymentMethod: orderForm.paymentMethod || paymentMethodsList[0] || '',
         status: orderForm.status,
         notes: orderForm.notes,
         createdAt: selectedOrder ? selectedOrder.createdAt : new Date().toISOString()
@@ -429,7 +431,7 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
       cost: 0,
       paymentStatus: 'unpaid',
       paidAmount: 0,
-      paymentMethod: paymentMethodsList[0] || (isEn ? 'Cash' : 'كاش'),
+      paymentMethod: paymentMethodsList[0] || '',
       status: 'sent',
       notes: ''
     });
@@ -504,7 +506,7 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
       cost: order.cost,
       paymentStatus: order.paymentStatus,
       paidAmount: order.paidAmount || 0,
-      paymentMethod: order.paymentMethod || paymentMethodsList[0] || 'كاش',
+      paymentMethod: order.paymentMethod || paymentMethodsList[0] || '',
       status: order.status,
       notes: order.notes || ''
     });
@@ -561,7 +563,7 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
     // If they haven't typed anything yet but pressed save, use current fallback or paid amount
     const rawVal = enteredValue !== undefined ? enteredValue : (order.paidAmount ?? 0);
     const amount = Number(rawVal) || 0;
-    const selectedMethod = editingPaymentMethods[order.id] || order.paymentMethod || (isEn ? 'Cash' : 'كاش');
+    const selectedMethod = editingPaymentMethods[order.id] || (paymentMethodsList.includes(order.paymentMethod) ? order.paymentMethod : paymentMethodsList[0] || '');
     
     if (amount > order.cost) {
       dialogs.alert(isEn ? `Paid amount (${amount} EGP) cannot exceed total order cost (${order.cost} EGP).` : `المبلغ المدفوع (${amount} ج.م) لا يمكن أن يكون أكبر من التكلفة الكلية للطلب (${order.cost} ج.م). يرجى إعادة إدخال قيمة صحيحة.`, { severity: 'warning' });
@@ -627,7 +629,7 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
   const handleUpdateOrderPaymentStatus = async (order: LabOrder, newPaymentStatus: LabOrder['paymentStatus']) => {
     const updatedPaidAmount = newPaymentStatus === 'paid' ? order.cost : (newPaymentStatus === 'unpaid' ? 0 : (order.paidAmount || (order.cost / 2)));
     const oldPaid = Number(order.paidAmount) || 0;
-    const selectedMethod = editingPaymentMethods[order.id] || order.paymentMethod || (isEn ? 'Cash' : 'كاش');
+    const selectedMethod = editingPaymentMethods[order.id] || (paymentMethodsList.includes(order.paymentMethod) ? order.paymentMethod : paymentMethodsList[0] || '');
 
     if (updatedPaidAmount < oldPaid) {
       dialogs.alert(isEn ? `Error: Paid amount cannot be reduced automatically by changing status.` : `خطأ: لا يمكن تقليل المبلغ المدفوع بالنقصان بتغيير الحالة تلقائياً (المدفوع حالياً: ${oldPaid} ج.م والمطلوب للحالة الجديدة: ${updatedPaidAmount} ج.م). يرجى تعديل أو زيادة المبلغ يدوياً.`, { severity: 'warning' });
@@ -1110,13 +1112,13 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
                               <div className="flex items-center gap-1">
                                 <span className="text-[10px] text-slate-400 font-bold whitespace-nowrap">{isEn ? 'Payment:' : 'طريقة الدفع:'}</span>
                                 <select
-                                  value={editingPaymentMethods[order.id] !== undefined ? editingPaymentMethods[order.id] : (order.paymentMethod || (isEn ? 'Cash' : 'كاش'))}
+                                  value={editingPaymentMethods[order.id] !== undefined ? editingPaymentMethods[order.id] : (paymentMethodsList.includes(order.paymentMethod) ? order.paymentMethod : paymentMethodsList[0] || '')}
                                   onChange={(e) => setEditingPaymentMethods(prev => ({ ...prev, [order.id]: e.target.value }))}
                                   className="w-full text-[11px] px-1.5 py-0.5 border border-slate-200 rounded-md bg-slate-50 font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                                   title={isEn ? 'Payment method' : 'طريقة تسديد مصروف المعمل'}
                                 >
                                   {paymentMethodsList.map(method => (
-                                    <option key={method} value={method}>{method}</option>
+                                    <option key={method} value={method}>{paymentMethodLabel(method, isEn)}</option>
                                   ))}
                                 </select>
                               </div>
@@ -1848,7 +1850,9 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
                           const val = Number(e.target.value.replace(/[^\d.]/g, '')) || 0;
                           let status: 'paid' | 'unpaid' | 'partial' = 'partial';
                           if (val >= (orderForm.cost || 0) && (orderForm.cost || 0) > 0) status = 'paid';
-                          if (val <= 0) status = 'unpaid';
+                          // Keep a partial-payment field editable while the user clears it.
+                          // Selecting Unpaid explicitly still disables and zeroes it.
+                          if (val <= 0) status = 'partial';
                           setOrderForm({ ...orderForm, paidAmount: val, paymentStatus: status });
                         }}
                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-400"
@@ -1866,7 +1870,7 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
                         className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer disabled:bg-slate-100 disabled:text-slate-400"
                       >
                         {paymentMethodsList.map((m: string) => (
-                          <option key={m} value={m}>{m}</option>
+                          <option key={m} value={m}>{paymentMethodLabel(m, isEn)}</option>
                         ))}
                       </select>
                     </div>

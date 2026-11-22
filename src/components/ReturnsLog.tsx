@@ -1,3 +1,4 @@
+import { paymentMethodLabel } from '../utils/paymentMethods';
 import React, { useEffect, useMemo, useState } from "react";
 import { financeCommand } from "../dbClient";
 
@@ -174,8 +175,8 @@ export default function ReturnsLog({
         >
           <p className="text-xs text-amber-800">
             {isEn
-              ? "Manager only. This records money actually returned and reduces the current open drawer. Cancellation alone is not a refund."
-              : "للمدير فقط. يسجل مبلغ تم رده فعلًا ويخصمه من الوردية المفتوحة. إلغاء الموعد وحده ليس استردادًا."}
+              ? "Manager only. The refund reduces its original payment channel. Only cash refunds affect the drawer. Cancellation alone is not a refund."
+              : "للمدير فقط. يخصم الاسترداد من طريقة الدفع الأصلية. استرداد الكاش فقط يؤثر على الدرج. إلغاء الموعد وحده ليس استردادا."}
           </p>
           <select
             required
@@ -192,7 +193,7 @@ export default function ReturnsLog({
             </option>
             {available.map((r) => (
               <option key={r.id} value={r.id}>
-                {r.patientName} • {r.receiptNumber || r.id} • {r.available}{" "}
+                {r.patientName} • {r.receiptNumber || r.id} • {paymentMethodLabel(r.paymentMethod, isEn)} • {r.available}{" "}
                 {isEn ? "EGP available" : "ج.م متاح"}
               </option>
             ))}

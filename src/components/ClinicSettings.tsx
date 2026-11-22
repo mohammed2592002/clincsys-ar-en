@@ -1,3 +1,4 @@
+import { getClinicPaymentMethods, paymentMethodLabel, samePaymentMethod } from '../utils/paymentMethods';
 import { ORTHODONTIC_CATALOG_VERSION } from '../utils/dentalServiceCatalog';
 import {configuredSocialLinks} from '../utils/supportLinks';
 import OfflineCommands from './OfflineCommands';
@@ -734,7 +735,7 @@ export default function ClinicSettings({
   // Custom Payment Methods Management
   const [newPaymentMethodName, setNewPaymentMethodName] = useState('');
   const [reassignWarningMethod, setReassignWarningMethod] = useState<string | null>(null);
-  const [reassignTargetMethod, setReassignTargetMethod] = useState('');
+
   const [isCheckingPaymentUsage, setIsCheckingPaymentUsage] = useState(false);
 
   // Synchronize state with clinic prop changes
@@ -1472,7 +1473,7 @@ export default function ClinicSettings({
 
         sqlContent += `\n-- Inserting Expenses Data (${expensesData.length})\n`;
         expensesData.forEach((exp) => {
-          sqlContent += `INSERT INTO expenses (expense_id, title, amount, category, payment_method, expense_date, type, notes) VALUES (${escapeSQLVal(exp.id)}, ${escapeSQLVal(exp.title)}, ${Number(exp.amount) || 0}, ${escapeSQLVal(exp.category)}, ${escapeSQLVal(exp.paymentMethod || 'كاش')}, ${escapeSQLVal(exp.date)}, ${escapeSQLVal(exp.type || 'shift')}, ${escapeSQLVal(exp.notes)});\n`;
+          sqlContent += `INSERT INTO expenses (expense_id, title, amount, category, payment_method, expense_date, type, notes) VALUES (${escapeSQLVal(exp.id)}, ${escapeSQLVal(exp.title)}, ${Number(exp.amount) || 0}, ${escapeSQLVal(exp.category)}, ${escapeSQLVal(exp.paymentMethod || '')}, ${escapeSQLVal(exp.date)}, ${escapeSQLVal(exp.type || 'shift')}, ${escapeSQLVal(exp.notes)});\n`;
         });
 
         sqlContent += `\n-- Inserting Shifts Data (${shiftsData.length})\n`;
@@ -1851,31 +1852,18 @@ export default function ClinicSettings({
     }
   };
 
-  // Helper to match payment methods (with legacy fallback)
-  const isMatchingPaymentMethod = (appMethod: string | undefined, target: string) => {
-    if (!appMethod) return false;
-    const normApp = appMethod.toLowerCase().trim();
-    const normTarget = target.toLowerCase().trim();
-    if (normApp === normTarget) return true;
-    if (normTarget === 'كاش' && normApp === 'cash') return true;
-    if (normTarget === 'فيزا' && (normApp === 'card' || normApp === 'visa')) return true;
-    if (normTarget === 'إنستاباي' && normApp === 'instapay') return true;
-    if (normTarget === 'محفظة' && normApp === 'wallet') return true;
-    return false;
-  };
-
   const handleAddPaymentMethod = async (e: React.FormEvent) => {
     e.preventDefault();
     setSettingsSuccess('');
     setSettingsError('');
     const name = newPaymentMethodName.trim();
     if (!name) {
-      dialogs.alert('يرجى إدخال اسم طريقة الدفع أولاً', { severity: 'warning' });
+      dialogs.alert(isEn ? 'Enter a payment method name first' : 'يرجى إدخال اسم طريقة الدفع أولاً', { severity: 'warning' });
       return;
     }
-    const currentMethods = clinic.paymentMethods || ['كاش', 'فيزا', 'إنستاباي', 'محفظة'];
-    if (currentMethods.some(m => m.toLowerCase().trim() === name.toLowerCase().trim())) {
-      dialogs.alert('طريقة الدفع هذه مضافة بالفعل!', { severity: 'warning' });
+    const currentMethods = getClinicPaymentMethods(clinic.paymentMethods);
+    if (currentMethods.some(m => samePaymentMethod(m, name))) {
+      dialogs.alert(isEn ? 'This payment method already exists' : 'طريقة الدفع هذه مضافة بالفعل!', { severity: 'warning' });
       return;
     }
 
@@ -1885,120 +1873,28 @@ export default function ClinicSettings({
       await updateDoc(docRef, { paymentMethods: updatedMethods });
       onClinicDataUpdated({ ...clinic, paymentMethods: updatedMethods });
       setNewPaymentMethodName('');
-      setSettingsSuccess(`تمت إضافة طريقة الدفع (${name}) بنجاح!`);
+      setSettingsSuccess(isEn ? `Payment method (${name}) added.` : `تمت إضافة طريقة الدفع (${name}) بنجاح!`);
     } catch (err: any) {
-      dialogs.alert('حدث خطأ أثناء إضافة طريقة الدفع: ' + err.toString(), { severity: 'error' });
+      dialogs.alert((isEn ? 'Could not add payment method: ' : 'حدث خطأ أثناء إضافة طريقة الدفع: ') + (err.message || String(err)), { severity: 'error' });
     }
   };
 
   const handleDeletePaymentMethodCheck = async (methodToDelete: string) => {
-    setSettingsSuccess('');
-    setSettingsError('');
+    setSettingsSuccess(''); setSettingsError('');
+    if (!await dialogs.confirm(isEn ? `Delete payment method (${methodToDelete})? The server will block deletion if any historical amount exists.` : `حذف طريقة الدفع (${methodToDelete})؟ سيمنع الخادم الحذف إذا ارتبط بها أي مبلغ مالي سابق.`)) return;
     setIsCheckingPaymentUsage(true);
-
     try {
-      // 1. Fetch appointments & expenses to check usage
-      const appRef = collection(db, 'clinics', clinicId, 'appointments');
-      const appointmentsSnap = await getDocs(appRef);
-      const appointmentsList: any[] = [];
-      appointmentsSnap.forEach((d: any) => {
-        appointmentsList.push({ id: d.id, ...d.data() });
-      });
-
-      const expRef = collection(db, 'clinics', clinicId, 'expenses');
-      const expensesSnap = await getDocs(expRef);
-      const expensesList: any[] = [];
-      expensesSnap.forEach((d: any) => {
-        expensesList.push({ id: d.id, ...d.data() });
-      });
-
-      const usedInAppointments = appointmentsList.filter(app => isMatchingPaymentMethod(app.paymentMethod, methodToDelete));
-      const usedInExpenses = expensesList.filter(exp => isMatchingPaymentMethod(exp.paymentMethod, methodToDelete));
-
-      const totalUsage = usedInAppointments.length + usedInExpenses.length;
-
-      if (totalUsage > 0) {
-        // Method is used, prompt reassignment!
-        setReassignWarningMethod(methodToDelete);
-        const currentMethods = clinic.paymentMethods || ['كاش', 'فيزا', 'إنستاباي', 'محفظة'];
-        const alternatives = currentMethods.filter(m => m !== methodToDelete);
-        setReassignTargetMethod(alternatives[0] || '');
-      } else {
-        // Not used, delete immediately after simple confirm
-        if (await dialogs.confirm(`هل أنت متأكد من حذف طريقة الدفع (${methodToDelete})؟`)) {
-          const currentMethods = clinic.paymentMethods || ['كاش', 'فيزا', 'إنستاباي', 'محفظة'];
-          const updatedMethods = currentMethods.filter(m => m !== methodToDelete);
-          const docRef = doc(db, 'clinics', clinicId);
-          await updateDoc(docRef, { paymentMethods: updatedMethods });
-          onClinicDataUpdated({ ...clinic, paymentMethods: updatedMethods });
-          setSettingsSuccess(`تم حذف طريقة الدفع (${methodToDelete}) بنجاح!`);
-        }
-      }
-    } catch (err: any) {
-      dialogs.alert('حدث خطأ أثناء فحص الاستخدام: ' + err.toString(), { severity: 'error' });
-    } finally {
-      setIsCheckingPaymentUsage(false);
-    }
-  };
-
-  const handleConfirmReassignAndDelete = async () => {
-    if (!reassignWarningMethod) return;
-    if (!reassignTargetMethod) {
-      dialogs.alert('يرجى تحديد طريقة دفع بديلة لترحيل البيانات إليها.', { severity: 'warning' });
-      return;
-    }
-
-    try {
-      setIsCheckingPaymentUsage(true);
-      // 1. Fetch appointments & expenses to update
-      const appRef = collection(db, 'clinics', clinicId, 'appointments');
-      const appointmentsSnap = await getDocs(appRef);
-      const appointmentsList: any[] = [];
-      appointmentsSnap.forEach((d: any) => {
-        appointmentsList.push({ id: d.id, ...d.data() });
-      });
-
-      const expRef = collection(db, 'clinics', clinicId, 'expenses');
-      const expensesSnap = await getDocs(expRef);
-      const expensesList: any[] = [];
-      expensesSnap.forEach((d: any) => {
-        expensesList.push({ id: d.id, ...d.data() });
-      });
-
-      const usedInAppointments = appointmentsList.filter(app => isMatchingPaymentMethod(app.paymentMethod, reassignWarningMethod));
-      const usedInExpenses = expensesList.filter(exp => isMatchingPaymentMethod(exp.paymentMethod, reassignWarningMethod));
-
-      // Update matching appointments
-      for (const appItem of usedInAppointments) {
-        await updateDoc(doc(db, 'clinics', clinicId, 'appointments', appItem.id), {
-          paymentMethod: reassignTargetMethod
-        });
-      }
-
-      // Update matching expenses
-      for (const expItem of usedInExpenses) {
-        await updateDoc(doc(db, 'clinics', clinicId, 'expenses', expItem.id), {
-          paymentMethod: reassignTargetMethod
-        });
-      }
-
-      // 2. Remove from clinic paymentMethods list
-      const currentMethods = clinic.paymentMethods || ['كاش', 'فيزا', 'إنستاباي', 'محفظة'];
-      const updatedMethods = currentMethods.filter(m => m !== reassignWarningMethod);
-
-      const docRef = doc(db, 'clinics', clinicId);
-      await updateDoc(docRef, { paymentMethods: updatedMethods });
-      onClinicDataUpdated({ ...clinic, paymentMethods: updatedMethods });
-
-      setSettingsSuccess(`تم ترحيل عدد (${usedInAppointments.length}) مدفوعات و (${usedInExpenses.length}) مصاريف إلى (${reassignTargetMethod}) وحذف طريقة الدفع (${reassignWarningMethod}) بنجاح!`);
+      const updatedMethods = getClinicPaymentMethods(clinic.paymentMethods).filter(name => !samePaymentMethod(name, methodToDelete));
+      await updateDoc(doc(db, 'clinics', clinicId), {paymentMethods:updatedMethods});
+      onClinicDataUpdated({...clinic,paymentMethods:updatedMethods});
+      setSettingsSuccess(isEn ? `Payment method (${methodToDelete}) deleted.` : `تم حذف طريقة الدفع (${methodToDelete}).`);
       setReassignWarningMethod(null);
-      setReassignTargetMethod('');
     } catch (err: any) {
-      dialogs.alert('حدث خطأ أثناء ترحيل البيانات وحذف طريقة الدفع: ' + err.toString(), { severity: 'error' });
-    } finally {
-      setIsCheckingPaymentUsage(false);
-    }
+      if (/historical financial|مبالغ مالية سابقة/.test(err.message || '')) setReassignWarningMethod(methodToDelete);
+      else dialogs.alert(err.message || String(err), {severity:'error'});
+    } finally { setIsCheckingPaymentUsage(false); }
   };
+
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
@@ -4170,7 +4066,7 @@ export default function ClinicSettings({
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{(clinic.paymentMethods || ['كاش', 'فيزا', 'إنستاباي', 'محفظة']).length} {isEn ? 'active methods' : 'طرق نشطة'}</span>
+                  <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{(getClinicPaymentMethods(clinic.paymentMethods)).length} {isEn ? 'active methods' : 'طرق نشطة'}</span>
               </div>
             </div>
             <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
@@ -4186,68 +4082,11 @@ export default function ClinicSettings({
               </p>
             </div>
 
-            {/* Reassignment / Migration Warn Dialog (Inlined beautifully) */}
-            {reassignWarningMethod && (
-              <div className="bg-rose-50 border-2 border-rose-200 p-5 rounded-2xl space-y-4 animate-fade-in">
-                <div className="flex items-start gap-3">
-                  <span className="p-2 bg-rose-100 rounded-xl text-rose-700 shrink-0">
-                    <AlertCircle className="h-5 w-5" />
-                  </span>
-                  <div className="space-y-1">
-                    <h4 className="text-xs font-black text-rose-900">{isEn ? 'Required Action for Financial Record Integrity' : 'إجراء إجباري لسلامة الدفاتر المالية'}</h4>
-                    <p className="text-[11px] text-rose-700 leading-relaxed">
-                      {isEn ? (
-                        <>Cannot delete payment method <span className="font-bold underline">({reassignWarningMethod})</span> because it has existing transactions. Select a target payment method to migrate past transactions to:</>
-                      ) : (
-                        <>لا يمكن حذف طريقة الدفع <span className="font-bold underline">({reassignWarningMethod})</span> مباشرة لأنها مُسجلة في معاملات سابقة بالعيادة. لإتمام الحذف دون التسبب في خلل محاسبي، يرجى اختيار طريقة دفع بديلة لترحيل كافة المدفوعات والمصروفات السابقة إليها:</>
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 items-end bg-white p-4 rounded-xl border border-rose-100/50">
-                  <div className="flex-1 space-y-1.5">
-                    <label className="block text-[11px] font-black text-slate-700">{isEn ? 'Migrate past transactions to:' : 'ترحيل المعاملات السابقة إلى:'}</label>
-                    <select
-                      value={reassignTargetMethod}
-                      onChange={(e) => setReassignTargetMethod(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 text-xs font-bold text-slate-800 bg-white"
-                    >
-                      {(clinic.paymentMethods || ['كاش', 'فيزا', 'إنستاباي', 'محفظة'])
-                        .filter(m => m !== reassignWarningMethod)
-                        .map((m, idx) => (
-                          <option key={idx} value={m}>{m}</option>
-                        ))}
-                    </select>
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={handleConfirmReassignAndDelete}
-                      disabled={isCheckingPaymentUsage}
-                      className="bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-extrabold px-4 py-2 rounded-xl text-xs transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-                    >
-                      {isCheckingPaymentUsage ? (
-                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <CheckCircle className="h-4 w-4" />
-                      )}
-                      {isEn ? 'Migrate & Delete Now' : 'ترحيل البيانات والحذف الآن'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setReassignWarningMethod(null);
-                        setReassignTargetMethod('');
-                      }}
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-xl text-xs transition"
-                    >
-                      {isEn ? 'Cancel' : 'إلغاء الأمر'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {reassignWarningMethod && <div data-testid="payment-method-delete-blocked" role="alert" className="bg-rose-50 border-2 border-rose-200 p-5 rounded-2xl space-y-3">
+              <p className="text-sm font-bold text-rose-900">{isEn ? 'Payment method cannot be deleted' : 'لا يمكن حذف طريقة الدفع'}</p>
+              <p className="text-xs text-rose-800 leading-relaxed">{isEn ? `(${reassignWarningMethod}) has historical financial amounts, even if fully refunded or cancelled. Receipts, installments, expenses, refunds and shift history are preserved. No history was changed.` : `طريقة (${reassignWarningMethod}) مرتبطة بمبالغ مالية سابقة، حتى لو تم استردادها أو إلغاؤها بالكامل. الإيصالات والأقساط والمصروفات والمرتجعات وسجل الورديات محفوظة. لم يتغير أي سجل سابق.`}</p>
+              <button type="button" onClick={() => setReassignWarningMethod(null)} className="px-4 py-2 bg-white border border-rose-200 rounded-xl text-xs font-bold">{isEn ? 'Understood' : 'فهمت'}</button>
+            </div>}
 
             {/* Add Payment Method Form */}
             {!reassignWarningMethod && (
@@ -4257,6 +4096,8 @@ export default function ClinicSettings({
                   <input
                     type="text"
                     required
+                    maxLength={80}
+                    data-testid="payment-method-name"
                     value={newPaymentMethodName}
                     onChange={(e) => setNewPaymentMethodName(e.target.value)}
                     placeholder={isEn ? 'e.g. Vodafone Cash, Bank Transfer, Tabby...' : 'مثال: فودافون كاش، بنك مصر، تابي، إلخ...'}
@@ -4276,7 +4117,7 @@ export default function ClinicSettings({
             {/* Payment Methods List */}
             <div className="space-y-3">
               <h3 className="text-xs font-black text-slate-700 flex items-center justify-between border-b border-slate-100 pb-2">
-                <span>{isEn ? `Active Payment Methods (${(clinic.paymentMethods || ['كاش', 'فيزا', 'إنستاباي', 'محفظة']).length})` : `طرق الدفع النشطة حالياً بالعيادة (${ (clinic.paymentMethods || ['كاش', 'فيزا', 'إنستاباي', 'محفظة']).length })`}</span>
+                <span>{isEn ? `Active Payment Methods (${(getClinicPaymentMethods(clinic.paymentMethods)).length})` : `طرق الدفع النشطة حالياً بالعيادة (${ (getClinicPaymentMethods(clinic.paymentMethods)).length })`}</span>
                 {isCheckingPaymentUsage && (
                   <span className="text-[10px] text-slate-400 font-normal flex items-center gap-1">
                     <div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
@@ -4286,7 +4127,7 @@ export default function ClinicSettings({
               </h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {(clinic.paymentMethods || ['كاش', 'فيزا', 'إنستاباي', 'محفظة']).map((method, idx) => (
+                {(getClinicPaymentMethods(clinic.paymentMethods)).map((method, idx) => (
                   <div
                     key={idx}
                     className="bg-slate-50 hover:bg-slate-100/80 p-4 rounded-2xl border border-slate-150 flex items-center justify-between gap-3 transition-all animate-fade-in"
@@ -4296,13 +4137,14 @@ export default function ClinicSettings({
                         💳
                       </span>
                       <div>
-                        <div className="text-xs font-black text-slate-800">{method}</div>
+                        <div className="text-xs font-black text-slate-800">{paymentMethodLabel(method, isEn)}</div>
                         <div className="text-[9.5px] text-slate-400 font-semibold mt-0.5">{isEn ? 'Approved Clinic Payment Method' : 'طريقة دفع معتمدة بالعيادة'}</div>
                       </div>
                     </div>
 
                     <button
                       type="button"
+                      data-payment-method={method}
                       onClick={() => handleDeletePaymentMethodCheck(method)}
                       disabled={isCheckingPaymentUsage || !!reassignWarningMethod}
                       className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg transition shrink-0 cursor-pointer disabled:opacity-40"
@@ -4323,8 +4165,8 @@ export default function ClinicSettings({
               </p>
               <p className="text-[9.5px] text-slate-400 leading-relaxed font-semibold">
                 {isEn
-                  ? 'Default payment channels (Cash, Visa, Instapay, Wallet) are provided by default. Deleting a payment method automatically updates historical data to maintain financial integrity.'
-                  : 'طرق الدفع الأربعة الأساسية (كاش، فيزا، إنستاباي، محفظة) يتم توريدها افتراضياً في حالة عدم تحديد قنوات مخصصة. عند حذفك لأي طريقة دفع، يتم مطابقة جميع البيانات وتعديلها محلياً وسحابياً لضمان تطابق الأرباح والدرج بالكامل مع تصفية الورديات.'}
+                  ? 'These are the shared choices for collection, installments and expenses. Every method has its own totals. Only cash affects the drawer. Deletion requires a live server check and is blocked by any historical amount, even after refund or cancellation.'
+                  : 'هذه القائمة موحدة للتحصيل والأقساط والمصروفات. لكل طريقة إجمالياتها المستقلة، والكاش وحده يؤثر على الدرج. يلزم اتصال بالخادم للحذف، ويمنع الحذف عند وجود أي مبلغ سابق ولو قرشا، حتى بعد الاسترداد أو الإلغاء. لا يتم ترحيل أو تغيير التاريخ.'}
               </p>
             </div>
             </div>

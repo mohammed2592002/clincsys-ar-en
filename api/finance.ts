@@ -1,3 +1,4 @@
+import { DEFAULT_PAYMENT_METHODS, getClinicPaymentMethods, normalizePaymentMethod, samePaymentMethod, paymentMethodKey, paymentMethodHistoryHasAmount, paymentMethodForReport } from '../src/utils/paymentMethods';
 import {sameValue, SERVER_METADATA} from '../src/utils/documentComparison';
 import { commandMessage } from "../src/utils/commandMessages";
 import crypto from "node:crypto";
@@ -36,15 +37,7 @@ const day = (s: string) => {
     .map((k) => p.find((x) => x.type === k)?.value)
     .join("-");
 };
-const method = (m: any) => {
-  const s = String(m || "كاش").trim();
-  if (/cash|كاش|نقد/i.test(s)) return "كاش";
-  if (/card|visa|فيزا|بطاق/i.test(s)) return "فيزا";
-  if (/instapay|انستا|إنستا/i.test(s)) return "إنستاباي";
-  if (/wallet|محفظ/i.test(s)) return "محفظة";
-  if (/نقاط|نقط|loyalty/i.test(s)) return "نقاط الولاء";
-  return s;
-};
+const method = normalizePaymentMethod;
 const contentTables = [
   "records",
   "prescriptions",
@@ -168,9 +161,38 @@ export function createFinanceService(deps: any) {
         args: [cid, JSON.stringify(s), new Date().toISOString()],
       });
   }
-  async function actor(auth: any, cid: string) {
+  async function validateMethods(cid: string, previous: any, incoming: any, s: any) {
+    if (!Array.isArray(incoming) || incoming.length > 100 ||
+        incoming.some((name: any) => typeof name !== 'string' || !name.trim() || name.trim().length > 80))
+      fail('قائمة طرق الدفع غير صالحة', 400);
+    const next = incoming.map((name: string) => method(name));
+    if (next.includes('نقاط الولاء') || new Set(next.map(paymentMethodKey)).size !== next.length || next.some((name:string) => Object.getOwnPropertyNames(Object.prototype).some(key => key.toLowerCase() === name.toLowerCase())))
+      fail('طرق الدفع مكررة أو تحتوي على طريقة نقاط محجوزة', 400);
+    const removed = getClinicPaymentMethods(previous).filter(name => !next.some((candidate: string) => samePaymentMethod(name, candidate)));
+    if (removed.length) {
+      // This check and money commands share the same clinic transaction lock.
+      // Gross historical amounts count even after a full refund or cancellation.
+      const history: any[] = [s.receipts, s.events];
+      for (const tableName of ['appointments','expenses','lab_orders','shifts','closings','billing']) history.push(await rows(tableName, cid));
+      for (const name of removed) if (paymentMethodHistoryHasAmount(history, name))
+        fail('لا يمكن حذف طريقة الدفع لوجود مبالغ مالية سابقة عليها، حتى بعد الاسترداد أو الإلغاء', 409, {paymentMethod:name});
+    }
+    return next;
+  }
+  async function validateClinicPaymentMethods(cid: string, incoming: any, auth: any) {
+    await ensure();
+    const previous = (await get('clinics',cid,cid))?.paymentMethods;
+    if (auth?.type === 'staff' && !sameValue(getClinicPaymentMethods(previous), getClinicPaymentMethods(incoming))) fail('إعدادات العيادة للمدير فقط',403);
+    return validateMethods(cid, previous, incoming, await load(cid));
+  }
+  async function actor(auth: any, cid: string, seedDefaults = false) {
     const clinic = await get("clinics", cid, cid);
     if (!clinic) fail("العيادة غير موجودة", 404);
+    // Persist the old four defaults once, never append them to an explicit list.
+    if (seedDefaults && clinic.paymentMethods == null) {
+      clinic.paymentMethods = [...DEFAULT_PAYMENT_METHODS];
+      await put("clinics", cid, cid, { paymentMethods: clinic.paymentMethods });
+    }
     if (auth.type === "staff") {
       const staff = (clinic.staffMembers || []).find(
         (m: any) => m.id === auth.staffId,
@@ -241,7 +263,7 @@ export function createFinanceService(deps: any) {
       ps.unshift({
         id: "pay_init_" + app.id,
         amount: egp(paid - sum),
-        paymentMethod: app.paymentMethod || "كاش",
+        paymentMethod: method(app.paymentMethod),
         date: app.paymentDate || app.date,
         type: "initial",
         legacy: true,
@@ -350,17 +372,18 @@ export function createFinanceService(deps: any) {
       fail(
         "هناك دفعات قديمة بلا وردية محددة في يوم العمل، يلزم تسويتها قبل الإقفال",
       );
-    const rev: any = {},
-      exp: any = {};
+    const configured = getClinicPaymentMethods((await get('clinics',cid,cid))?.paymentMethods);
+    const rev: any = Object.fromEntries(configured.map(name => [name,0])),
+      exp: any = Object.fromEntries(configured.map(name => [name,0]));
     for (const p of receipts) {
-      const m = method(p.paymentMethod);
+      const m = paymentMethodForReport(p.paymentMethod,configured);
       if (m !== "نقاط الولاء")
         rev[m] =
           (rev[m] || 0) +
           (p.kind === "refund" ? -1 : 1) * (p.amountCents ?? cents(p.amount));
     }
     for (const e of expenses) {
-      const m = method(e.paymentMethod);
+      const m = paymentMethodForReport(e.paymentMethod,configured);
       exp[m] = (exp[m] || 0) + cents(e.amount || 0);
     }
     const paid = Object.values(rev).reduce(
@@ -405,8 +428,15 @@ export function createFinanceService(deps: any) {
   async function run(cid: string, auth: any, body: any) {
     await ensure();
     return db.financeTransaction(cid, async () => {
-      const who = await actor(auth, cid),
+      const who = await actor(auth, cid, true),
         s = await load(cid);
+      const resolveActiveMethod = (input: any) => {
+        if (typeof input !== 'string' || !input.trim()) fail('اختر طريقة دفع من إعدادات العيادة', 400);
+        if (method(input) === 'نقاط الولاء') fail('استخدم السداد بالنقاط للتحقق من المحفظة',400);
+        const selected = getClinicPaymentMethods(who.clinic.paymentMethods).find(name => samePaymentMethod(name, input));
+        if (!selected) fail('طريقة الدفع غير موجودة في إعدادات العيادة، حدّث القائمة أو أضفها من الإعدادات', 409);
+        return selected;
+      };
       const action = body.action;
       permission(auth, action);
       if (
@@ -575,7 +605,7 @@ export function createFinanceService(deps: any) {
         const ps = payments(app);
         let newPaid = b.paid,
           newPrice = b.price;
-        let payMethod = method(body.paymentMethod);
+        let payMethod = action === 'collect' ? resolveActiveMethod(body.paymentMethod) : method(body.paymentMethod);
         if (action === "collect" && payMethod === "نقاط الولاء")
           fail("استخدم السداد بالنقاط للتحقق من المحفظة", 400);
         let points = 0;
@@ -604,7 +634,7 @@ export function createFinanceService(deps: any) {
           if (!String(body.reason || "").trim())
             fail("سبب الاسترداد مطلوب", 400);
           newPaid -= amount;
-          payMethod = method(original.paymentMethod);
+          payMethod = resolveActiveMethod(original.paymentMethod);
           if (payMethod === "نقاط الولاء")
             fail("استرداد نقاط قديمة يحتاج تسوية معتمدة، لا يخرج نقدًا");
           // Use the award recorded at collection, never today's loyalty settings.
@@ -748,8 +778,8 @@ export function createFinanceService(deps: any) {
             .filter(
               ([field, value]) =>
                 !SERVER_METADATA.has(field) &&
-                !sameValue(old[field], value) &&
-                !sameValue(old[field], data[field]),
+                !(table === 'clinics' && field === 'paymentMethods' ? sameValue(getClinicPaymentMethods(old[field]),getClinicPaymentMethods(value as any)) : sameValue(old[field], value)) &&
+                !(table === 'clinics' && field === 'paymentMethods' ? sameValue(getClinicPaymentMethods(old[field]),getClinicPaymentMethods(data[field])) : sameValue(old[field], data[field])),
             )
             .map(([field]) => ({
               key: field,
@@ -860,9 +890,11 @@ export function createFinanceService(deps: any) {
             )
           )
             fail("لا يمكن تغيير نظام الحجز مع وجود مواعيد");
+          if (data.paymentMethods !== undefined) data.paymentMethods = await validateMethods(cid, old?.paymentMethods, data.paymentMethods, s);
           await put(table, id, cid, { ...data, updatedAt: now });
           result = { ...data, id, updatedAt: now };
         } else if (table === "appointments") {
+          if (data.paymentMethod !== undefined && data.paymentMethod !== null && data.paymentMethod !== '' && !(method(data.paymentMethod) === 'نقاط الولاء' && old && method(old.paymentMethod) === 'نقاط الولاء')) data.paymentMethod = resolveActiveMethod(data.paymentMethod);
           if (
             old &&
             data.payments &&
@@ -951,7 +983,7 @@ export function createFinanceService(deps: any) {
           }
           data.createdAt = now;
           data.actorName = who.name;
-          data.paymentMethod = method(data.paymentMethod);
+          data.paymentMethod = data.type === 'shift' || data.paymentMethod ? resolveActiveMethod(data.paymentMethod) : null;
         } else if (table === "lab_orders") {
           if (
             old &&
@@ -968,6 +1000,7 @@ export function createFinanceService(deps: any) {
               String(body.reason || "إلغاء طلب معمل"),
             );
           }
+          if (data.paymentMethod !== undefined && data.paymentMethod !== null && data.paymentMethod !== '') data.paymentMethod = resolveActiveMethod(data.paymentMethod);
           const oldPaid = cents(old?.paidAmount || 0),
             newPaid = cents(data.paidAmount ?? old?.paidAmount ?? 0);
           if (newPaid > cents(data.cost ?? old?.cost ?? 0))
@@ -987,7 +1020,7 @@ export function createFinanceService(deps: any) {
               category: "مصاريف معامل",
               type: "shift",
               shiftId: sh.id,
-              paymentMethod: method(data.paymentMethod || old?.paymentMethod),
+              paymentMethod: resolveActiveMethod(data.paymentMethod || old?.paymentMethod),
               date: day(now),
               createdAt: now,
               labOrderId: id,
@@ -1176,6 +1209,25 @@ export function createFinanceService(deps: any) {
         });
         return res.json(inspected);
       }
+      if (req.body.action === 'calendar_summary') {
+        const calendarActor = await actor(auth, cid);
+        if (auth.type === 'staff' && !(auth.allowedTabs || []).includes('calendar')) permission(auth, 'read');
+        const date = String(req.body.date || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail('تاريخ الملخص غير صالح', 400);
+        await ensure();
+        const methods = await db.financeTransaction(cid, async () => {
+          const state = await load(cid), totals: Record<string,number> = Object.create(null);
+          for (const receipt of await receiptProjection(cid, state)) {
+            if ((receipt.collectionDate || receipt.date) !== date) continue;
+            const channel = paymentMethodForReport(receipt.paymentMethod,calendarActor.clinic.paymentMethods);
+            if (channel === 'نقاط الولاء') continue;
+            const amount = receipt.amountCents ?? cents(receipt.amount || 0);
+            if (amount) totals[channel] = (totals[channel] || 0) + (receipt.kind === 'refund' ? -amount : amount);
+          }
+          return Object.fromEntries(Object.entries(totals).map(([key,value]) => [key,egp(value)]));
+        });
+        return res.json({date,methods});
+      }
       if (req.body.action === "read") {
         await actor(auth, cid);
         permission(auth, "read");
@@ -1223,5 +1275,5 @@ export function createFinanceService(deps: any) {
       });
     }
   }
-  return { handler, run };
+  return { handler, run, validateClinicPaymentMethods, ensureSchema:ensure };
 }

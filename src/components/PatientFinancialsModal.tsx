@@ -1,3 +1,4 @@
+import { getClinicPaymentMethods, paymentMethodLabel } from '../utils/paymentMethods';
 import { financeCommand } from '../dbClient';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -46,21 +47,8 @@ export const getEgyptTodayStr = () => {
   }
 };
 
-// Robust payment method normalizer to handle spelling variations (hamzas, yaas, etc.)
-export const normalizePaymentMethod = (method: string | undefined): string => {
-  if (!method) return 'كاش';
-  const m = method.toLowerCase().trim()
-    .replace(/[أإآا]/g, 'ا') // Standardize Alifs
-    .replace(/[ىي]/g, 'ي')   // Standardize Yaa / Alif Maksura
-    .replace(/[ةه]/g, 'ه');   // Standardize Tehs / Hehs
-
-  if (m === 'cash' || m.includes('كاش') || m.includes('نقدي') || m.includes('نقدى')) return 'كاش';
-  if (m === 'card' || m === 'visa' || m.includes('فيزا') || m.includes('بطاق') || m.includes('كارت') || m.includes('شبك')) return 'فيزا';
-  if (m === 'instapay' || m.includes('انستا') || m.includes('اينستا')) return 'إنستاباي';
-  if (m === 'wallet' || m.includes('محفظ')) return 'محفظة';
-  if (m.includes('نقط') || m.includes('نقاط')) return 'نقاط الولاء';
-  return method;
-};
+import { normalizePaymentMethod } from '../utils/paymentMethods';
+export { normalizePaymentMethod } from '../utils/paymentMethods';
 
 // Helper to filter out legacy auto-generated payment notes from display
 export const cleanNotes = (notes?: string) => {
@@ -86,7 +74,7 @@ export const getAppointmentPayments = (app: any): any[] => {
     list.unshift({
       id: 'pay_init_' + (app.id || 'initial'),
       amount: unrecordedAmount,
-      paymentMethod: app.paymentMethod || 'كاش',
+      paymentMethod: normalizePaymentMethod(app.paymentMethod),
       date: app.paymentDate || app.date || getEgyptTodayStr(),
       createdAt: app.createdAt || new Date().toISOString(),
       notes: 'الدفعة الأولى السابقة',
@@ -121,18 +109,7 @@ export default function PatientFinancialsModal({
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const methodsList = React.useMemo(() => {
-    const defaultMethods = ['كاش', 'فيزا', 'إنستاباي', 'محفظة'];
-    const custom = paymentMethods && paymentMethods.length > 0 ? paymentMethods : [];
-    const combined = [...defaultMethods];
-    custom.forEach(cm => {
-      const normCm = normalizePaymentMethod(cm);
-      if (!combined.some(m => normalizePaymentMethod(m) === normCm)) {
-        combined.push(cm);
-      }
-    });
-    return combined.filter(m => normalizePaymentMethod(m) !== 'نقاط الولاء');
-  }, [paymentMethods]);
+  const methodsList = React.useMemo(() => getClinicPaymentMethods(paymentMethods), [paymentMethods]);
 
   // Payment Recording State
   const [selectedAppId, setSelectedAppId] = useState<string>('');
@@ -144,9 +121,7 @@ export default function PatientFinancialsModal({
   const paymentBoxRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (methodsList.length > 0 && !paymentMethod) {
-      setPaymentMethod(methodsList[0]);
-    }
+    if (!methodsList.includes(paymentMethod)) setPaymentMethod(methodsList[0] || '');
   }, [methodsList]);
 
   useEffect(() => {
@@ -155,12 +130,12 @@ export default function PatientFinancialsModal({
       if (app && app.paymentMethod) {
         const norm = normalizePaymentMethod(app.paymentMethod);
         const matched = methodsList.find(m => normalizePaymentMethod(m) === norm);
-        setPaymentMethod(matched || app.paymentMethod);
+        setPaymentMethod(matched || methodsList[0] || '');
       } else if (methodsList.length > 0) {
         setPaymentMethod(methodsList[0]);
       }
     }
-  }, [selectedAppId]);
+  }, [selectedAppId, methodsList]);
 
   // Loyalty Program & Points Wallet State
   const [clinicData, setClinicData] = useState<Clinic | null>(null);
@@ -408,7 +383,7 @@ export default function PatientFinancialsModal({
     if (normalizePaymentMethod(paymentMethod)==='نقاط الولاء') { openPointsPaymentModal(selectedAppId);return; }
     setIsSubmitting(true);
     try {
-      const result=await financeCommand(clinicId,{action:'collect',appointmentId:selectedAppId,amount:Number(paymentAmount),paymentMethod:paymentMethod||methodsList[0]||'كاش',reason:paymentNotes});
+      const result=await financeCommand(clinicId,{action:'collect',appointmentId:selectedAppId,amount:Number(paymentAmount),paymentMethod:paymentMethod||methodsList[0]||'',reason:paymentNotes});
       setPaymentAmount(0);setPaymentNotes('');setShowPaymentBox(false);await fetchFinancialRecords();
       dialogs.alert((isEn?'Payment confirmed. Receipt: ':'تم تأكيد التحصيل، رقم الإيصال: ')+result.receipt.receiptNumber,{severity:'success'});
     } catch(e:any) { dialogs.alert(e.message,{severity:'error'}); } finally {setIsSubmitting(false);}
@@ -426,7 +401,7 @@ export default function PatientFinancialsModal({
     if (norm === 'إنستاباي') return isEn ? 'InstaPay' : 'إنستاباي';
     if (norm === 'محفظة') return isEn ? 'E-Wallet' : 'محفظة إلكترونية';
     if (norm === 'نقاط الولاء') return isEn ? 'Loyalty Points' : 'نقاط الولاء';
-    return method || (isEn ? 'Cash' : 'كاش');
+    return paymentMethodLabel(method, isEn);
   };
 
   const toggleHistoryExpand = (appId: string) => {
@@ -671,6 +646,7 @@ export default function PatientFinancialsModal({
                                 onChange={(e: any) => setPaymentMethod(e.target.value)}
                                 className="w-full px-2.5 py-2 border border-slate-300 rounded-xl text-xs font-bold bg-white focus:ring-2 focus:ring-emerald-500 outline-hidden"
                               >
+                                {methodsList.length === 0 && <option value="">{isEn ? 'Add a method in Settings' : 'أضف طريقة دفع من الإعدادات'}</option>}
                                 {methodsList.map((m) => {
                                   const norm = normalizePaymentMethod(m);
                                   let label = m;
@@ -690,7 +666,7 @@ export default function PatientFinancialsModal({
                             <div className="sm:col-span-2">
                               <button
                                 type="submit"
-                                disabled={isSubmitting || !selectedAppId}
+                                disabled={isSubmitting || !selectedAppId || !methodsList.includes(paymentMethod)}
                                 className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-2xs transition flex items-center justify-center gap-1 cursor-pointer"
                               >
                                 {isSubmitting ? (

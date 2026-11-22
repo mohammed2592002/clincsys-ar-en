@@ -1,3 +1,4 @@
+import { DEFAULT_PAYMENT_METHODS } from '../src/utils/paymentMethods';
 import {commandMessage} from '../src/utils/commandMessages';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createFinanceService } from './finance';
@@ -2403,6 +2404,25 @@ const finance = createFinanceService({db: dbClient, getAuth: getRequestAuth, bro
 app.post('/api/finance', finance.handler);
 
 // Generic Database Queries Router
+// Clinic document writes share the finance lock, including legacy DB/batch paths.
+// This prevents settings deletion from racing a receipt or expense and retains
+// the existing credential hashing and full clinic-editor behavior.
+async function writeClinicDocument(action: string, id: string, input: any, options: any, auth: any) {
+  await finance.ensureSchema();
+  return dbClient.financeTransaction(id, async () => {
+    const existing = await getExistingClinicData(id);
+    let next = action === 'updateDoc' || options?.merge ? {...existing,...input,id} : {...input,id};
+    next = await secureClinicPayload(next, existing);
+    next.paymentMethods = await finance.validateClinicPaymentMethods(id, next.paymentMethods === undefined ? existing?.paymentMethods ?? DEFAULT_PAYMENT_METHODS : next.paymentMethods, auth);
+    const {cols,vals} = mapDataToColumns('clinics',id,next,next.clinicId || next.clinic_id,undefined,next.createdAt || new Date().toISOString());
+    const placeholders=cols.map(()=>'?').join(', ');
+    const assignments=cols.filter(c=>c.toLowerCase()!=='id').map(c=>`${c} = EXCLUDED.${c}`).join(', ');
+    const sql=dbClient.getIsPostgres() ? `INSERT INTO clinics (${cols.join(', ')}) VALUES (${placeholders}) ON CONFLICT (id) DO UPDATE SET ${assignments}` : `INSERT OR REPLACE INTO clinics (${cols.join(', ')}) VALUES (${placeholders})`;
+    await dbClient.execute({sql,args:vals});
+    return sanitizeClinicRecord(next);
+  });
+}
+
 app.post('/api/db', async (req, res) => {
   const { action, path: pathStr, constraints, id, data } = req.body;
   
@@ -2429,6 +2449,15 @@ app.post('/api/db', async (req, res) => {
     if (authError === 403) {
       return res.status(403).json({ error: 'forbidden', message: 'غير مصرح لك بالوصول إلى هذه البيانات' });
     }
+  }
+
+  if (auth && tableName === 'clinics' && ['addDoc','setDoc','updateDoc'].includes(action)) {
+    const targetId=String(requestedDocId || data?.id || 'doc_'+crypto.randomUUID());
+    try {
+      const result=await writeClinicDocument(action,targetId,data,req.body.options,auth);
+      financeSync(targetId,{table:'clinics',action:'update',id:targetId});
+      return res.json(result);
+    } catch(e:any) {return res.status(e.status || 500).json({message:commandMessage(e.message,String(req.headers['accept-language']||'').startsWith('en')),conflict:e.details});}
   }
 
   if(!clinicId&&['addDoc','setDoc','updateDoc','deleteDoc'].includes(action)&&['appointments','expenses','shifts','lab_orders','patients','records','billing','prescriptions','xrays','teeth','inventory','custom_medications','custom_categories','laboratories','lab_work_types'].includes(tableName))return res.status(400).json({message:'حدد العيادة للحركة المحمية'});
@@ -2954,6 +2983,13 @@ app.post('/api/db/batch', async (req, res) => {
     const itemAuthError = authorizeDbAction(auth, action, tableName, clinicId, (docId || parsedDocId || data?.id) ? String(docId || parsedDocId || data?.id) : null);
     if (itemAuthError) {
       errors.push({ itemId, error: itemAuthError === 401 ? 'authentication_required' : 'forbidden' });
+      continue;
+    }
+
+    if(tableName === 'clinics' && ['addDoc','setDoc','updateDoc'].includes(action)) {
+      const targetId=String(docId || parsedDocId || data?.id || 'doc_'+crypto.randomUUID());
+      try {await writeClinicDocument(action,targetId,data,options,auth);if(itemId!==undefined)processedIds.push(itemId);financeSync(targetId,{table:'clinics',action:'update',id:targetId});}
+      catch(e:any){errors.push({itemId,error:commandMessage(e.message,String(req.headers['accept-language']||'').startsWith('en'))});}
       continue;
     }
 

@@ -1,3 +1,4 @@
+import { getClinicPaymentMethods, getPaymentReportMethods, paymentMethodLabel, paymentMethodForReport, paymentMethodMapAmount } from '../utils/paymentMethods';
 import OfflineCommands from './OfflineCommands';
 import LegacySettlement from './LegacySettlement';
 import ReturnsLog from './ReturnsLog';
@@ -677,12 +678,8 @@ export default function ClinicFinancials({
 
     setLoading(true);
     try {
-      const activeMethods = clinic.paymentMethods && clinic.paymentMethods.length > 0
-        ? clinic.paymentMethods
-        : ['كاش', 'فيزا', 'إنستاباي', 'محفظة'];
-      const resolvedPaymentMethod = expenseType === 'shift'
-        ? (expensePaymentMethod || activeMethods[0])
-        : null;
+      const activeMethods = getClinicPaymentMethods(clinic.paymentMethods);
+      const resolvedPaymentMethod = expenseType === 'shift' ? (expensePaymentMethod || activeMethods[0] || '') : null;
 
       const expensesRef = collection(db, 'clinics', clinic.id, 'expenses');
       await addDoc(expensesRef, {
@@ -781,7 +778,7 @@ export default function ClinicFinancials({
   }, [appointments]);
 
   // Record safe payment ( قسط / دفعة جديدة )
-  const handleRecordPaymentSubmit=async(e:React.FormEvent)=>{e.preventDefault();if(!selectedApp)return;setLoading(true);try{await financeCommand(clinic.id,{action:'collect',appointmentId:selectedApp.id,amount:Number(paymentAmount),paymentMethod:selectedApp.paymentMethod||'كاش',reason:paymentNotes});await fetchAppointments();setIsRecordingPayment(false);}catch(e:any){setError(e.message);}finally{setLoading(false);}};
+  const handleRecordPaymentSubmit=async(e:React.FormEvent)=>{e.preventDefault();if(!selectedApp)return;setLoading(true);try{await financeCommand(clinic.id,{action:'collect',appointmentId:selectedApp.id,amount:Number(paymentAmount),paymentMethod:selectedApp.paymentMethod||getClinicPaymentMethods(clinic.paymentMethods)[0]||'',reason:paymentNotes});await fetchAppointments();setIsRecordingPayment(false);}catch(e:any){setError(e.message);}finally{setLoading(false);}};
 
   // Open a new cashier shift (بدء وردية كاشير جديدة)
   const handleOpenShift = async (e: React.FormEvent) => {
@@ -826,29 +823,20 @@ export default function ClinicFinancials({
   }, [dailyAppointments]);
 
   // Dynamic Payment Methods list and normalization helper
-  const activeMethodsList = React.useMemo(() => {
-    const defaultMethods = ['كاش', 'فيزا', 'إنستاباي', 'محفظة'];
-    const custom = clinic.paymentMethods && clinic.paymentMethods.length > 0
-      ? clinic.paymentMethods
-      : [];
-    const combined = [...defaultMethods];
-    custom.forEach(cm => {
-      const normCm = normalizePaymentMethod(cm);
-      if (!combined.some(m => normalizePaymentMethod(m) === normCm)) {
-        combined.push(cm);
-      }
-    });
-    return combined.filter(m => normalizePaymentMethod(m) !== 'نقاط الولاء');
-  }, [clinic.paymentMethods]);
+  const activeMethodsList = React.useMemo(() => getClinicPaymentMethods(clinic.paymentMethods), [clinic.paymentMethods]);
 
   // Expense Payment Methods list
   const expenseMethodsList = React.useMemo(() => {
     return activeMethodsList;
   }, [activeMethodsList]);
 
+  useEffect(() => {
+    if (!expenseMethodsList.includes(expensePaymentMethod)) setExpensePaymentMethod(expenseMethodsList[0] || '');
+  }, [expenseMethodsList]);
+
   const formatPaymentMethod = React.useCallback((method?: string): string => {
-    return normalizePaymentMethod(method);
-  }, []);
+    return paymentMethodForReport(method,clinic.paymentMethods);
+  }, [clinic.paymentMethods]);
 
   // Revenues filter calculations
   const filteredPeriodReceipts = React.useMemo(()=>financialReceipts.filter(r=>{
@@ -861,7 +849,7 @@ export default function ClinicFinancials({
   const filteredRevenueAppointments=filteredPeriodReceipts.map(r=>({id:r.id,patientName:r.patientName,price:r.amount,paidAmount:r.kind==='refund'?-r.amount:r.amount,paymentMethod:r.paymentMethod,treatmentType:(r.kind==='refund'?(isEn?'Refund: ':'استرداد: '):'')+(r.receiptNumber||r.id),time:r.createdAt?new Date(r.createdAt).toLocaleTimeString('en-GB',{timeZone:'Africa/Cairo',hour:'2-digit',minute:'2-digit'}):'',date:r.collectionDate||r.date}));
   const revenueMethodBreakdown=React.useMemo(()=>{
     const out:Record<string,number>={};activeMethodsList.forEach(m=>out[m]=0);
-    for(const r of filteredPeriodReceipts){const m=normalizePaymentMethod(r.paymentMethod);if(m==='نقاط الولاء')continue;out[m]=(out[m]||0)+(r.kind==='refund'?-1:1)*Number(r.amount||0);}
+    for(const r of filteredPeriodReceipts){const m=paymentMethodForReport(r.paymentMethod,clinic.paymentMethods);if(m==='نقاط الولاء')continue;out[m]=(out[m]||0)+(r.kind==='refund'?-1:1)*Number(r.amount||0);}
     return out;
   },[filteredPeriodReceipts,activeMethodsList]);
 
@@ -911,14 +899,8 @@ export default function ClinicFinancials({
     }
 
     periodExpenses.forEach(exp => {
-      const normExp = normalizePaymentMethod(exp.paymentMethod || 'كاش');
-      let matched = expenseMethodsList.find(m => normalizePaymentMethod(m) === normExp);
-      if (!matched) {
-        matched = expenseMethodsList.find(m => normalizePaymentMethod(m) === 'كاش') || expenseMethodsList[0] || 'كاش';
-      }
-      if (matched) {
-        breakdown[matched] = (breakdown[matched] || 0) + exp.amount;
-      }
+      const channel = paymentMethodForReport(exp.paymentMethod,clinic.paymentMethods);
+      if (Number(exp.amount)) breakdown[channel] = (breakdown[channel] || 0) + exp.amount;
     });
 
     return breakdown;
@@ -927,7 +909,7 @@ export default function ClinicFinancials({
   // Compute revenues by method for active shift (filtering payments by shiftId or shift time window)
   const dynamicRevenues=React.useMemo(()=>{
     const out:Record<string,number>={};activeMethodsList.forEach(m=>out[m]=0);
-    for(const r of financialReceipts){if(r.shiftId!==currentShift.id)continue;const m=normalizePaymentMethod(r.paymentMethod);if(m==='نقاط الولاء')continue;out[m]=(out[m]||0)+(r.kind==='refund'?-1:1)*Number(r.amount||0);}
+    for(const r of financialReceipts){if(r.shiftId!==currentShift.id)continue;const m=paymentMethodForReport(r.paymentMethod,clinic.paymentMethods);if(m==='نقاط الولاء')continue;out[m]=(out[m]||0)+(r.kind==='refund'?-1:1)*Number(r.amount||0);}
     return out;
   },[financialReceipts,currentShift,activeMethodsList]);
 
@@ -939,18 +921,15 @@ export default function ClinicFinancials({
     });
 
     activeShiftExpenses.forEach(e => {
-      const normExp = normalizePaymentMethod(e.paymentMethod);
-      let matched = expenseMethodsList.find(m => normalizePaymentMethod(m) === normExp);
-      if (!matched) {
-        matched = expenseMethodsList.find(m => normalizePaymentMethod(m) === 'كاش') || expenseMethodsList[0] || 'كاش';
-      }
-      if (matched) {
-        expenseMap[matched] = (expenseMap[matched] || 0) + e.amount;
-      }
+      const channel = paymentMethodForReport(e.paymentMethod,clinic.paymentMethods);
+      if (Number(e.amount)) expenseMap[channel] = (expenseMap[channel] || 0) + e.amount;
     });
 
     return expenseMap;
   }, [expenseMethodsList, activeShiftExpenses, normalizePaymentMethod]);
+
+  const shiftReportMethods = getPaymentReportMethods(clinic.paymentMethods, dynamicRevenues, dynamicExpenses);
+  const periodReportMethods = getPaymentReportMethods(clinic.paymentMethods, revenueMethodBreakdown, expenseMethodBreakdown);
 
   // Individual payment transactions collected in the active shift
   const activeShiftPaymentRecords=React.useMemo(()=>financialReceipts.filter(r=>r.shiftId===currentShift.id).map(r=>({id:r.id,app:appointments.find(a=>a.id===r.appointmentId)||{patientName:r.patientName,price:0,remainingAmount:0},amount:r.kind==='refund'?-r.amount:r.amount,paymentMethod:r.paymentMethod,date:r.collectionDate||r.date,time:r.createdAt?new Date(r.createdAt).toLocaleTimeString('en-GB',{timeZone:'Africa/Cairo',hour:'2-digit',minute:'2-digit'}):'',notes:r.receiptNumber||r.notes})),[financialReceipts,currentShift,appointments]);
@@ -988,7 +967,7 @@ export default function ClinicFinancials({
     )
   );
 
-  const handleQuickNurseCollect=async(app:Appointment)=>{setLoading(true);try{await financeCommand(clinic.id,{action:'collect',appointmentId:app.id,amount:Number(app.remainingAmount||0),paymentMethod:app.paymentMethod||'كاش'});await fetchAppointments();}catch(e:any){setError(e.message);}finally{setLoading(false);}};
+  const handleQuickNurseCollect=async(app:Appointment)=>{setLoading(true);try{await financeCommand(clinic.id,{action:'collect',appointmentId:app.id,amount:Number(app.remainingAmount||0),paymentMethod:app.paymentMethod||getClinicPaymentMethods(clinic.paymentMethods)[0]||''});await fetchAppointments();}catch(e:any){setError(e.message);}finally{setLoading(false);}};
 
   // Print Invoice trigger
   const handlePrintInvoice = (app: Appointment) => {
@@ -998,9 +977,7 @@ export default function ClinicFinancials({
   // Print Shift trigger (Active Shift)
   const handlePrintShift = () => {
     const startCash = activeShift ? (Number(activeShift.startCash) || 0) : 0;
-    const cashExpenses = dynamicExpenses['كاش'] !== undefined 
-      ? dynamicExpenses['كاش'] 
-      : (dynamicExpenses[activeMethodsList[0]] || 0);
+    const cashExpenses = dynamicExpenses['كاش'] || 0;
     const activeShiftExpensesTotal = activeShiftExpenses.reduce((sum, e) => sum + e.amount, 0);
     const expectedCashOnly = startCash + dailyCashAmount - cashExpenses;
     const actual = actualCashInput ? Number(actualCashInput) : expectedCashOnly;
@@ -1030,7 +1007,7 @@ export default function ClinicFinancials({
       expensesList: activeShiftExpenses,
       revenuesMap: dynamicRevenues,
       expensesMap: dynamicExpenses,
-      activeMethodsList: activeMethodsList
+      activeMethodsList: shiftReportMethods
     });
   };
 
@@ -1038,7 +1015,7 @@ export default function ClinicFinancials({
   const handlePrintHistoryShift = (shift: any) => {
     if(shift.snapshot) {
       const x=shift.snapshot;
-      setPrintShiftData({...x,date:shift.date,openedAt:shift.openedAt,closedAt:shift.closedAt,cashierName:shift.cashierName,closedBy:shift.closedBy,startCash:shift.startCash,actual:shift.actualCash,expected:shift.expectedCash,discrepancy:shift.discrepancy,notes:shift.notes,revenuesMap:x.dynamicRevenues,expensesMap:x.dynamicExpenses,activeMethodsList:Object.keys(x.dynamicRevenues||{}),expensesList:x.expenses,paymentRecords:x.receipts.map((r:any)=>({id:r.id,app:x.appointments.find((a:any)=>a.id===r.appointmentId)||{patientName:r.patientName,price:0,remainingAmount:0},amount:r.kind==='refund'?-r.amount:r.amount,paymentMethod:r.paymentMethod,time:new Date(r.createdAt||r.date).toLocaleTimeString('en-GB',{timeZone:'Africa/Cairo',hour:'2-digit',minute:'2-digit'}),notes:r.notes}))});
+      setPrintShiftData({...x,date:shift.date,openedAt:shift.openedAt,closedAt:shift.closedAt,cashierName:shift.cashierName,closedBy:shift.closedBy,startCash:shift.startCash,actual:shift.actualCash,expected:shift.expectedCash,discrepancy:shift.discrepancy,notes:shift.notes,revenuesMap:x.dynamicRevenues,expensesMap:x.dynamicExpenses,activeMethodsList:getPaymentReportMethods(clinic.paymentMethods,x.dynamicRevenues,x.dynamicExpenses),expensesList:x.expenses,paymentRecords:x.receipts.map((r:any)=>({id:r.id,app:x.appointments.find((a:any)=>a.id===r.appointmentId)||{patientName:r.patientName,price:0,remainingAmount:0},amount:r.kind==='refund'?-r.amount:r.amount,paymentMethod:r.paymentMethod,time:new Date(r.createdAt||r.date).toLocaleTimeString('en-GB',{timeZone:'Africa/Cairo',hour:'2-digit',minute:'2-digit'}),notes:r.notes}))});
       return;
     }
     dialogs.alert(isEn?'Legacy archive has no immutable snapshot. Details may reflect later edits.':'هذه وردية قديمة بلا لقطة إقفال ثابتة. تفاصيلها قد تعكس تعديلات لاحقة.',{severity:'warning'});
@@ -1052,7 +1029,7 @@ export default function ClinicFinancials({
     const expMap = shift.dynamicExpenses || {
       'كاش': shift.cashExpenses !== undefined ? shift.cashExpenses : (shift.expensesTotal || 0)
     };
-    const activeMethods = activeMethodsList;
+    const activeMethods = getPaymentReportMethods(clinic.paymentMethods, revMap, expMap);
 
     // Filter appointments for that shift
     const shiftApps = appointments.filter(a => isAppointmentInShift(a, shift));
@@ -1082,7 +1059,7 @@ export default function ClinicFinancials({
             id: pay.id || `pay_${app.id}_${pIdx}`,
             app,
             amount: Number(pay.amount || 0),
-            paymentMethod: pay.paymentMethod || app.paymentMethod || 'كاش',
+            paymentMethod: paymentMethodForReport(pay.paymentMethod || app.paymentMethod,clinic.paymentMethods),
             date: pay.date || app.date,
             time: timeStr,
             notes: pay.notes
@@ -1094,7 +1071,7 @@ export default function ClinicFinancials({
     // Filter expenses for that shift
     const shiftExpList = expenses.filter(e => isExpenseInShift(e, shift));
     const expTotal = shift.expensesTotal !== undefined ? shift.expensesTotal : shiftExpList.reduce((sum, e) => sum + e.amount, 0);
-    const cashExp = shift.cashExpenses !== undefined ? shift.cashExpenses : (expMap['كاش'] || expMap[activeMethods[0]] || 0);
+    const cashExp = shift.cashExpenses !== undefined ? shift.cashExpenses : (expMap['كاش'] || 0);
     const shiftRemaining = shift.remainingRevenue !== undefined
       ? shift.remainingRevenue
       : completedApps.reduce((sum, app) => sum + (app.remainingAmount !== undefined ? app.remainingAmount : 0), 0);
@@ -1315,14 +1292,14 @@ export default function ClinicFinancials({
                   </tr>
                 </thead>
                 <tbody>
-                  {(printShiftData.activeMethodsList || ['كاش', 'فيزا', 'إنستاباي', 'محفظة']).map((method, idx) => {
-                    const rev = printShiftData.revenuesMap ? (printShiftData.revenuesMap[method] || 0) : (
+                  {(printShiftData.activeMethodsList || activeMethodsList).map((method, idx) => {
+                    const rev = printShiftData.revenuesMap ? paymentMethodMapAmount(printShiftData.revenuesMap,method) : (
                       method === 'كاش' ? (printShiftData.cashRevenue || printShiftData.cashAmount || 0) :
                       method === 'فيزا' ? (printShiftData.cardRevenue || printShiftData.cardAmount || 0) :
                       method === 'إنستاباي' ? (printShiftData.instapayRevenue || printShiftData.instapayAmount || 0) :
                       method === 'محفظة' ? (printShiftData.walletRevenue || printShiftData.walletAmount || 0) : 0
                     );
-                    const exp = printShiftData.expensesMap ? (printShiftData.expensesMap[method] || 0) : (
+                    const exp = printShiftData.expensesMap ? paymentMethodMapAmount(printShiftData.expensesMap,method) : (
                       method === 'كاش' ? (printShiftData.cashExpenses || 0) : 0
                     );
                     const net = rev - exp;
@@ -1333,7 +1310,7 @@ export default function ClinicFinancials({
                       method === 'محفظة' ? 'E-Wallet' : method
                     ) : method;
                     return (
-                      <tr key={idx} className={method === 'كاش' ? 'bg-amber-50/40 font-bold' : ''}>
+                      <tr key={idx} data-testid="print-method-row" data-payment-method={method} data-revenue={rev} data-expense={exp} className={method === 'كاش' ? 'bg-amber-50/40 font-bold' : ''}>
                         <td className="border border-slate-300 p-1 text-right font-bold text-slate-800">
                           {displayMethod} {method === 'كاش' ? '💵' : method === 'فيزا' ? '💳' : method === 'إنستاباي' ? '⚡' : '📱'}
                         </td>
@@ -1378,7 +1355,7 @@ export default function ClinicFinancials({
                 </div>
                 <div>
                   <span className="text-slate-500 block">{isEn ? '- Deducted Cash Expenses:' : '- مصاريف الكاش المخصومة:'}</span>
-                  <span className="font-mono font-bold text-rose-600">-{((printShiftData.cashExpenses !== undefined ? printShiftData.cashExpenses : printShiftData.expensesTotal) || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
+                  <span className="font-mono font-bold text-rose-600">-{((printShiftData.cashExpenses !== undefined ? printShiftData.cashExpenses : 0) || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
                 </div>
               </div>
               <div className="border-t border-dashed border-indigo-200 pt-1 flex flex-wrap justify-between items-center text-[10px] font-bold gap-2">
@@ -1427,7 +1404,7 @@ export default function ClinicFinancials({
                       <tr key={exp.id || idx}>
                         <td className="border border-slate-300 p-1 font-bold text-slate-800">{exp.title}</td>
                         <td className="border border-slate-300 p-1 text-center text-slate-600">{exp.category || (isEn ? 'General' : 'عام')}</td>
-                        <td className="border border-slate-300 p-1 text-center font-bold text-slate-700">{exp.paymentMethod || (isEn ? 'Cash' : 'كاش')}</td>
+                        <td className="border border-slate-300 p-1 text-center font-bold text-slate-700">{paymentMethodLabel(exp.paymentMethod,isEn)}</td>
                         <td className="border border-slate-300 p-1 text-left font-mono font-bold text-rose-700">-{exp.amount.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
                       </tr>
                     ))}
@@ -1665,7 +1642,7 @@ export default function ClinicFinancials({
                         </div>
                         <div className="bg-white p-2.5 rounded-xl border border-emerald-100/80 flex flex-col justify-between">
                           <span className="text-[10px] text-slate-500 font-bold">{isEn ? 'Expected Net Cash' : 'صافي النقدية المتوقعة'}</span>
-                          <span className="font-mono font-black text-emerald-800 text-xs mt-1">{(Number(dailyCashAmount) - Number(activeShiftExpensesTotal)).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
+                          <span className="font-mono font-black text-emerald-800 text-xs mt-1">{(Number(dailyCashAmount) - Number(cashExpenses)).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
                         </div>
                       </div>
 
@@ -1859,12 +1836,12 @@ export default function ClinicFinancials({
                       </span>
                     </div>
                     <div className="divide-y divide-slate-100">
-                      {activeMethodsList.map((method, idx) => {
+                      {shiftReportMethods.map((method, idx) => {
                         const isLoyalty = normalizePaymentMethod(method) === 'نقاط الولاء';
                         const rev = dynamicRevenues[method] || 0;
                         const exp = dynamicExpenses[method] || 0;
                         const net = rev - exp;
-                        const maxRev = Math.max(1, ...activeMethodsList.map(m => dynamicRevenues[m] || 0));
+                        const maxRev = Math.max(1, ...shiftReportMethods.map(m => dynamicRevenues[m] || 0));
                         const displayMethodName = isEn ? (
                           method === 'كاش' ? 'Cash' :
                           method === 'فيزا' ? 'Visa / Card' :
@@ -1872,7 +1849,7 @@ export default function ClinicFinancials({
                           method === 'محفظة' ? 'E-Wallet' : method
                         ) : method;
                         return (
-                          <div key={idx} className="flex items-center gap-4 py-3">
+                          <div key={idx} data-testid="shift-method-row" data-payment-method={method} data-revenue={rev} data-expense={exp} className="flex items-center gap-4 py-3">
                             <span className="w-20 shrink-0 text-xs font-bold text-slate-800">
                               {isLoyalty ? (isEn ? 'Loyalty Points' : 'نقاط الولاء') : displayMethodName}
                             </span>
@@ -2347,8 +2324,8 @@ export default function ClinicFinancials({
                           <span className="font-bold font-mono text-slate-700">{(selectedHistoryShift.cashRevenue || 0).toLocaleString()} ج.م</span>
                         </div>
                         <div className="flex justify-between text-rose-600">
-                          <span>المصاريف المخصومة من الوردية (Expenses):</span>
-                          <span className="font-bold font-mono">-{((selectedHistoryShift.expensesTotal !== undefined ? selectedHistoryShift.expensesTotal : selectedHistoryShift.expensesAmount) || 0).toLocaleString()} ج.م</span>
+                          <span>{isEn ? 'Cash expenses only:' : 'مصاريف الكاش فقط:'}</span>
+                          <span className="font-bold font-mono">-{((selectedHistoryShift.cashExpenses !== undefined ? selectedHistoryShift.cashExpenses : 0) || 0).toLocaleString()} ج.م</span>
                         </div>
                         <div className="flex justify-between border-t border-indigo-100/50 pt-2 font-bold">
                           <span className="text-indigo-900">الكاش المتوقع بالدرج (Expected):</span>
@@ -2380,21 +2357,14 @@ export default function ClinicFinancials({
                     {/* Electronic Income & Installments Breakdown */}
                     <div className="bg-slate-50 border border-slate-150 p-4 rounded-2xl space-y-2.5 text-right">
                       <h4 className="text-xs font-bold text-slate-800 border-b border-slate-200/60 pb-1.5 flex items-center gap-1">
-                        <span>💳</span> الإيرادات إلكترونياً والأقساط المتبقية
+                        <span>💳</span> {isEn ? 'Payment channels and remaining installments' : 'طرق الدفع والأقساط المتبقية'}
                       </h4>
                       <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">مدفوعات فيزا (Visa):</span>
-                          <span className="font-bold font-mono text-slate-800">{(selectedHistoryShift.cardRevenue || 0).toLocaleString()} ج.م</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">إنستاباي (Instapay):</span>
-                          <span className="font-bold font-mono text-slate-800">{(selectedHistoryShift.instapayRevenue || 0).toLocaleString()} ج.م</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">محافظ ذكية (Wallets):</span>
-                          <span className="font-bold font-mono text-slate-800">{(selectedHistoryShift.walletRevenue || 0).toLocaleString()} ج.م</span>
-                        </div>
+                        {getPaymentReportMethods(clinic.paymentMethods, selectedHistoryShift.snapshot?.dynamicRevenues || selectedHistoryShift.dynamicRevenues || {}, selectedHistoryShift.snapshot?.dynamicExpenses || selectedHistoryShift.dynamicExpenses || {}).map(method => {
+                          const revenue = selectedHistoryShift.snapshot?.dynamicRevenues || selectedHistoryShift.dynamicRevenues ? paymentMethodMapAmount(selectedHistoryShift.snapshot?.dynamicRevenues || selectedHistoryShift.dynamicRevenues,method) : ({'كاش':selectedHistoryShift.cashRevenue,'فيزا':selectedHistoryShift.cardRevenue,'إنستاباي':selectedHistoryShift.instapayRevenue,'محفظة':selectedHistoryShift.walletRevenue}[method] || 0);
+                          const expense = paymentMethodMapAmount(selectedHistoryShift.snapshot?.dynamicExpenses || selectedHistoryShift.dynamicExpenses,method);
+                          return <div key={method} data-testid="history-method-row" data-payment-method={method} className="flex justify-between gap-2"><span className="text-slate-500">{paymentMethodLabel(method,isEn)}</span><span className="font-bold font-mono text-slate-800">{revenue.toLocaleString()} / -{expense.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span></div>;
+                        })}
                         <div className="flex justify-between bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200/60 font-bold text-amber-900">
                           <span>الأقساط والمتبقي بالذمة لهذا اليوم:</span>
                           <span className="font-mono text-amber-700">
@@ -2769,7 +2739,7 @@ export default function ClinicFinancials({
                         onClick={() => {
                           setExpenseType('shift');
                           if (!expensePaymentMethod) {
-                            setExpensePaymentMethod(expenseMethodsList[0] || 'كاش');
+                            setExpensePaymentMethod(expenseMethodsList[0] || '');
                           }
                         }}
                         className={`p-3.5 rounded-2xl border transition-all duration-200 cursor-pointer ${
@@ -2778,11 +2748,11 @@ export default function ClinicFinancials({
                             : 'bg-white border-slate-200 hover:bg-slate-50'
                         }`}
                       >
-                        <span className="text-xs font-black text-slate-800 block">{isEn ? 'From Active Shift Float' : 'من عهدة الوردية المفتوحة'}</span>
+                        <span className="text-xs font-black text-slate-800 block">{isEn ? 'From Active Shift' : 'من حسابات الوردية المفتوحة'}</span>
                         <span className="text-[11px] text-slate-400 block mt-1">
                           {activeShift
-                            ? (isEn ? `Deducted from shift cash: ${activeShift.cashierName}` : `يُخصم من كاش وردية: ${activeShift.cashierName}`)
-                            : (isEn ? 'Deducted from the active shift drawer' : 'يُخصم من عهدة الوردية الحالية')}
+                            ? (isEn ? `Recorded against the selected channel: ${activeShift.cashierName}` : `يُخصم من طريقة الدفع المحددة بوردية: ${activeShift.cashierName}`)
+                            : (isEn ? 'Only cash expenses change the cash drawer' : 'مصروفات الكاش فقط تؤثر على الدرج')}
                         </span>
                       </div>
 
@@ -2805,16 +2775,18 @@ export default function ClinicFinancials({
                           💳 {isEn ? 'Payment Method for Shift Deduction:' : 'طريقة الدفع للخصم من الوردية:'}
                         </label>
                         <select
-                          value={expensePaymentMethod || expenseMethodsList[0] || 'كاش'}
+                          data-testid="expense-payment-method"
+                          value={expensePaymentMethod || expenseMethodsList[0] || ''}
                           onChange={(e) => setExpensePaymentMethod(e.target.value)}
                           className="w-full px-2.5 py-1.5 border border-emerald-200 rounded-lg text-xs font-bold text-emerald-900 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         >
+                          {expenseMethodsList.length === 0 && <option value="">{isEn ? 'Add a method in Settings' : 'أضف طريقة دفع من الإعدادات'}</option>}
                           {expenseMethodsList.map((method, idx) => (
-                            <option key={idx} value={method}>{method}</option>
+                            <option key={idx} value={method}>{paymentMethodLabel(method,isEn)}</option>
                           ))}
                         </select>
                         <p className="text-[10px] text-emerald-700 font-medium leading-relaxed">
-                          💡 {isEn ? 'This expense is deducted specifically from the chosen payment method and does not affect the cash drawer if paid electronically.' : `يتم ربط هذا المصروف وخصمه حصرياً من طريقة الدفع المحددة (${expensePaymentMethod || expenseMethodsList[0] || 'كاش'})، وفي حال الصرف إلكترونياً لا يؤثر على الخزنة النقدية الكاش بالدرج.`}
+                          💡 {isEn ? 'This expense is deducted specifically from the chosen payment method and does not affect the cash drawer if paid electronically.' : `يتم ربط هذا المصروف وخصمه حصرياً من طريقة الدفع المحددة (${expensePaymentMethod || expenseMethodsList[0] || ''})، وفي حال الصرف إلكترونياً لا يؤثر على الخزنة النقدية الكاش بالدرج.`}
                         </p>
                       </div>
                     )}
@@ -3259,7 +3231,7 @@ export default function ClinicFinancials({
 
               <div className="space-y-5">
                 {(() => {
-                  const channelRows = activeMethodsList.map((method) => {
+                  const channelRows = periodReportMethods.map((method) => {
                     const revAmt = revenueMethodBreakdown[method] || 0;
                     const expAmt = expenseMethodBreakdown[method] || 0;
                     const amt = revenueReportType === 'gross' ? revAmt : revAmt - expAmt;
@@ -3275,7 +3247,7 @@ export default function ClinicFinancials({
                       method === 'محفظة' ? 'E-Wallet' : method
                     ) : method;
                     return (
-                      <div key={idx} className="flex items-center gap-4">
+                      <div key={idx} data-testid="period-method-row" data-payment-method={method} data-revenue={revAmt} data-expense={expAmt} className="flex items-center gap-4">
                         <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5 shrink-0 min-w-[72px]">
                           {displayMethod}
                           {method === 'فيزا' ? '💳' : method === 'إنستاباي' ? '⚡' : method === 'محفظة' ? '📱' : method === 'كاش' ? '💵' : ''}

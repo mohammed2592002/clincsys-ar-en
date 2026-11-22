@@ -1,3 +1,5 @@
+import { financeCommand } from '../dbClient';
+import { getClinicPaymentMethods, paymentMethodLabel, paymentMethodForReport } from '../utils/paymentMethods';
 import { formatProcedureName } from '../utils/procedureLabels';
 import { useOverdueLabOrders, overdueDays } from '../hooks/useOverdueLabOrders';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -1361,60 +1363,33 @@ export default function InteractiveCalendar({
   }, [filteredDayAppointments, clinicBookingMode]);
 
   // Dynamic Payment Methods list and normalization helper
-  const activeMethodsList = useMemo(() => {
-    const defaultMethods = ['كاش', 'فيزا', 'إنستاباي', 'محفظة'];
-    const custom = clinic.paymentMethods && clinic.paymentMethods.length > 0
-      ? clinic.paymentMethods
-      : [];
-    const combined = [...defaultMethods];
-    custom.forEach(cm => {
-      const normCm = normalizePaymentMethod(cm);
-      if (!combined.some(m => normalizePaymentMethod(m) === normCm)) {
-        combined.push(cm);
-      }
-    });
-    return combined.filter(m => normalizePaymentMethod(m) !== 'نقاط الولاء');
-  }, [clinic.paymentMethods]);
+  const activeMethodsList = useMemo(() => getClinicPaymentMethods(clinic.paymentMethods), [clinic.paymentMethods]);
 
+  const [dailyChannelSummary, setDailyChannelSummary] = useState<Record<string, number> | null>(null);
+  const [channelSummaryError, setChannelSummaryError] = useState('');
+  const [channelSummaryRefresh,setChannelSummaryRefresh] = useState(0);
+  const [channelSummaryFromCache,setChannelSummaryFromCache] = useState(false);
+  useEffect(() => {
+    let current = true;
+    const refresh = async () => {
+      try {
+        const result = await financeCommand(clinic.id, {action:'calendar_summary',date:normalizeDateStr(selectedDate)});
+        if (current) {setDailyChannelSummary(result.methods || {});setChannelSummaryFromCache(!!result.fromCache);setChannelSummaryError('');}
+      } catch (e: any) {if(current){setDailyChannelSummary(null);setChannelSummaryFromCache(false);setChannelSummaryError(e.message || String(e));}}
+    };
+    setDailyChannelSummary(null); refresh();
+    const sync = (event: Event) => {const table=(event as CustomEvent).detail?.table;if(!table || ['appointments','clinics','shifts'].includes(table))refresh();};
+    window.addEventListener('clinic-sync',sync);
+    return () => {current=false;window.removeEventListener('clinic-sync',sync);};
+  },[clinic.id,selectedDate,channelSummaryRefresh]);
   const dailyPaymentMethods = useMemo(() => {
-    const revenueMap: Record<string, number> = {};
-    activeMethodsList.forEach(m => {
-      revenueMap[m] = 0;
-    });
-
-    const normSelDate = normalizeDateStr(selectedDate);
-
-    appointments.forEach(app => {
-      const paymentsList = getAppointmentPayments(app);
-
-      if (paymentsList && paymentsList.length > 0) {
-        paymentsList.forEach(pay => {
-          const payDate = getPaymentCollectionDate(pay, app.date);
-          if (payDate === normSelDate) {
-            const normApp = normalizePaymentMethod(pay.paymentMethod || 'كاش');
-            let matched = activeMethodsList.find(m => normalizePaymentMethod(m) === normApp);
-            if (!matched && normApp !== 'نقاط الولاء') {
-              matched = activeMethodsList.find(m => normalizePaymentMethod(m) === 'كاش') || activeMethodsList[0] || 'كاش';
-            }
-            if (matched) {
-              revenueMap[matched] = (revenueMap[matched] || 0) + Number(pay.amount || 0);
-            }
-          }
-        });
-      } else if (Number(app.paidAmount || 0) > 0 && normalizeDateStr(app.date) === normSelDate) {
-        const normApp = normalizePaymentMethod(app.paymentMethod || 'كاش');
-        let matched = activeMethodsList.find(m => normalizePaymentMethod(m) === normApp);
-        if (!matched && normApp !== 'نقاط الولاء') {
-          matched = activeMethodsList.find(m => normalizePaymentMethod(m) === 'كاش') || activeMethodsList[0] || 'كاش';
-        }
-        if (matched) {
-          revenueMap[matched] = (revenueMap[matched] || 0) + Number(app.paidAmount || 0);
-        }
-      }
-    });
-
-    return revenueMap;
-  }, [activeMethodsList, appointments, selectedDate]);
+    const totals: Record<string, number> = Object.fromEntries(activeMethodsList.map(name => [name,0]));
+    for (const [name,amount] of Object.entries(dailyChannelSummary || {})) {
+      const channel=paymentMethodForReport(name,clinic.paymentMethods);
+      if (channel !== 'نقاط الولاء' && (Number(amount) !== 0 || activeMethodsList.includes(channel))) totals[channel]=(totals[channel]||0)+Number(amount);
+    }
+    return totals;
+  },[activeMethodsList,dailyChannelSummary]);
 
   // Daily revenue metrics
   const dailyTotalPaid = useMemo(() => {
@@ -1446,6 +1421,12 @@ export default function InteractiveCalendar({
 
   return (
     <div className="space-y-6">
+      <div data-testid="calendar-payment-methods" className="flex flex-wrap gap-2">
+        {Object.entries(dailyPaymentMethods).map(([name,amount]) => <div key={name} data-payment-method={name} data-amount={amount} className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700">
+          {paymentMethodLabel(name,isEn)}: <span className="font-mono">{dailyChannelSummary === null ? '...' : amount.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
+        </div>)}
+      </div>
+      {channelSummaryFromCache && <p className="text-xs text-amber-700">{isEn ? 'Saved offline summary. Refresh when connected for current figures.' : 'ملخص محفوظ دون اتصال. حدّث بعد الاتصال لعرض الأرقام الحالية.'}</p>}
       {/* Hero Header */}
       <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-lg border border-slate-800">
         <div className="flex items-center gap-3">
@@ -1470,7 +1451,7 @@ export default function InteractiveCalendar({
           </span>
           <span className="text-xs bg-white/10 border border-white/10 text-white px-3 py-2 rounded-xl font-bold flex items-center gap-1.5">
             <span className="text-slate-300 font-medium">{isEn ? "Day's revenue:" : 'إيراد اليوم:'}</span>
-            <span className="font-black text-emerald-300 font-mono">{dailyTotalPaid.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
+            <span className="font-black text-emerald-300 font-mono">{dailyChannelSummary === null ? '...' : dailyTotalPaid.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>{channelSummaryError && <span role="alert" className="text-xs text-rose-600">{isEn ? 'Financial summary unavailable. Refresh to retry.' : 'الملخص المالي غير متاح. أعد التحديث للمحاولة.'}</span>}
           </span>
           <button
             onClick={() => {
@@ -1486,7 +1467,7 @@ export default function InteractiveCalendar({
             {isAdding ? t('calendar.cancelBooking') : t('calendar.newAppointment')}
           </button>
           <button
-            onClick={() => fetchAppointments(true)}
+            onClick={() => {setChannelSummaryRefresh(value=>value+1);fetchAppointments(true);}}
             className="p-2.5 text-slate-200 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl transition cursor-pointer"
             title={t('common.refresh')}
           >
@@ -2762,7 +2743,7 @@ export default function InteractiveCalendar({
               </div>
               <button
                 type="button"
-                onClick={() => fetchAppointments(true)}
+                onClick={() => {setChannelSummaryRefresh(value=>value+1);fetchAppointments(true);}}
                 className="text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/70 px-2.5 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1"
               >
                 <RefreshCw className="h-3 w-3" />

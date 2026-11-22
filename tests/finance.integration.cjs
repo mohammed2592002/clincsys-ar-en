@@ -125,7 +125,7 @@ async function db(action, table, id, data, expected = 200) {
   app = await db("getDoc", "appointments", "a1");
   assert.equal(app.paidAmount, 350);
   assert.equal(app.payments.length, 3);
-  await fin({ action: "collect", appointmentId: "a1", amount: 151 }, 409);
+  await fin({ action: "collect", appointmentId: "a1", paymentMethod:"cash", amount: 151 }, 409);
   await fin(
     {
       action: "collect",
@@ -208,6 +208,7 @@ async function db(action, table, id, data, expected = 200) {
   const points = await db("getDoc", "patients", "p1");
   assert.equal(points.loyaltyPoints, 40);
   await fin({ action: "points", appointmentId: "a1", amount: 20 });
+  await db("updateDoc","appointments","a1",{paymentMethod:"نقاط الولاء",notes:"metadata after points payment"});
   await fin({
     action: "discount",
     appointmentId: "a1",
@@ -243,6 +244,7 @@ async function db(action, table, id, data, expected = 200) {
       patientId: "p1",
       patientName: "مريض اختبار محلي",
       cost: 100,
+      paymentMethod: "cash",
       paidAmount: 30,
       status: "sent",
     },

@@ -1,3 +1,4 @@
+import { getClinicPaymentMethods, paymentMethodLabel } from '../utils/paymentMethods';
 import {resolveMediaPreview} from '../utils/mediaPreview';
 import { financeCommand } from '../dbClient';
 import React, { useState, useEffect, useRef } from 'react';
@@ -426,27 +427,14 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
   const [selectedToothNum, setSelectedToothNum] = useState<number | ''>('');
   const [resultingToothCondition, setResultingToothCondition] = useState<'no_change' | 'auto' | DentalTooth['condition']>('auto');
   const [financialNote, setFinancialNote] = useState<string>('');
-  const paymentMethodsList = React.useMemo(() => {
-    const defaultMethods = ['كاش', 'فيزا', 'إنستاباي', 'محفظة'];
-    const custom = clinic.paymentMethods && clinic.paymentMethods.length > 0 ? clinic.paymentMethods : [];
-    const combined = [...defaultMethods];
-    custom.forEach(cm => {
-      const normCm = normalizePaymentMethod(cm);
-      if (!combined.some(m => normalizePaymentMethod(m) === normCm)) {
-        combined.push(cm);
-      }
-    });
-    return combined.filter(m => normalizePaymentMethod(m) !== 'نقاط الولاء');
-  }, [clinic.paymentMethods]);
+  const paymentMethodsList = React.useMemo(() => getClinicPaymentMethods(clinic.paymentMethods), [clinic.paymentMethods]);
 
   const [paymentMethod, setPaymentMethod] = useState<string>('');
   const [receptionPaidAmount, setReceptionPaidAmount] = useState<number>(0);
   const [receptionPayingAppId, setReceptionPayingAppId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (paymentMethodsList.length > 0 && !paymentMethod) {
-      setPaymentMethod(paymentMethodsList[0]);
-    }
+    if (!paymentMethodsList.includes(paymentMethod)) setPaymentMethod(paymentMethodsList[0] || '');
   }, [paymentMethodsList]);
 
   useEffect(() => {
@@ -1105,7 +1093,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
   const handleConfirmReceptionPayment = async (app: Appointment) => {
     setLoadingPatientAppointments(true);
     try {
-      await financeCommand(clinic.id,{action:'collect',appointmentId:app.id,amount:Number(receptionPaidAmount),paymentMethod:paymentMethod||paymentMethodsList[0]||'كاش',reason:paymentNotes});
+      await financeCommand(clinic.id,{action:'collect',appointmentId:app.id,amount:Number(receptionPaidAmount),paymentMethod:paymentMethod||paymentMethodsList[0]||'',reason:paymentNotes});
       setRecordingPaymentAppId(null);setReceptionPayingAppId(null);setPaymentAmount(0);setReceptionPaidAmount(0);setPaymentNotes('');
       await fetchPatientAppointments(selectedPatientId);dialogs.alert('تم تأكيد الدفعة على السيرفر',{severity:'success'});
     }catch(e:any){dialogs.alert(e.message,{severity:'error'});}finally{setLoadingPatientAppointments(false);}
@@ -1171,19 +1159,12 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
     return null;
   };
 
-  const getPaymentMethodLabel = (method?: string) => {
-    const norm = normalizePaymentMethod(method);
-    if (norm === 'كاش') return 'كاش';
-    if (norm === 'فيزا') return 'فيزا';
-    if (norm === 'إنستاباي') return 'إنستاباي';
-    if (norm === 'محفظة') return 'محفظة إلكترونية';
-    return method || 'كاش';
-  };
+  const getPaymentMethodLabel = (method?: string) => paymentMethodLabel(method,isEn);
 
   const handleRecordPatientPayment = async (app: Appointment) => {
     setLoadingPatientAppointments(true);
     try {
-      await financeCommand(clinic.id,{action:'collect',appointmentId:app.id,amount:Number(paymentAmount),paymentMethod:paymentMethod||paymentMethodsList[0]||'كاش',reason:paymentNotes});
+      await financeCommand(clinic.id,{action:'collect',appointmentId:app.id,amount:Number(paymentAmount),paymentMethod:paymentMethod||paymentMethodsList[0]||'',reason:paymentNotes});
       setRecordingPaymentAppId(null);setReceptionPayingAppId(null);setPaymentAmount(0);setReceptionPaidAmount(0);setPaymentNotes('');
       await fetchPatientAppointments(selectedPatientId);dialogs.alert('تم تأكيد الدفعة على السيرفر',{severity:'success'});
     }catch(e:any){dialogs.alert(e.message,{severity:'error'});}finally{setLoadingPatientAppointments(false);}
