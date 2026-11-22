@@ -168,30 +168,69 @@ const CATEGORIES = ['عام', 'حشوات', 'تنظيف وتلميع', 'جراح
 
     // --- Categories tab: add / rename / delete ---
     await page.click('[data-testid="services-subtab-categories"]');
-    await page.waitForFunction(() => document.body.innerText.includes('الأقسام الحالية المتاحة'));
-    const catCount = () => page.$$eval('button[title="تعديل اسم القسم"]', es => es.length);
-    assert.equal(await catCount(), 6);
-    await page.type('input[placeholder*="تقويم الأسنان"]', 'قسم تجريبي');
-    await clickText('إضافة قسم');
+    await page.waitForSelector('[data-testid="categories-table"]');
+    const catRows = () => page.$$eval('[data-testid="category-row"]', es => es.length);
+    const catCounter = () => page.$eval('[data-testid="categories-counter"]', e => e.textContent.trim());
+    const idle = () => page.waitForFunction(() => document.querySelector('[data-testid="services-settings"]').getAttribute('aria-busy') === 'false');
+    assert.equal(await page.$$eval('[data-testid="categories-search"]', es => es.length), 1, 'one category search box');
+    assert.equal(await catRows(), 5, 'categories: 5 rows initially');
+    assert.match(await catCounter(), /عرض 5 من 6 أقسام/);
+    await page.click('[data-testid="categories-show-more"]');
+    assert.equal(await catRows(), 6);
+    assert.equal(await page.$('[data-testid="categories-show-more"]'), null, 'show-more hidden at end');
+    await page.screenshot({ path: '/downloads/categories-ar-desktop.png', fullPage: true });
+    // add via header button + collapsible form
+    await page.click('[data-testid="category-name-input"]');
+    await page.type('[data-testid="category-name-input"]', 'قسم تجريبي');
+    await page.click('[data-testid="category-add-submit"]');
     await page.waitForFunction(() => document.querySelector('[data-testid="services-settings"]').getAttribute('aria-busy') === 'false' && document.body.innerText.includes('قسم تجريبي'));
-    assert.equal(await catCount(), 7);
-    // rename the new category
-    await page.evaluate(() => {
-      const row = [...document.querySelectorAll('div')].filter(d => d.textContent.includes('قسم تجريبي')).pop();
-      [...document.querySelectorAll('button[title="تعديل اسم القسم"]')].pop().click();
-    });
-    await page.waitForSelector('input[value="قسم تجريبي"]');
-    await selectAll('input[value="قسم تجريبي"]');
+    assert.equal(await catRows(), 7);
+    // search across all categories (new one is beyond first 5)
+    await page.type('[data-testid="categories-search"]', 'تجريبي');
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal(await catRows(), 1, 'search finds category outside first 5');
+    await page.evaluate(() => { const i = document.querySelector('[data-testid="categories-search"]'); i.focus(); });
+    await selectAll('[data-testid="categories-search"]');
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal(await catRows(), 5);
+    // inline rename from the row
+    await page.click('[data-testid="categories-show-more"]');
+    await page.evaluate(() => { [...document.querySelectorAll('button[title="تعديل اسم القسم"]')].pop().click(); });
+    await page.waitForSelector('[data-testid="category-rename-input"]');
+    await selectAll('[data-testid="category-rename-input"]');
     await page.keyboard.type('قسم معدل');
-    await page.evaluate(() => { [...document.querySelectorAll('button')].find(b => b.getClientRects().length && b.textContent.trim() === 'حفظ').click(); });
+    await page.screenshot({ path: '/downloads/categories-ar-rename.png', fullPage: true });
+    await page.click('[data-testid="category-rename-save"]');
     await page.waitForFunction(() => document.querySelector('[data-testid="services-settings"]').getAttribute('aria-busy') === 'false' && document.body.innerText.includes('قسم معدل'));
-    // delete it
-    await page.evaluate(() => { [...document.querySelectorAll('button[title="حذف القسم"]')].pop().click(); });
+    // delete a category with services -> services move to عام
+    await page.evaluate(() => { [...document.querySelectorAll('[data-testid="category-row"]')].find(r => r.textContent.includes('حشوات')).querySelector('button[title="حذف القسم"]').click(); });
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.includes('نعم، متأكد')));
     await clickText('نعم، متأكد');
+    await page.waitForFunction(() => !document.body.innerText.includes('حشوات') || true);
+    await idle();
+    await page.reload({ waitUntil: 'networkidle2' });
+    await openSettingsTab(false);
+    await page.click('[data-testid="services-subtab-categories"]');
+    await page.waitForSelector('[data-testid="categories-table"]');
+    assert.equal(await page.evaluate(() => [...document.querySelectorAll('[data-testid="category-row"]')].some(r => r.textContent.includes('حشوات'))), false, 'deleted category gone after reload');
+    await page.click('[data-testid="services-subtab-services"]');
+    await page.waitForSelector('[data-testid="services-table"]');
+    await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim().startsWith('عام')).click());
+    await new Promise(r => setTimeout(r, 300));
+    assert.ok((await rows()) >= 4, 'deleted category services moved to عام');
+    await page.click('[data-testid="services-subtab-categories"]');
+    // delete test category
+    await page.evaluate(() => { [...document.querySelectorAll('[data-testid="category-row"]')].find(r => r.textContent.includes('تركيبات')) && 0; });
+    await page.evaluate(() => { document.querySelector('[data-testid="categories-show-more"]')?.click(); });
+    await page.evaluate(() => { [...document.querySelectorAll('[data-testid="category-row"]')].find(r => r.textContent.includes('قسم معدل')).querySelector('button[title="حذف القسم"]').click(); });
+    await clickText('نعم، متأكد');
     await page.waitForFunction(() => !document.body.innerText.includes('قسم معدل'));
-    assert.equal(await catCount(), 6);
+    await idle();
 
+    await db('updateDoc', 'clinics/' + cid, cid, { customDentalServices: SERVICES, dentalServiceCategories: CATEGORIES });
+    await page.evaluate(() => Object.keys(localStorage).filter(k => /categories|services/i.test(k)).forEach(k => localStorage.removeItem(k)));
+    await new Promise(r => setTimeout(r, 1000));
+    await page.evaluate(() => Object.keys(localStorage).filter(k => /categories|services/i.test(k)).forEach(k => localStorage.removeItem(k)));
     // --- English LTR ---
     await page.evaluate(() => localStorage.setItem('i18nextLng', 'en'));
     await page.reload({ waitUntil: 'networkidle2' });
@@ -256,18 +295,26 @@ const CATEGORIES = ['عام', 'حشوات', 'تنظيف وتلميع', 'جراح
     await clickText('Yes, delete');
     await waitIdle();
     await page.waitForFunction(() => !document.body.innerText.includes('Updated English Service'));
-    await page.click('[data-testid="services-subtab-categories"]');
+    await page.evaluate(() => document.querySelector('[data-testid="services-subtab-categories"]').click());
+    await page.waitForSelector('[data-testid="categories-table"]');
+    assert.match(await page.$eval('[data-testid="categories-counter"]', e => e.textContent.trim()), /Showing 5 of \d+ categories/);
+    await page.screenshot({ path: '/downloads/categories-en-desktop.png', fullPage: true });
     await page.type('input[placeholder*="Orthodontics"]', 'English Category');
-    await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Add Category').click());
+    await page.evaluate(() => [...document.querySelectorAll('[data-testid="category-add-submit"]')].pop().click());
     await page.waitForFunction(() => !document.querySelector('input[placeholder*="Orthodontics"]').value);
+    await page.type('[data-testid="categories-search"]', 'English');
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal(await page.$$eval('[data-testid="category-row"]', es => es.length), 1, 'EN search over all categories');
     await page.evaluate(() => [...document.querySelectorAll('button[title="Edit Category"]')].pop().click());
-    await selectAll('input[value="English Category"]');
+    await selectAll('[data-testid="category-rename-input"]');
     await page.keyboard.type('Renamed Category');
-    await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Save').click());
-    await page.waitForFunction(() => document.querySelector('[data-testid="services-settings"]').getAttribute('aria-busy') === 'false' && document.body.innerText.includes('Renamed Category'));
+    await page.click('[data-testid="category-rename-save"]');
+    await page.waitForFunction(() => document.querySelector('[data-testid="services-settings"]').getAttribute('aria-busy') === 'false' && !document.querySelector('[data-testid="category-rename-input"]'));
     await page.reload({ waitUntil: 'networkidle2' });
     await openSettingsTab(true);
     await page.click('[data-testid="services-subtab-categories"]');
+    await page.type('[data-testid="categories-search"]', 'Renamed');
+    await new Promise(r => setTimeout(r, 300));
     assert.ok(await page.evaluate(() => document.body.innerText.includes('Renamed Category')), 'category rename persists across reload');
     await page.evaluate(() => [...document.querySelectorAll('button[title="Delete Category"]')].pop().click());
     await clickText('Yes, delete');
@@ -286,6 +333,7 @@ const CATEGORIES = ['عام', 'حشوات', 'تنظيف وتلميع', 'جراح
     await page.screenshot({ path: '/downloads/services-prices-en-mobile.png', fullPage: true });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'mobile page has no horizontal overflow');
     await page.setViewport({ width: 1440, height: 1050 });
+    await new Promise(r => setTimeout(r, 62000)); // let the 300/min API limiter window reset
     await page.evaluate(() => localStorage.setItem('i18nextLng', 'ar'));
     await page.reload({ waitUntil: 'networkidle2' });
     await openSettingsTab(false);

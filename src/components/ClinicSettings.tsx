@@ -53,6 +53,7 @@ import {
   FileArchive,
   Sparkles, 
   Info,
+  Folder,
   FileSpreadsheet,
   Edit,
   Ticket,
@@ -552,6 +553,13 @@ export default function ClinicSettings({
   useEffect(() => {
     setVisibleServicesCount(5);
   }, [serviceSearchTerm, selectedCatFilter]);
+
+  const [categoryFormOpen, setCategoryFormOpen] = useState(true);
+  const [catSearchTerm, setCatSearchTerm] = useState('');
+  const [visibleCatsCount, setVisibleCatsCount] = useState(5);
+  useEffect(() => {
+    setVisibleCatsCount(5);
+  }, [catSearchTerm]);
 
   const [serviceSaveBusy, setServiceSaveBusy] = useState(false);
   const [serviceSavePending, setServiceSavePending] = useState(false);
@@ -2667,6 +2675,10 @@ export default function ClinicSettings({
                 <button
                   type="button"
                   onClick={() => {
+                    if (servicesActiveTab === 'categories') {
+                      setCategoryFormOpen(true);
+                      return;
+                    }
                     setEditingSrvId(null);
                     setSrvName('');
                     setSrvPrice(500);
@@ -2677,10 +2689,10 @@ export default function ClinicSettings({
                   }}
                   className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl transition shadow-xs flex items-center gap-1 cursor-pointer whitespace-nowrap"
                   disabled={serviceSaveBusy}
-                  data-testid="add-service-header-btn"
+                  data-testid={servicesActiveTab === 'categories' ? 'add-category-header-btn' : 'add-service-header-btn'}
                 >
                   <Plus className="h-3.5 w-3.5 stroke-[3]" />
-                  <span>{isEn ? 'Add Service' : 'إضافة خدمة'}</span>
+                  <span>{servicesActiveTab === 'categories' ? (isEn ? 'Add Category' : 'إضافة قسم') : (isEn ? 'Add Service' : 'إضافة خدمة')}</span>
                 </button>
               </div>
             </div>
@@ -3002,113 +3014,212 @@ export default function ClinicSettings({
 
             {/* CATEGORIES VIEW */}
             {servicesActiveTab === 'categories' && (
-              <div className="space-y-6">
-                
-                {/* Form to Add Category */}
-                <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs space-y-4">
-                  <h3 className="text-xs sm:text-sm font-black text-slate-800 flex items-center gap-1.5 border-b border-slate-100 pb-3">
-                    <Plus className="h-4 w-4 text-emerald-600" />
-                    {isEn ? 'Add New Category' : 'إضافة قسم أو تصنيف خدمات جديد'}
-                  </h3>
+              <div className="space-y-4" data-testid="categories-view">
 
-                  <form onSubmit={handleAddCategoryInSettings} className="flex gap-2 items-end">
-                    <div className="flex-1">
-                      <label className="block text-[11px] font-extrabold text-slate-700 mb-1">{isEn ? 'New Category Name' : 'اسم القسم الجديد'}</label>
-                      <input
-                        type="text"
-                        required
-                        value={newCatNameInput}
-                        onChange={(e) => setNewCatNameInput(e.target.value)}
-                        placeholder={isEn ? 'e.g. Orthodontics, Pediatric, Oral Surgery...' : 'مثال: تقويم الأسنان، طب أسنان الأطفال، جراحة الفك...'}
-                        className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50 focus:bg-white"
-                      />
+                {/* Collapsible Form to Add Category */}
+                {categoryFormOpen && (
+                  <div data-testid="category-form-panel" className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3 animate-fade-in">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-xs sm:text-sm font-black text-slate-800 flex items-center gap-1.5">
+                        <Plus className="h-4 w-4 text-emerald-600" />
+                        {isEn ? 'Add New Category' : 'إضافة قسم جديد'}
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => { setCategoryFormOpen(false); setNewCatNameInput(''); }}
+                        className="text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center gap-0.5 cursor-pointer"
+                      >
+                        {isEn ? 'Hide' : 'إخفاء'}
+                        <ChevronDown className="h-3.5 w-3.5 rotate-180" />
+                      </button>
                     </div>
-                    <button
-                      type="submit"
-                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition shadow-xs flex items-center gap-1 cursor-pointer h-[38px]"
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span>{isEn ? 'Add Category' : 'إضافة قسم'}</span>
-                    </button>
-                  </form>
-                </div>
-
-                {/* Categories List */}
-                <div className="bg-white rounded-3xl border border-slate-200/90 shadow-2xs overflow-hidden">
-                  <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-800">{isEn ? `Available Categories (${settingsCategoriesList.length}):` : `الأقسام الحالية المتاحة لتبويب الخدمات (${settingsCategoriesList.length}):`}</span>
+                    <form onSubmit={handleAddCategoryInSettings} className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                      <div className="flex-1">
+                        <label className="block text-[11px] font-extrabold text-slate-700 mb-1">{isEn ? 'New Category Name' : 'اسم القسم الجديد'} <span className="text-rose-500">*</span></label>
+                        <input
+                          type="text"
+                          required
+                          value={newCatNameInput}
+                          onChange={(e) => setNewCatNameInput(e.target.value)}
+                          placeholder={isEn ? 'e.g. Orthodontics, Pediatric, Oral Surgery...' : 'مثال: تقويم الأسنان، طب أسنان الأطفال...'}
+                          className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50 focus:bg-white"
+                          data-testid="category-name-input"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={serviceSaveBusy}
+                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition shadow-xs flex items-center justify-center gap-1 cursor-pointer h-[38px] whitespace-nowrap"
+                        data-testid="category-add-submit"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>{isEn ? 'Add Category' : 'إضافة قسم'}</span>
+                      </button>
+                    </form>
                   </div>
+                )}
 
-                  <div className="divide-y divide-slate-100">
-                    {settingsCategoriesList.map((cat, idx) => {
-                      const count = settingsServicesList.filter(s => (s.category || 'عام') === cat).length;
-                      return (
-                        <div key={cat} className="p-4 flex items-center justify-between gap-3 text-xs">
-                          {editingCatIdx === idx ? (
-                            <div className="flex items-center gap-2 flex-1">
-                              <input
-                                type="text"
-                                value={editCatValInput}
-                                onChange={(e) => setEditCatValInput(e.target.value)}
-                                className="flex-1 px-3 py-1.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 bg-white"
-                              />
-                              <button
-                                type="button"
-                                disabled={serviceSaveBusy}
-                                onClick={() => handleUpdateCategoryInSettings(cat, editCatValInput)}
-                                className="px-3 py-1.5 bg-emerald-600 text-white font-black rounded-xl text-xs shadow-xs"
-                              >
-                                {isEn ? 'Save' : 'حفظ'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setEditingCatIdx(null)}
-                                className="px-3 py-1.5 bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
-                              >
-                                {isEn ? 'Cancel' : 'إلغاء'}
-                              </button>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="flex items-center gap-2">
-                                <span className="font-black text-slate-800">📁 {cat}</span>
-                                <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full font-bold">
-                                  {count} {isEn ? 'services' : 'خدمة'}
-                                </span>
-                              </div>
+                {/* Categories Table */}
+                <div data-testid="categories-table" className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+                  {(() => {
+                    const term = catSearchTerm.trim().toLowerCase();
+                    const filteredCats = settingsCategoriesList
+                      .map((cat, idx) => ({ cat, idx }))
+                      .filter(({ cat }) => !term || cat.toLowerCase().includes(term));
+                    const visibleCats = filteredCats.slice(0, visibleCatsCount);
+                    const remainingCats = filteredCats.length - visibleCats.length;
 
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingCatIdx(idx);
-                                    setEditCatValInput(cat);
-                                  }}
-                                  className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                                  disabled={serviceSaveBusy}
-                                  title={isEn ? 'Edit Category' : 'تعديل اسم القسم'}
-                                >
-                                  <Edit2 className="h-4 w-4" />
-                                </button>
-                                {settingsCategoriesList.length > 1 && (
-                                  <button
-                                    type="button"
-                                    disabled={serviceSaveBusy}
-                                    onClick={() => handleDeleteCategoryInSettings(cat)}
-                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                                    title={isEn ? 'Delete Category' : 'حذف القسم'}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
-                                )}
-                              </div>
-                            </>
-                          )}
+                    return (
+                      <>
+                        <div className="relative px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
+                          <span className="text-sm font-black text-slate-800 shrink-0">{isEn ? `Categories (${filteredCats.length})` : `الأقسام (${filteredCats.length})`}</span>
+                          <div className="relative w-full max-w-[240px] sm:max-w-none sm:w-72 sm:absolute sm:left-1/2 sm:-translate-x-1/2 sm:top-1/2 sm:-translate-y-1/2">
+                            <Search className="h-4 w-4 text-slate-400 absolute start-3 top-2.5 pointer-events-none" />
+                            <input
+                              type="text"
+                              value={catSearchTerm}
+                              onChange={(e) => setCatSearchTerm(e.target.value)}
+                              placeholder={isEn ? 'Search by category name...' : 'ابحث باسم القسم...'}
+                              className="w-full ps-9 pe-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-3xs"
+                              data-testid="categories-search"
+                            />
+                          </div>
+                          <span className="hidden sm:block w-20 shrink-0"></span>
                         </div>
-                      );
-                    })}
-                  </div>
+
+                        {filteredCats.length === 0 ? (
+                          <div className="p-8 text-center text-slate-400 text-xs font-bold">
+                            {isEn ? 'No categories match your search.' : 'لا توجد أقسام مطابقة للبحث.'}
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs min-w-[460px]">
+                              <thead>
+                                <tr className="border-b border-slate-100 text-slate-400">
+                                  <th className="text-start font-bold px-4 py-2.5">{isEn ? 'Category Name' : 'اسم القسم'}</th>
+                                  <th className="text-start font-bold px-4 py-2.5">{isEn ? 'Services' : 'عدد الخدمات'}</th>
+                                  <th className="text-start font-bold px-4 py-2.5 w-44">{isEn ? 'Actions' : 'الإجراءات'}</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {visibleCats.map(({ cat, idx }) => {
+                                  const count = settingsServicesList.filter(s => (s.category || 'عام') === cat).length;
+                                  const editing = editingCatIdx === idx;
+                                  return (
+                                    <tr key={cat} data-testid="category-row" className="hover:bg-emerald-50/20 transition">
+                                      <td className="px-4 py-3">
+                                        {editing ? (
+                                          <input
+                                            type="text"
+                                            autoFocus
+                                            value={editCatValInput}
+                                            onChange={(e) => setEditCatValInput(e.target.value)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') { e.preventDefault(); handleUpdateCategoryInSettings(cat, editCatValInput); }
+                                              if (e.key === 'Escape') setEditingCatIdx(null);
+                                            }}
+                                            className="w-full max-w-[260px] px-3 py-1.5 border-2 border-emerald-500 rounded-xl text-xs font-black text-slate-900 bg-white focus:outline-none"
+                                            data-testid="category-rename-input"
+                                          />
+                                        ) : (
+                                          <span className="inline-flex items-center gap-2 font-black text-slate-900">
+                                            <span className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                                              <Folder className="h-3.5 w-3.5 text-slate-500" />
+                                            </span>
+                                            {cat}
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-1 rounded-full font-extrabold whitespace-nowrap">
+                                          {isEn ? `${count} ${count === 1 ? 'service' : 'services'}` : (count === 1 ? 'خدمة واحدة' : count === 2 ? 'خدمتان' : `${count} ${count >= 3 && count <= 10 ? 'خدمات' : 'خدمة'}`)}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        {editing ? (
+                                          <div className="flex items-center gap-1.5">
+                                            <button
+                                              type="button"
+                                              disabled={serviceSaveBusy}
+                                              onClick={() => handleUpdateCategoryInSettings(cat, editCatValInput)}
+                                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs shadow-xs cursor-pointer"
+                                              data-testid="category-rename-save"
+                                            >
+                                              {isEn ? 'Save' : '✓ حفظ'}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setEditingCatIdx(null)}
+                                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+                                            >
+                                              {isEn ? 'Cancel' : 'إلغاء'}
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center gap-0.5">
+                                            <button
+                                              type="button"
+                                              onClick={() => { setEditingCatIdx(idx); setEditCatValInput(cat); }}
+                                              className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                              disabled={serviceSaveBusy}
+                                              title={isEn ? 'Edit Category' : 'تعديل اسم القسم'}
+                                            >
+                                              <Edit2 className="h-3.5 w-3.5" />
+                                            </button>
+                                            {settingsCategoriesList.length > 1 && (
+                                              <button
+                                                type="button"
+                                                disabled={serviceSaveBusy}
+                                                onClick={() => handleDeleteCategoryInSettings(cat)}
+                                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                                title={isEn ? 'Delete Category' : 'حذف القسم'}
+                                              >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                              </button>
+                                            )}
+                                          </div>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {filteredCats.length > 0 && (
+                          <div className="relative px-4 py-3 border-t border-slate-100 flex items-center justify-center min-h-[46px]">
+                            {remainingCats > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setVisibleCatsCount(c => c + 5)}
+                                className="px-4 py-1.5 rounded-full border border-emerald-200 text-emerald-700 bg-emerald-50/60 hover:bg-emerald-50 text-xs font-black transition cursor-pointer"
+                                data-testid="categories-show-more"
+                              >
+                                {isEn
+                                  ? `Show more (${Math.min(5, remainingCats)} ${Math.min(5, remainingCats) === 1 ? 'category' : 'categories'})`
+                                  : `إظهار المزيد (${Math.min(5, remainingCats) === 1 ? 'قسم واحد' : Math.min(5, remainingCats) === 2 ? 'قسمان' : `${Math.min(5, remainingCats)} أقسام`})`}
+                              </button>
+                            )}
+                            <span data-testid="categories-counter" className="absolute start-4 text-[10px] text-slate-400 font-bold">
+                              {isEn
+                                ? `Showing ${visibleCats.length} of ${filteredCats.length} categories`
+                                : `عرض ${visibleCats.length} من ${filteredCats.length} أقسام`}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
+
+                <p className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5 px-1">
+                  <Info className="h-3.5 w-3.5 shrink-0" />
+                  {isEn
+                    ? 'Deleting a category moves its services to General (عام) after confirmation. At least one category must remain.'
+                    : 'عند حذف قسم، تُنقل خدماته إلى «عام» بعد التأكيد. يجب الإبقاء على قسم واحد على الأقل.'}
+                </p>
 
               </div>
             )}
