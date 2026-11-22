@@ -313,11 +313,14 @@ export default function ClinicsTab({
       if (!countRes.ok) throw new Error('count_failed');
       const { count } = await countRes.json();
       if (!count) {
-        await dialogs.alert(t('superadmin.r2Cleanup.none'), { severity: 'info' });
+        await dialogs.alert(t('superadmin.r2Cleanup.none'), { severity: 'info', title: t('superadmin.r2Cleanup.alertTitle') });
         return;
       }
+      // Isolate the clinic name (U+2068 FSI ... U+2069 PDI) so an Arabic name
+      // does not scramble the word order of an English sentence (and vice versa).
+      const isolatedName = `\u2068${clinic.name}\u2069`;
       const confirmed = await dialogs.confirm(
-        t('superadmin.r2Cleanup.confirmMessage', { name: clinic.name, count }),
+        t('superadmin.r2Cleanup.confirmMessage', { name: isolatedName, count }),
         {
           title: t('superadmin.r2Cleanup.confirmTitle'),
           severity: 'error',
@@ -336,13 +339,13 @@ export default function ClinicsTab({
       if (result.failed > 0) {
         await dialogs.alert(
           t('superadmin.r2Cleanup.partial', { deleted: result.deleted, total: (result.deleted || 0) + (result.failed || 0), failed: result.failed }),
-          { severity: 'warning' }
+          { severity: 'warning', title: t('superadmin.r2Cleanup.alertTitle') }
         );
       } else {
-        await dialogs.alert(t('superadmin.r2Cleanup.success', { count: result.deleted }), { severity: 'success' });
+        await dialogs.alert(t('superadmin.r2Cleanup.success', { count: result.deleted }), { severity: 'success', title: t('superadmin.r2Cleanup.alertTitle') });
       }
     } catch (err: any) {
-      await dialogs.alert(t('superadmin.r2Cleanup.error', { message: err?.message || String(err) }), { severity: 'error' });
+      await dialogs.alert(t('superadmin.r2Cleanup.error', { message: err?.message || String(err) }), { severity: 'error', title: t('superadmin.r2Cleanup.alertTitle') });
     } finally {
       setR2CleaningClinicId(null);
     }
