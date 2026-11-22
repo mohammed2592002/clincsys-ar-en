@@ -55,6 +55,11 @@ await page.evaluate(()=>{const overlay=[...document.querySelectorAll('div.fixed'
 console.log('PASS '+lang+' X-ray actual file selection, compression, DB save/offline fallback, inline/window viewer, zoom/rotate');
 await tab('financials');await page.waitForSelector('[data-testid="patient-balance-summary"]');await page.waitForFunction(()=>document.querySelector('[data-testid="patient-balance-summary"]')?.textContent.includes('500'));await snapshot('financials');await click(en?'Collect Payment / Installment':'تحصيل دفعة أو قسط',true);await page.waitForSelector(en?'input[placeholder="Amount"]':'input[placeholder="المبلغ"]');await fill(en?'input[placeholder="Amount"]':'input[placeholder="المبلغ"]','50');await click(en?'Confirm':'تأكيد',true);await ok();let app=await db('getDoc',`clinics/${cid}/appointments`,'workspace_app');assert.equal(app.paidAmount,350);assert.equal(app.remainingAmount,450);await snapshot('financials-collected');console.log('PASS '+lang+' finance embedded statement, collection and verified receipt/balance DB mutation');
 
+await page.setViewport({width:390,height:844});await page.evaluate(()=>window.scrollTo(0,0));await page.mouse.move(190,700);await page.mouse.wheel({deltaY:1800});await wait(200);
+const scrollState=await page.evaluate(()=>({overflow:document.body.style.overflow,scrollY,height:document.documentElement.scrollHeight,viewport:innerHeight}));
+assert.notEqual(scrollState.overflow,'hidden','Embedded Finance must not lock the document');assert(scrollState.height>scrollState.viewport);assert(scrollState.scrollY>0,'Real wheel input must move the embedded Finance page');
+await page.screenshot({path:`${artifacts}/finance-scroll-${lang}-mobile.png`,fullPage:false});console.log('PASS '+lang+' embedded Finance mobile wheel scrolling '+JSON.stringify(scrollState));
+await page.setViewport({width:1440,height:1050});await page.evaluate(()=>window.scrollTo(0,0));
 if (process.env.TEST_WORKSPACE_SMOKE === '1') return;
 // Respect the production rate limiter during the dense isolated UI run.
 await wait(50000);
@@ -69,9 +74,9 @@ await page.evaluate(()=>{window.__printCapture=[];window.__printTimer=setInterva
 await page.$eval('button[title="'+(en?'Print Receipt':'طباعة الإيصال')+'"]',e=>e.click());
 await wait(1800);await page.evaluate(()=>clearInterval(window.__printTimer));assert(await page.evaluate(()=>window.__printCapture.some(t=>t.includes('775'))));
 await click(en?'Open separate window':'فتح نافذة مستقلة',true);await wait(300);
-assert(await page.$eval('[data-testid="patient-financials-panel"]',e=>e.className.includes('fixed')));
+assert(await page.$eval('[data-testid="patient-financials-panel"]',e=>e.className.includes('fixed')));assert.equal(await page.evaluate(()=>document.body.style.overflow),'hidden','Standalone modal still locks background scrolling');
 await press(en?'button[title="Close"]':'button[title="إغلاق"]');
-await page.waitForSelector('[data-testid="patient-balance-summary"]');
+await page.waitForSelector('[data-testid="patient-balance-summary"]');assert.notEqual(await page.evaluate(()=>document.body.style.overflow),'hidden','Closing standalone modal restores embedded page scrolling');
 console.log('PASS '+lang+' financial window, installment history, discount mutation, printable receipt');
 // Edit and download an actual locally selected image; test contrast/reset in the viewer.
 await tab('xrays');await press(en?'button[title="Edit X-Ray Image and Diagnosis"]':'button[title="تعديل صورة الأشعة والتشخيص"]');

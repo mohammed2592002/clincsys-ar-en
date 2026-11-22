@@ -348,20 +348,21 @@ export default function PatientFinancialsModal({
   };
 
   useEffect(() => {
+    if (!isOpen || embedded) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [isOpen, embedded]);
+
+  useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
       fetchFinancialRecords();
       setPrintingApp(null);
       setShowPaymentBox(!!autoShowPayment);
       if (methodsList.length > 0) {
         setPaymentMethod(methodsList[0]);
       }
-    } else {
-      document.body.style.overflow = '';
     }
-    return () => {
-      document.body.style.overflow = '';
-    };
   }, [isOpen, clinicId, patientId, patientName, autoShowPayment, initialAppointmentId, methodsList]);
 
   // Calculate overall metrics
