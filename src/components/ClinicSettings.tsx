@@ -101,6 +101,73 @@ interface ClinicSettingsProps {
   onClinicDataUpdated: (updated: Clinic) => void;
 }
 
+const SERVICE_CONDITION_DOT_COLORS: Record<string, string> = {
+  filled: '#3b82f6',
+  missing: '#0f172a',
+  crown: '#f59e0b',
+  healthy: '#10b981',
+  implant: '#8b5cf6',
+  bridge: '#06b6d4',
+  decayed: '#ef4444',
+  ortho: '#f97316',
+};
+
+const getServiceConditionLabel = (cond: string, isEn: boolean) =>
+  cond === 'filled' ? (isEn ? 'Filled' : 'حشو') :
+  cond === 'missing' ? (isEn ? 'Missing' : 'خلع / مفقود') :
+  cond === 'crown' ? (isEn ? 'Crown' : 'تلبيسة') :
+  cond === 'implant' ? (isEn ? 'Implant' : 'زراعة') :
+  cond === 'bridge' ? (isEn ? 'Bridge' : 'جسر') :
+  cond === 'decayed' ? (isEn ? 'Decayed' : 'تسوس') :
+  cond === 'ortho' ? (isEn ? 'Ortho' : 'تقويم') :
+  (isEn ? 'Healthy' : 'تنظيف / سليم');
+
+function ServicePriceCell({ srv, isEn, saved, pending, disabled, onSave }: { srv: CustomDentalService; isEn: boolean; saved: boolean; pending: boolean; disabled: boolean; onSave: (srv: CustomDentalService, price: number) => Promise<boolean> }) {
+  const [val, setVal] = useState(String(srv.price));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setVal(String(srv.price));
+  }, [srv.price, focused]);
+
+  const commit = async () => {
+    const num = Number(val);
+    if (!val.trim() || !Number.isFinite(num) || num < 0) {
+      setVal(String(srv.price));
+      return;
+    }
+    if (num !== srv.price && !await onSave(srv, num)) setVal(String(srv.price));
+  };
+
+  return (
+    <div className="space-y-0.5">
+      <div className={`inline-flex items-center gap-1 border rounded-lg px-2 py-1 bg-white transition ${focused ? 'border-emerald-500 ring-1 ring-emerald-500' : 'border-slate-200'}`}>
+        <input
+          type="number"
+          min="0"
+          value={val}
+          onFocus={() => setFocused(true)}
+          onBlur={() => { setFocused(false); commit(); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          onChange={(e) => setVal(e.target.value)}
+          className="w-16 text-xs font-black font-mono text-emerald-700 focus:outline-none bg-transparent"
+          disabled={disabled}
+          aria-label={`${isEn ? 'Price' : 'السعر'}: ${srv.name}`}
+          data-testid="service-price-input"
+          step="any"
+        />
+        <span className="text-[10px] text-slate-400 font-bold">{isEn ? 'EGP' : 'ج.م'}</span>
+      </div>
+      {saved && (
+        <div data-testid="price-saved-tick" className="text-[10px] font-bold text-emerald-600 flex items-center gap-0.5">
+          <Check className="h-3 w-3" />
+          {pending ? (isEn ? 'Waiting to sync' : 'بانتظار المزامنة') : (isEn ? 'Saved' : 'تم الحفظ')}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ClinicSettings({ 
   clinicId, 
   clinic, 
@@ -466,7 +533,7 @@ export default function ClinicSettings({
 
   // Form states for services & categories in settings
   const [srvName, setSrvName] = useState('');
-  const [srvCategory, setSrvCategory] = useState('حشوات وعلاج عصب');
+  const [srvCategory, setSrvCategory] = useState(() => settingsCategoriesList[0] || 'عام');
   const [srvPrice, setSrvPrice] = useState<number>(500);
   const [srvCondition, setSrvCondition] = useState<DentalTooth['condition']>('filled');
   const [editingSrvId, setEditingSrvId] = useState<string | null>(null);
@@ -478,38 +545,48 @@ export default function ClinicSettings({
   const [serviceSearchTerm, setServiceSearchTerm] = useState('');
   const [selectedCatFilter, setSelectedCatFilter] = useState<string>('all');
   const [servicesActiveTab, setServicesActiveTab] = useState<'services' | 'categories'>('services');
+  const [serviceFormOpen, setServiceFormOpen] = useState(true);
+  const [visibleServicesCount, setVisibleServicesCount] = useState(5);
+  const [inlinePriceSavedId, setInlinePriceSavedId] = useState<string | null>(null);
 
-  const handleSaveServicesToClinic = async (updatedServices: CustomDentalService[]) => {
-    if (checkSubscriptionBlocked(clinic, dialogs)) return;
-    setSettingsServicesList(updatedServices);
-    if (clinicId) {
-      safeStorage.setItem(`dental_services_${clinicId}`, JSON.stringify(updatedServices));
-    }
+  useEffect(() => {
+    setVisibleServicesCount(5);
+  }, [serviceSearchTerm, selectedCatFilter]);
+
+  const [serviceSaveBusy, setServiceSaveBusy] = useState(false);
+  const [serviceSavePending, setServiceSavePending] = useState(false);
+  const serviceSaveLock = React.useRef(false);
+
+  const saveServiceSettings = async (services: CustomDentalService[], categories = settingsCategoriesList) => {
+    if (serviceSaveLock.current || checkSubscriptionBlocked(clinic, dialogs)) return false;
+    serviceSaveLock.current = true;
+    setServiceSaveBusy(true);
+    setSettingsError('');
+    setSettingsSuccess('');
     try {
-      const docRef = doc(db, 'clinics', clinicId);
-      await updateDoc(docRef, { customDentalServices: updatedServices });
-      onClinicDataUpdated({ ...clinic, customDentalServices: updatedServices });
-      setSettingsSuccess('تم حفظ قائمة الأسعار والخدمات بنجاح!');
+      const patch = { customDentalServices: services, dentalServiceCategories: categories };
+      const result = await updateDoc(doc(db, 'clinics', clinicId), patch);
+      setSettingsServicesList(services);
+      setSettingsCategoriesList(categories);
+      safeStorage.setItem(`dental_services_${clinicId}`, JSON.stringify(services));
+      safeStorage.setItem(`dental_categories_${clinicId}`, JSON.stringify(categories));
+      onClinicDataUpdated({ ...clinic, ...patch });
+      setServiceSavePending(!!result?.pending);
+      setSettingsSuccess(result?.pending
+        ? (isEn ? 'Saved on this device. Waiting to sync.' : 'تم الحفظ على الجهاز، في انتظار المزامنة.')
+        : (isEn ? 'Services and categories saved.' : 'تم حفظ الخدمات والأقسام بنجاح!'));
+      return true;
     } catch (err: any) {
-      setSettingsError('حدث خطأ أثناء حفظ قائمة الأسعار: ' + (err.message || err.toString()));
+      setSettingsError((isEn ? 'Could not save: ' : 'تعذر الحفظ: ') + (err.message || String(err)));
+      return false;
+    } finally {
+      serviceSaveLock.current = false;
+      setServiceSaveBusy(false);
     }
   };
 
-  const handleSaveCategoriesToClinic = async (updatedCategories: string[]) => {
-    if (checkSubscriptionBlocked(clinic, dialogs)) return;
-    setSettingsCategoriesList(updatedCategories);
-    if (clinicId) {
-      safeStorage.setItem(`dental_categories_${clinicId}`, JSON.stringify(updatedCategories));
-    }
-    try {
-      const docRef = doc(db, 'clinics', clinicId);
-      await updateDoc(docRef, { dentalServiceCategories: updatedCategories });
-      onClinicDataUpdated({ ...clinic, dentalServiceCategories: updatedCategories });
-      setSettingsSuccess('تم حفظ أقسام الخدمات بنجاح!');
-    } catch (err: any) {
-      setSettingsError('حدث خطأ أثناء حفظ الأقسام: ' + (err.message || err.toString()));
-    }
-  };
+  const handleSaveServicesToClinic = (services: CustomDentalService[]) => saveServiceSettings(services);
+  const handleSaveCategoriesToClinic = (categories: string[]) => saveServiceSettings(settingsServicesList, categories);
 
   const handleAddOrUpdateServiceInSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -527,7 +604,6 @@ export default function ClinicSettings({
         condition: srvCondition,
         category: srvCategory
       } : s);
-      setEditingSrvId(null);
     } else {
       const newSrv: CustomDentalService = {
         id: 'srv_' + Date.now(),
@@ -539,8 +615,11 @@ export default function ClinicSettings({
       updated = [newSrv, ...settingsServicesList];
     }
 
-    setSrvName('');
-    await handleSaveServicesToClinic(updated);
+    if (await handleSaveServicesToClinic(updated)) {
+      setSrvName('');
+      setEditingSrvId(null);
+      setServiceFormOpen(false);
+    }
   };
 
   const handleEditServiceInSettings = (srv: CustomDentalService) => {
@@ -550,13 +629,26 @@ export default function ClinicSettings({
     setSrvCondition(srv.condition);
     setSrvCategory(srv.category || settingsCategoriesList[0] || 'عام');
     setServicesActiveTab('services');
+    setServiceFormOpen(true);
   };
 
   const handleDeleteServiceInSettings = async (id: string) => {
-    if (await dialogs.confirm('هل أنت متأكد من حذف هذه الخدمة من قائمة العيادة؟')) {
+    if (await dialogs.confirm(isEn ? 'Delete this service from the clinic list?' : 'هل أنت متأكد من حذف هذه الخدمة من قائمة العيادة؟', { confirmText: isEn ? 'Yes, delete' : 'نعم، متأكد', cancelText: isEn ? 'Cancel' : 'إلغاء', title: isEn ? 'Delete Service' : 'حذف الخدمة' })) {
       const updated = settingsServicesList.filter(s => s.id !== id);
       await handleSaveServicesToClinic(updated);
     }
+  };
+
+  const handleInlineServicePriceSave = async (srv: CustomDentalService, newPrice: number) => {
+    if (!Number.isFinite(newPrice) || newPrice < 0 || newPrice === srv.price) return false;
+    const updated = settingsServicesList.map(s => s.id === srv.id ? { ...s, price: newPrice } : s);
+    setInlinePriceSavedId(null);
+    if (!await handleSaveServicesToClinic(updated)) return false;
+    setInlinePriceSavedId(srv.id);
+    setTimeout(() => {
+      setInlinePriceSavedId(prev => (prev === srv.id ? null : prev));
+    }, 2500);
+    return true;
   };
 
   const handleAddCategoryInSettings = async (e: React.FormEvent) => {
@@ -568,8 +660,7 @@ export default function ClinicSettings({
       return;
     }
     const updated = [...settingsCategoriesList, name];
-    setNewCatNameInput('');
-    await handleSaveCategoriesToClinic(updated);
+    if (await handleSaveCategoriesToClinic(updated)) setNewCatNameInput('');
   };
 
   const handleUpdateCategoryInSettings = async (oldCat: string, newCat: string) => {
@@ -578,11 +669,16 @@ export default function ClinicSettings({
       setEditingCatIdx(null);
       return;
     }
+    if (settingsCategoriesList.includes(trimmed)) {
+      dialogs.alert(isEn ? 'This category already exists.' : 'هذا القسم موجود بالفعل.', { severity: 'warning' });
+      return;
+    }
     const updatedCategories = settingsCategoriesList.map(c => c === oldCat ? trimmed : c);
     const updatedServices = settingsServicesList.map(s => s.category === oldCat ? { ...s, category: trimmed } : s);
-    setEditingCatIdx(null);
-    await handleSaveCategoriesToClinic(updatedCategories);
-    await handleSaveServicesToClinic(updatedServices);
+    if (await saveServiceSettings(updatedServices, updatedCategories)) {
+      setEditingCatIdx(null);
+      if (selectedCatFilter === oldCat) setSelectedCatFilter(trimmed);
+    }
   };
 
   const handleDeleteCategoryInSettings = async (catToDelete: string) => {
@@ -590,11 +686,12 @@ export default function ClinicSettings({
       dialogs.alert('يجب الإبقاء على قسم واحد على الأقل في القائمة', { severity: 'warning' });
       return;
     }
-    if (await dialogs.confirm(`هل أنت متأكد من حذف قسم (${catToDelete})؟ سيتم تحويل خدمات هذا القسم إلى قسم (عام).`)) {
-      const updatedCategories = settingsCategoriesList.filter(c => c !== catToDelete);
+    if (await dialogs.confirm(isEn ? `Delete category (${catToDelete})? Its services will move to General (عام).` : `هل أنت متأكد من حذف قسم (${catToDelete})؟ سيتم تحويل خدمات هذا القسم إلى قسم (عام).`, { confirmText: isEn ? 'Yes, delete' : 'نعم، متأكد', cancelText: isEn ? 'Cancel' : 'إلغاء', title: isEn ? 'Delete Category' : 'حذف القسم' })) {
+      const updatedCategories = Array.from(new Set([...settingsCategoriesList.filter(c => c !== catToDelete), 'عام']));
       const updatedServices = settingsServicesList.map(s => s.category === catToDelete ? { ...s, category: 'عام' } : s);
-      await handleSaveCategoriesToClinic(updatedCategories);
-      await handleSaveServicesToClinic(updatedServices);
+      if (await saveServiceSettings(updatedServices, updatedCategories)) {
+        if (selectedCatFilter === catToDelete) setSelectedCatFilter('all');
+      }
     }
   };
 
@@ -2556,171 +2653,78 @@ export default function ClinicSettings({
 
         {/* PRICE LIST & SERVICES TAB */}
         {settingsSubTab === 'services_prices' && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg border border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
-                  <Tag className="h-5 w-5 text-emerald-400" />
+          <div className="space-y-4 animate-fade-in" aria-busy={serviceSaveBusy} data-testid="services-settings">
+            <div className="bg-[#272E40] rounded-2xl px-4 py-3 flex items-center justify-between gap-3 shadow-lg border border-slate-800">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
+                  <Tag className="h-4 w-4 text-emerald-400" />
                 </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-black text-white">{isEn ? 'Services & Price List' : 'قائمة الأسعار والخدمات'}</h2>
-                  <p className="text-xs text-slate-300 mt-0.5">{isEn ? 'Search, add and edit in one place' : 'البحث والإضافة والتعديل في مكان واحد'}</p>
-                </div>
+                <h2 className="text-sm sm:text-base font-black text-white truncate">{isEn ? 'Services & Price List' : 'قائمة الأسعار والخدمات'}</h2>
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{settingsServicesList.length} {isEn ? 'services' : 'خدمة'}</span>
-                  <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{settingsCategoriesList.length} {isEn ? 'categories' : 'قسم'}</span>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{settingsServicesList.length} {isEn ? 'services' : 'خدمة'}</span>
+                <span className="text-[11px] font-bold text-slate-200 bg-white/10 px-2.5 py-1 rounded-full whitespace-nowrap">{settingsCategoriesList.length} {isEn ? 'categories' : 'أقسام'}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingSrvId(null);
+                    setSrvName('');
+                    setSrvPrice(500);
+                    setSrvCondition('filled');
+                    setSrvCategory(settingsCategoriesList[0] || 'عام');
+                    setServicesActiveTab('services');
+                    setServiceFormOpen(true);
+                  }}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl transition shadow-xs flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                  disabled={serviceSaveBusy}
+                  data-testid="add-service-header-btn"
+                >
+                  <Plus className="h-3.5 w-3.5 stroke-[3]" />
+                  <span>{isEn ? 'Add Service' : 'إضافة خدمة'}</span>
+                </button>
               </div>
             </div>
 
             {/* Navigation Tabs (Services vs Categories) */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setServicesActiveTab('services')}
-                  className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
-                    servicesActiveTab === 'services'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <Stethoscope className="h-4 w-4" />
-                  <span>{isEn ? `Procedures & Services (${settingsServicesList.length})` : `الإجراءات والخدمات (${settingsServicesList.length})`}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setServicesActiveTab('categories')}
-                  className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
-                    servicesActiveTab === 'categories'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <Tag className="h-4 w-4" />
-                  <span>{isEn ? `Categories & Filters (${settingsCategoriesList.length})` : `أقسام وفلاتر الخدمات (${settingsCategoriesList.length})`}</span>
-                </button>
-              </div>
-
-              {servicesActiveTab === 'services' && (
-                <div className="relative min-w-[200px]">
-                  <Search className="h-4 w-4 text-slate-400 absolute right-3 top-2.5" />
-                  <input
-                    type="text"
-                    value={serviceSearchTerm}
-                    onChange={(e) => setServiceSearchTerm(e.target.value)}
-                    placeholder={isEn ? 'Search service or price...' : 'بحث عن خدمة أو سعر...'}
-                    className="w-full pr-9 pl-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-3xs"
-                  />
-                </div>
-              )}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-1.5 flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setServicesActiveTab('services')}
+                data-testid="services-subtab-services"
+                className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                  servicesActiveTab === 'services'
+                    ? 'bg-white border border-slate-200 text-slate-900 shadow-3xs'
+                    : 'text-slate-500 hover:text-slate-700 border border-transparent'
+                }`}
+              >
+                <Stethoscope className="h-4 w-4 text-emerald-600" />
+                <span>{isEn ? `Services (${settingsServicesList.length})` : `الخدمات (${settingsServicesList.length})`}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setServicesActiveTab('categories')}
+                data-testid="services-subtab-categories"
+                className={`px-4 py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+                  servicesActiveTab === 'categories'
+                    ? 'bg-white border border-slate-200 text-slate-900 shadow-3xs'
+                    : 'text-slate-500 hover:text-slate-700 border border-transparent'
+                }`}
+              >
+                <Tag className="h-4 w-4 text-emerald-600" />
+                <span>{isEn ? `Categories (${settingsCategoriesList.length})` : `الأقسام (${settingsCategoriesList.length})`}</span>
+              </button>
             </div>
 
             {/* SERVICES VIEW */}
             {servicesActiveTab === 'services' && (
-              <div className="space-y-6">
-                
-                {/* Form to Add / Edit Service */}
-                <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <h3 className="text-xs sm:text-sm font-black text-slate-800 flex items-center gap-1.5">
-                      <Plus className="h-4 w-4 text-emerald-600" />
-                      {editingSrvId 
-                        ? (isEn ? 'Edit Medical Service' : 'تعديل بيانات الخدمة الطبية')
-                        : (isEn ? 'Add New Medical Service / Procedure' : 'إضافة خدمة أو إجراء طبي جديد لقائمة العيادة')}
-                    </h3>
-                    {editingSrvId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingSrvId(null);
-                          setSrvName('');
-                          setSrvPrice(500);
-                        }}
-                        className="text-xs font-bold text-rose-600 hover:underline"
-                      >
-                        {isEn ? 'Cancel Edit' : 'إلغاء التعديل'}
-                      </button>
-                    )}
-                  </div>
+              <div className="space-y-4">
 
-                  <form onSubmit={handleAddOrUpdateServiceInSettings} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-                    <div className="sm:col-span-4">
-                      <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
-                        {isEn ? 'Service / Procedure Name' : 'اسم الخدمة أو الإجراء الطبي'} <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={srvName}
-                        onChange={(e) => setSrvName(e.target.value)}
-                        placeholder={isEn ? 'e.g. Composite Filling, Scaling, Extraction...' : 'مثال: حشو ليزر تجميلي، تنظيف جير، خلع عقل...'}
-                        className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50 focus:bg-white"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-3">
-                      <label className="block text-[11px] font-extrabold text-slate-700 mb-1">{isEn ? 'Category' : 'القسم / التصنيف'}</label>
-                      <select
-                        value={srvCategory}
-                        onChange={(e) => setSrvCategory(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 bg-white cursor-pointer"
-                      >
-                        {settingsCategoriesList.map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-extrabold text-slate-700 mb-1">{isEn ? 'Approved Price (EGP)' : 'السعر المعتمد (ج.م)'}</label>
-                      <input
-                        type="number"
-                        required
-                        min="0"
-                        value={srvPrice}
-                        onChange={(e) => setSrvPrice(Number(e.target.value))}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-black font-mono text-emerald-700 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-3">
-                      <label className="block text-[11px] font-extrabold text-slate-700 mb-1">{isEn ? 'Tooth Chart Condition' : 'شكل لون الضرس في الخريطة'}</label>
-                      <select
-                        value={srvCondition}
-                        onChange={(e) => setSrvCondition(e.target.value as DentalTooth['condition'])}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 bg-white cursor-pointer"
-                      >
-                        <option value="filled">{isEn ? 'Filled' : 'حشو (Filled)'}</option>
-                        <option value="missing">{isEn ? 'Missing' : 'خلع / مفقود (Missing)'}</option>
-                        <option value="crown">{isEn ? 'Crown' : 'تلبيسة / طربوش (Crown)'}</option>
-                        <option value="healthy">{isEn ? 'Healthy / Cleaning' : 'تنظيف / سليم (Healthy)'}</option>
-                        <option value="implant">{isEn ? 'Implant' : 'زراعة (Implant)'}</option>
-                        <option value="bridge">{isEn ? 'Bridge' : 'جسر (Bridge)'}</option>
-                        <option value="decayed">{isEn ? 'Decayed' : 'تسوس (Decayed)'}</option>
-                        <option value="ortho">{isEn ? 'Ortho' : 'تقويم أسنان (Ortho)'}</option>
-                      </select>
-                    </div>
-
-                    <div className="sm:col-span-12 flex justify-end pt-2">
-                      <button
-                        type="submit"
-                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Check className="h-4 w-4 stroke-[3]" />
-                        <span>{editingSrvId ? (isEn ? 'Save Changes' : 'حفظ التعديلات') : (isEn ? '➕ Save Service & Price' : '➕ حفظ الخدمة وسعرها')}</span>
-                      </button>
-                    </div>
-                  </form>
-                </div>
-
-                {/* Category Filter Pills */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-2">
-                  <span className="text-xs font-bold text-slate-400 shrink-0 ml-1">{isEn ? 'Filter by Category:' : 'تصفية حسب القسم:'}</span>
+                {/* Category Filter Chips */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
                   <button
                     type="button"
                     onClick={() => setSelectedCatFilter('all')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition shrink-0 cursor-pointer ${
                       selectedCatFilter === 'all'
                         ? 'bg-emerald-600 text-white shadow-3xs'
                         : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -2735,7 +2739,7 @@ export default function ClinicSettings({
                         key={cat}
                         type="button"
                         onClick={() => setSelectedCatFilter(cat)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+                        className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition shrink-0 cursor-pointer ${
                           selectedCatFilter === cat
                             ? 'bg-emerald-600 text-white shadow-3xs'
                             : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -2747,32 +2751,153 @@ export default function ClinicSettings({
                   })}
                 </div>
 
-                {/* Services Table / Cards List */}
-                <div className="bg-white rounded-3xl border border-slate-200/90 shadow-2xs overflow-hidden">
+                {/* Collapsible Form to Add / Edit Service */}
+                {(serviceFormOpen || editingSrvId) && (
+                  <div data-testid="service-form-panel" className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-2xs space-y-3 animate-fade-in">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-xs sm:text-sm font-black text-slate-800 flex items-center gap-1.5">
+                        <Plus className="h-4 w-4 text-emerald-600" />
+                        {editingSrvId
+                          ? (isEn ? 'Edit Service' : 'تعديل بيانات الخدمة')
+                          : (isEn ? 'Add New Service' : 'إضافة خدمة جديدة')}
+                      </h3>
+                      <div className="flex items-center gap-3 shrink-0">
+                        {editingSrvId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingSrvId(null);
+                              setSrvName('');
+                              setSrvPrice(500);
+                              setServiceFormOpen(false);
+                            }}
+                            className="text-xs font-bold text-rose-600 hover:underline cursor-pointer"
+                          >
+                            {isEn ? 'Cancel Edit' : 'إلغاء التعديل'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setServiceFormOpen(false);
+                            setEditingSrvId(null);
+                            setSrvName('');
+                            setSrvPrice(500);
+                          }}
+                          className="text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center gap-0.5 cursor-pointer"
+                        >
+                          {isEn ? 'Hide' : 'إخفاء'}
+                          <ChevronDown className="h-3.5 w-3.5 rotate-180" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <form
+                      onSubmit={handleAddOrUpdateServiceInSettings}
+                      className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end"
+                    >
+                      <div className="sm:col-span-4">
+                        <label className="block text-[11px] font-extrabold text-slate-700 mb-1">
+                          {isEn ? 'Service / Procedure Name' : 'اسم الخدمة أو الإجراء'} <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={srvName}
+                          onChange={(e) => setSrvName(e.target.value)}
+                          placeholder={isEn ? 'e.g. Composite Filling, Scaling...' : 'مثال: حشو ليزر تجميلي'}
+                          className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 bg-slate-50/50 focus:bg-white"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-extrabold text-slate-700 mb-1">{isEn ? 'Category' : 'القسم'}</label>
+                        <select
+                          value={srvCategory}
+                          onChange={(e) => setSrvCategory(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 bg-white cursor-pointer"
+                        >
+                          {settingsCategoriesList.map(cat => (
+                            <option key={cat} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-extrabold text-slate-700 mb-1">{isEn ? 'Price (EGP)' : 'السعر (ج.م)'}</label>
+                        <input
+                          type="number"
+                          required
+                          min="0"
+                          value={srvPrice}
+                          step="any"
+                          onChange={(e) => setSrvPrice(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-black font-mono text-emerald-700 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-extrabold text-slate-700 mb-1">{isEn ? 'Tooth Chart Color' : 'لون الضرس في الخريطة'}</label>
+                        <select
+                          value={srvCondition}
+                          onChange={(e) => setSrvCondition(e.target.value as DentalTooth['condition'])}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 bg-white cursor-pointer"
+                        >
+                          <option value="filled">{isEn ? 'Filled' : 'حشو (Filled)'}</option>
+                          <option value="missing">{isEn ? 'Missing' : 'خلع / مفقود (Missing)'}</option>
+                          <option value="crown">{isEn ? 'Crown' : 'تلبيسة / طربوش (Crown)'}</option>
+                          <option value="healthy">{isEn ? 'Healthy / Cleaning' : 'تنظيف / سليم (Healthy)'}</option>
+                          <option value="implant">{isEn ? 'Implant' : 'زراعة (Implant)'}</option>
+                          <option value="bridge">{isEn ? 'Bridge' : 'جسر (Bridge)'}</option>
+                          <option value="decayed">{isEn ? 'Decayed' : 'تسوس (Decayed)'}</option>
+                          <option value="ortho">{isEn ? 'Ortho' : 'تقويم أسنان (Ortho)'}</option>
+                        </select>
+                      </div>
+
+                      <div className="sm:col-span-2 flex sm:justify-end">
+                        <button
+                          type="submit"
+                          disabled={serviceSaveBusy}
+                          className="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition shadow-xs flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap"
+                        >
+                          <Check className="h-4 w-4 stroke-[3]" />
+                          <span>{editingSrvId ? (isEn ? 'Save Changes' : 'حفظ التعديلات') : (isEn ? 'Save' : 'حفظ')}</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+
+                {/* Services Table */}
+                <div data-testid="services-table" className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
                   {(() => {
                     const term = serviceSearchTerm.trim().toLowerCase();
                     const filteredServices = settingsServicesList.filter(s => {
                       const matchesCat = selectedCatFilter === 'all' || (s.category || 'عام') === selectedCatFilter;
-                      const matchesSearch = !term || 
-                        s.name.toLowerCase().includes(term) || 
+                      const matchesSearch = !term ||
+                        s.name.toLowerCase().includes(term) ||
                         (s.category || 'عام').toLowerCase().includes(term);
                       return matchesCat && matchesSearch;
                     });
+                    const visibleServices = filteredServices.slice(0, visibleServicesCount);
+                    const remainingCount = filteredServices.length - visibleServices.length;
 
                     return (
                       <>
-                        <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <span className="text-xs font-black text-slate-800">{isEn ? `Available Services (${filteredServices.length}):` : `قائمة الخدمات المتاحة (${filteredServices.length}):`}</span>
-                          <div className="relative min-w-[220px]">
-                            <Search className="h-4 w-4 text-slate-400 absolute right-3 top-2.5" />
+                        <div className="relative px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3">
+                          <span className="text-sm font-black text-slate-800 shrink-0">{isEn ? `Services (${filteredServices.length})` : `الخدمات (${filteredServices.length})`}</span>
+                          <div className="relative w-full max-w-[240px] sm:max-w-none sm:w-72 sm:absolute sm:left-1/2 sm:-translate-x-1/2 sm:top-1/2 sm:-translate-y-1/2">
+                            <Search className="h-4 w-4 text-slate-400 absolute start-3 top-2.5 pointer-events-none" />
                             <input
                               type="text"
                               value={serviceSearchTerm}
                               onChange={(e) => setServiceSearchTerm(e.target.value)}
-                              placeholder={isEn ? 'Search by service or category...' : 'بحث باسم الخدمة أو القسم...'}
-                              className="w-full pr-9 pl-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-3xs"
+                              placeholder={isEn ? 'Search by service or category...' : 'ابحث باسم الخدمة أو القسم...'}
+                              className="w-full ps-9 pe-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-3xs"
+                              data-testid="services-search"
                             />
                           </div>
+                          <span className="hidden sm:block w-20 shrink-0"></span>
                         </div>
 
                         {filteredServices.length === 0 ? (
@@ -2780,61 +2905,91 @@ export default function ClinicSettings({
                             {isEn ? 'No services found matching search or selected category.' : 'لا توجد خدمات مطابقة للبحث أو القسم المحدد.'}
                           </div>
                         ) : (
-                          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
-                            {filteredServices.map((srv) => (
-                              <div
-                                key={srv.id}
-                                className="p-4 bg-white hover:bg-emerald-50/30 rounded-2xl border border-slate-200 hover:border-emerald-300 transition-all shadow-3xs flex flex-col justify-between gap-3 group relative"
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs min-w-[620px]">
+                              <thead>
+                                <tr className="border-b border-slate-100 text-slate-400">
+                                  <th className="text-start font-bold px-4 py-2.5">{isEn ? 'Service' : 'الخدمة'}</th>
+                                  <th className="text-start font-bold px-4 py-2.5">{isEn ? 'Category' : 'القسم'}</th>
+                                  <th className="text-start font-bold px-4 py-2.5">{isEn ? 'Tooth Chart Look' : 'شكل الضرس في الخريطة'}</th>
+                                  <th className="text-start font-bold px-4 py-2.5">{isEn ? 'Price' : 'السعر'}</th>
+                                  <th className="px-4 py-2.5 w-24"></th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {visibleServices.map((srv) => (
+                                  <tr key={srv.id} data-testid="service-row" className="hover:bg-emerald-50/20 transition">
+                                    <td className="px-4 py-3 font-black text-slate-900">{srv.name}</td>
+                                    <td className="px-4 py-3">
+                                      <span className="bg-slate-100 text-slate-600 font-extrabold px-2 py-0.5 rounded-md text-[10px] whitespace-nowrap">
+                                        {srv.category || 'عام'}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-600 whitespace-nowrap">
+                                        <span
+                                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                                          style={{ backgroundColor: SERVICE_CONDITION_DOT_COLORS[srv.condition] || SERVICE_CONDITION_DOT_COLORS.healthy }}
+                                        ></span>
+                                        {getServiceConditionLabel(srv.condition, isEn)}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <ServicePriceCell
+                                        srv={srv}
+                                        isEn={isEn}
+                                        saved={inlinePriceSavedId === srv.id}
+                                        pending={serviceSavePending}
+                                        disabled={serviceSaveBusy}
+                                        onSave={handleInlineServicePriceSave}
+                                      />
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center gap-0.5">
+                                        <button
+                                          type="button"
+                                          disabled={serviceSaveBusy}
+                                          onClick={() => handleEditServiceInSettings(srv)}
+                                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                          title={isEn ? 'Edit Service' : 'تعديل الخدمة والسعر'}
+                                        >
+                                          <Edit2 className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={serviceSaveBusy}
+                                          onClick={() => handleDeleteServiceInSettings(srv.id)}
+                                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                          title={isEn ? 'Delete Service' : 'حذف الخدمة'}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {filteredServices.length > 0 && (
+                          <div className="relative px-4 py-3 border-t border-slate-100 flex items-center justify-center min-h-[46px]">
+                            {remainingCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setVisibleServicesCount(c => c + 5)}
+                                className="px-4 py-1.5 rounded-full border border-emerald-200 text-emerald-700 bg-emerald-50/60 hover:bg-emerald-50 text-xs font-black transition cursor-pointer"
+                                data-testid="services-show-more"
                               >
-                                <div className="space-y-2">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <h4 className="text-xs font-black text-slate-900 leading-snug">{srv.name}</h4>
-                                    <div className="flex items-center gap-0.5 shrink-0 opacity-80 group-hover:opacity-100">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleEditServiceInSettings(srv)}
-                                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                                        title={isEn ? 'Edit Service' : 'تعديل الخدمة والسعر'}
-                                      >
-                                        <Edit2 className="h-3.5 w-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteServiceInSettings(srv.id)}
-                                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                                        title={isEn ? 'Delete Service' : 'حذف الخدمة'}
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                                    <span className="bg-slate-100 text-slate-600 font-extrabold px-2 py-0.5 rounded-md">
-                                      📁 {srv.category || 'عام'}
-                                    </span>
-                                    <span className="bg-indigo-50 text-indigo-700 font-extrabold px-2 py-0.5 rounded-md">
-                                      🦷 {
-                                        srv.condition === 'filled' ? (isEn ? 'Filled' : 'حشو') :
-                                        srv.condition === 'missing' ? (isEn ? 'Missing' : 'خلع / مفقود') :
-                                        srv.condition === 'crown' ? (isEn ? 'Crown' : 'تلبيسة') :
-                                        srv.condition === 'implant' ? (isEn ? 'Implant' : 'زراعة') :
-                                        srv.condition === 'bridge' ? (isEn ? 'Bridge' : 'جسر') :
-                                        srv.condition === 'decayed' ? (isEn ? 'Decayed' : 'تسوس') :
-                                        srv.condition === 'ortho' ? (isEn ? 'Ortho' : 'تقويم') : (isEn ? 'Healthy' : 'تنظيف / سليم')
-                                      }
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                                  <span className="text-[10px] text-slate-400 font-bold">{isEn ? 'Approved Price:' : 'السعر المعتمد:'}</span>
-                                  <span className="text-xs font-black font-mono text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100/80">
-                                    {srv.price.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
+                                {isEn ? `Show more (${Math.min(5, remainingCount)} services)` : `إظهار المزيد (${Math.min(5, remainingCount)} خدمات)`}
+                              </button>
+                            )}
+                            <span data-testid="services-counter" className="absolute start-4 text-[10px] text-slate-400 font-bold">
+                              {isEn
+                                ? `Showing ${visibleServices.length} of ${filteredServices.length} services`
+                                : `عرض ${visibleServices.length} من ${filteredServices.length} خدمة`}
+                            </span>
                           </div>
                         )}
                       </>
@@ -2899,6 +3054,7 @@ export default function ClinicSettings({
                               />
                               <button
                                 type="button"
+                                disabled={serviceSaveBusy}
                                 onClick={() => handleUpdateCategoryInSettings(cat, editCatValInput)}
                                 className="px-3 py-1.5 bg-emerald-600 text-white font-black rounded-xl text-xs shadow-xs"
                               >
@@ -2929,6 +3085,7 @@ export default function ClinicSettings({
                                     setEditCatValInput(cat);
                                   }}
                                   className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                  disabled={serviceSaveBusy}
                                   title={isEn ? 'Edit Category' : 'تعديل اسم القسم'}
                                 >
                                   <Edit2 className="h-4 w-4" />
@@ -2936,9 +3093,10 @@ export default function ClinicSettings({
                                 {settingsCategoriesList.length > 1 && (
                                   <button
                                     type="button"
+                                    disabled={serviceSaveBusy}
                                     onClick={() => handleDeleteCategoryInSettings(cat)}
                                     className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                                    title="حذف القسم"
+                                    title={isEn ? 'Delete Category' : 'حذف القسم'}
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </button>
