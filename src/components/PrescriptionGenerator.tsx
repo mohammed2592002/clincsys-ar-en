@@ -1,28 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getPrescriptionsRef, getPatientsRef, getCustomMedicationsRef, getCustomCategoriesRef, getDocsSmart as getDocs, addDoc, setDoc, deleteDoc, doc, updateDoc, query, where, orderBy, limit } from '../dbClient';
+import { authHeaders, getClinicRef, getPrescriptionsRef, getPatientsRef, getCustomMedicationsRef, getCustomCategoriesRef, getDocsSmart as getDocs, addDoc, setDoc, deleteDoc, doc, updateDoc, query, where, orderBy, limit } from '../dbClient';
 import { Patient, Clinic, CustomPrescriptionPadConfig, DEFAULT_CUSTOM_PRESCRIPTION_PAD_CONFIG } from '../types';
 import { generatePrescriptionHTML } from '../utils/prescriptionHtml';
-import { safeStorage, getEffectivePadConfig, saveEffectivePadConfig } from '../utils/storage';
+import { getEffectivePadConfig, saveEffectivePadConfig } from '../utils/storage';
 import { uploadFileToR2 } from '../utils/r2Upload';
 
-import { CustomPrescriptionPadEditor } from './CustomPrescriptionPadEditor';
-import { FileSpreadsheet, Plus, Trash2, Printer, Check, Clipboard, Sparkles, Settings, X, Edit, Save, RotateCcw, Upload, Eye, EyeOff, Move, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
+import PrescriptionPadModal from './PrescriptionPadModal';
+import { FileSpreadsheet, Plus, Trash2, Printer, Check, Clipboard, Sparkles, Settings, X, Edit, Save } from 'lucide-react';
 import { useDialogs } from './DialogContext';
 import { PrintPreviewModal } from './PrintPreviewModal';
 import PatientSearchSelect from './PatientSearchSelect';
 import { checkSubscriptionBlocked } from '../utils/timeUtils';
 
 type ElementKey = 'patientName' | 'patientAge' | 'date' | 'medicationsBox' | 'notesBox';
-
-const ELEMENT_LABELS: Record<ElementKey, { title: string; titleEn: string }> = {
-  patientName: { title: 'اسم المريض', titleEn: 'Patient Name' },
-  patientAge: { title: 'العمر', titleEn: 'Age' },
-  date: { title: 'التاريخ', titleEn: 'Date' },
-  medicationsBox: { title: 'مربع الأدوية', titleEn: 'Medications Box' },
-  notesBox: { title: 'مربع الملاحظات', titleEn: 'Notes Box' }
-};
-
 
 interface PrescriptionGeneratorProps {
   clinic: Clinic;
@@ -69,15 +60,15 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
       setPatientAge(selectedPatientAge || '28');
     }
   }, [selectedPatientId, selectedPatientAge]);
-  
+
   // Custom medications (fetched from Firestore per clinic)
   const [customDrugs, setCustomDrugs] = useState<Array<{ id: string; name: string; dose: string; frequency: string; duration: string; category: string }>>([]);
   const [customCategories, setCustomCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>('الكل');
-  
+
   const [showMedSettings, setShowMedSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'drugs' | 'categories'>('drugs');
-  
+
   const [newCustomDrug, setNewCustomDrug] = useState({
     name: '',
     dose: isEn ? '1 Tablet' : 'قرص واحد',
@@ -85,11 +76,11 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
     duration: isEn ? '5 Days' : '5 أيام',
     category: isEn ? 'Analgesics' : 'مسكنات'
   });
-  
+
   const [newCategoryName, setNewCategoryName] = useState('');
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [editingCategoryName, setEditingCategoryName] = useState('');
-  
+
   const [editingDrugId, setEditingDrugId] = useState<string | null>(null);
   const [editingDrugData, setEditingDrugData] = useState({
     name: '',
@@ -112,7 +103,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
   const [drugSearchQuery, setDrugSearchQuery] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
-  const [notes, setNotes] = useState(() => isEn 
+  const [notes, setNotes] = useState(() => isEn
     ? 'Rinse with warm salt water, and avoid hot food and drinks for 24 hours.'
     : 'المضمضة بالماء الدافئ والملح، وتجنب المأكولات والمشروبات الساخنة لمدة 24 ساعة.'
   );
@@ -141,15 +132,24 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
   const [isSavingOnly, setIsSavingOnly] = useState(false);
 
   const [showPadEditor, setShowPadEditor] = useState(false);
+  const [padSaveStatus, setPadSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const pendingPad = React.useRef(false);
+  const padRevision = React.useRef(0);
+  const padSaveTimer = React.useRef<ReturnType<typeof setTimeout>>();
+  const padSaveQueue = React.useRef(Promise.resolve());
+  const [showPrintStyle, setShowPrintStyle] = useState(false);
+  const [showCustomDrug, setShowCustomDrug] = useState(false);
   const [padConfigOverride, setPadConfigOverride] = useState<CustomPrescriptionPadConfig>(() =>
     getEffectivePadConfig(clinic.id, clinic.customPrescriptionPadConfig)
   );
 
   useEffect(() => {
-    setPadConfigOverride(getEffectivePadConfig(clinic.id, clinic.customPrescriptionPadConfig));
+    if (!pendingPad.current) setPadConfigOverride(getEffectivePadConfig(clinic.id, clinic.customPrescriptionPadConfig));
   }, [clinic.id, clinic.customPrescriptionPadConfig]);
 
   const effectivePadConfig = getEffectivePadConfig(clinic.id, padConfigOverride);
+  const latestPad = React.useRef(effectivePadConfig);
+  latestPad.current = effectivePadConfig;
 
   // Layout and theme local overrides (synced from clinic settings, but customizable here)
   const [pStyle, setPStyle] = useState<'classic' | 'modern' | 'minimal' | 'elegant' | 'custom_pad'>(
@@ -163,12 +163,30 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
     } else if (effectivePadConfig.backgroundImage) {
       setPStyle('custom_pad');
     }
-  }, [clinic.prescriptionStyle, clinic.customPrescriptionPadConfig]);
+  }, [clinic.prescriptionStyle]);
 
-  const [selectedElement, setSelectedElement] = useState<ElementKey>('patientName');
-  const [isDragging, setIsDragging] = useState(false);
   const [isCompressingImage, setIsCompressingImage] = useState(false);
-  const canvasRef = React.useRef<HTMLDivElement>(null);
+
+  // Cache each edit immediately, then serialize debounced clinic writes so older edits cannot win.
+  const persistPadConfig = (config: CustomPrescriptionPadConfig) => {
+    setPadConfigOverride(config);
+    saveEffectivePadConfig(clinic.id, config);
+    pendingPad.current = true;
+    setPadSaveStatus('saving');
+    const revision = ++padRevision.current;
+    clearTimeout(padSaveTimer.current);
+    padSaveTimer.current = setTimeout(() => {
+      padSaveQueue.current = padSaveQueue.current.catch(() => {}).then(async () => {
+        try {
+          await updateDoc(getClinicRef(clinic.id), { customPrescriptionPadConfig: config });
+          if (padRevision.current === revision) { pendingPad.current = false; setPadSaveStatus('saved'); }
+        } catch (error) {
+          console.error('Could not sync prescription pad', error);
+          if (padRevision.current === revision) setPadSaveStatus('error');
+        }
+      });
+    }, 450);
+  };
 
   const updatePadElementConfig = (key: ElementKey, updates: Partial<CustomPrescriptionPadConfig[ElementKey]>) => {
     const newCfg = {
@@ -178,62 +196,8 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
         ...updates
       }
     };
-    setPadConfigOverride(newCfg);
-    saveEffectivePadConfig(clinic.id, newCfg);
+    persistPadConfig(newCfg);
   };
-
-  const nudgePadElement = (key: ElementKey, direction: 'up' | 'down' | 'left' | 'right', step = 1) => {
-    const current = effectivePadConfig[key];
-    if (!current) return;
-
-    if (direction === 'up') {
-      updatePadElementConfig(key, { top: Math.max(0, current.top - step) });
-    } else if (direction === 'down') {
-      updatePadElementConfig(key, { top: Math.min(95, current.top + step) });
-    } else if (direction === 'left') {
-      updatePadElementConfig(key, { left: Math.max(0, current.left - step) });
-    } else if (direction === 'right') {
-      updatePadElementConfig(key, { left: Math.min(95, current.left + step) });
-    }
-  };
-
-  // Keyboard arrow keys listener for Prescription Generator pad editor
-  useEffect(() => {
-    if (!showPadEditor || pStyle !== 'custom_pad') return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
-        return;
-      }
-
-      if (!selectedElement) return;
-
-      const step = e.shiftKey ? 5 : 1;
-      let handled = false;
-
-      if (e.key === 'ArrowUp') {
-        nudgePadElement(selectedElement, 'up', step);
-        handled = true;
-      } else if (e.key === 'ArrowDown') {
-        nudgePadElement(selectedElement, 'down', step);
-        handled = true;
-      } else if (e.key === 'ArrowLeft') {
-        nudgePadElement(selectedElement, 'left', step);
-        handled = true;
-      } else if (e.key === 'ArrowRight') {
-        nudgePadElement(selectedElement, 'right', step);
-        handled = true;
-      }
-
-      if (handled) {
-        e.preventDefault();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showPadEditor, pStyle, selectedElement, effectivePadConfig]);
 
   const handleResetPadPositions = () => {
     const newCfg = {
@@ -241,13 +205,13 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
       backgroundImage: effectivePadConfig.backgroundImage,
       hideBackgroundOnPrint: effectivePadConfig.hideBackgroundOnPrint
     };
-    setPadConfigOverride(newCfg);
-    saveEffectivePadConfig(clinic.id, newCfg);
+    persistPadConfig(newCfg);
   };
 
   const handlePadImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
 
     if (file.size > 15 * 1024 * 1024) {
       alert(isEn ? 'Image size is too large, please choose an image under 15MB' : 'حجم الصورة كبير جداً، يرجى اختيار صورة أقل من 15 ميجابايت');
@@ -259,14 +223,27 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
       let imageUrl = '';
       try {
         imageUrl = await uploadFileToR2(file, 'prescriptions', clinic.id);
+        // Local fallback images require Authorization. Embed the authorized bytes so
+        // the editor and the standalone print frame can both display the same image.
+        if (imageUrl.startsWith('/api/files')) {
+          const response = await fetch(imageUrl, { headers: authHeaders() });
+          if (!response.ok) throw new Error('Could not load uploaded prescription image');
+          const blob = await response.blob();
+          imageUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result));
+            reader.onerror = () => reject(new Error('Could not read prescription image'));
+            reader.readAsDataURL(blob);
+          });
+        }
       } catch (r2Err) {
+        imageUrl = '';
         console.warn('R2 upload failed, falling back to local reader:', r2Err);
       }
 
       if (imageUrl) {
-        const newCfg = { ...effectivePadConfig, backgroundImage: imageUrl };
-        setPadConfigOverride(newCfg);
-        saveEffectivePadConfig(clinic.id, newCfg);
+        const newCfg = { ...latestPad.current, backgroundImage: imageUrl };
+        persistPadConfig(newCfg);
         setIsCompressingImage(false);
         return;
       }
@@ -295,14 +272,15 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
             ctx.fillRect(0, 0, width, height);
             ctx.drawImage(img, 0, 0, width, height);
             const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.80);
-            const newCfg = { ...effectivePadConfig, backgroundImage: compressedDataUrl };
-            setPadConfigOverride(newCfg);
-            saveEffectivePadConfig(clinic.id, newCfg);
+            const newCfg = { ...latestPad.current, backgroundImage: compressedDataUrl };
+            persistPadConfig(newCfg);
           }
           setIsCompressingImage(false);
         };
+        img.onerror = () => { setIsCompressingImage(false); dialogs.alert(isEn ? 'This image could not be opened. Please choose a different image.' : 'تعذر فتح الصورة. يرجى اختيار صورة أخرى.', { severity: 'error' }); };
         img.src = ev.target?.result as string;
       };
+      reader.onerror = () => { setIsCompressingImage(false); dialogs.alert(isEn ? 'Could not read this file.' : 'تعذرت قراءة الملف.', { severity: 'error' }); };
       reader.readAsDataURL(file);
     } catch (err) {
       console.error(err);
@@ -316,8 +294,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
       ...effectivePadConfig,
       backgroundImage: ''
     };
-    setPadConfigOverride(newCfg);
-    saveEffectivePadConfig(clinic.id, newCfg);
+    persistPadConfig(newCfg);
   };
 
   const handleToggleHideOnPrint = () => {
@@ -325,45 +302,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
       ...effectivePadConfig,
       hideBackgroundOnPrint: !effectivePadConfig.hideBackgroundOnPrint
     };
-    setPadConfigOverride(newCfg);
-    saveEffectivePadConfig(clinic.id, newCfg);
-  };
-
-  const handleCanvasMouseDown = (key: ElementKey, e: React.MouseEvent | React.TouchEvent) => {
-    if (!showPadEditor) return;
-    e.stopPropagation();
-    setSelectedElement(key);
-    setIsDragging(true);
-  };
-
-  const handleCanvasMove = (clientX: number, clientY: number) => {
-    if (!isDragging || !canvasRef.current || !selectedElement) return;
-
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-
-    let leftPercent = Math.max(0, Math.min(92, Math.round((x / rect.width) * 100)));
-    let topPercent = Math.max(0, Math.min(92, Math.round((y / rect.height) * 100)));
-
-    updatePadElementConfig(selectedElement, {
-      top: topPercent,
-      left: leftPercent
-    });
-  };
-
-  const handleCanvasMouseMove = (e: React.MouseEvent) => {
-    handleCanvasMove(e.clientX, e.clientY);
-  };
-
-  const handleCanvasTouchMove = (e: React.TouchEvent) => {
-    if (e.touches[0]) {
-      handleCanvasMove(e.touches[0].clientX, e.touches[0].clientY);
-    }
-  };
-
-  const handleCanvasDragEnd = () => {
-    setIsDragging(false);
+    persistPadConfig(newCfg);
   };
 
   const fetchPatients = async () => {
@@ -406,7 +345,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
           name: data.name || ''
         });
       });
-      
+
       if (list.length === 0) {
         // Return default categories but DO NOT write them to database automatically!
         const defaultCats = [
@@ -421,7 +360,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
         setCustomCategories(defaultCats);
         return defaultCats;
       }
-      
+
       setCustomCategories(list);
       return list;
     } catch (e) {
@@ -595,13 +534,13 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
       } else {
         await updateDoc(catDocRef, catData);
       }
-      
+
       const oldCat = customCategories.find(c => c.id === id);
       const oldName = oldCat?.name || '';
       const newName = editingCategoryName.trim();
-      
+
       setCustomCategories(prev => prev.map(c => c.id === id ? { ...c, name: newName } : c));
-      
+
       if (oldName) {
         // Update medications matching old category
         setCustomDrugs(prev => prev.map(d => d.category === oldName ? { ...d, category: newName } : d));
@@ -634,9 +573,9 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
     }
     const defaultOtherCat = isEn ? 'Other' : 'أخرى';
     const hasConfirmed = await dialogs.confirm(
-      isEn 
+      isEn
         ? `Are you sure you want to delete category "${name}"? Its medications will be kept and categorized as "${defaultOtherCat}".`
-        : `هل أنت متأكد من حذف قسم "${name}"؟ ستبقى الأدوية الخاصة به ولكنها ستصنف كـ "أخرى".`, 
+        : `هل أنت متأكد من حذف قسم "${name}"؟ ستبقى الأدوية الخاصة به ولكنها ستصنف كـ "أخرى".`,
       { severity: 'warning' }
     );
     if (!hasConfirmed) return;
@@ -649,7 +588,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
         await deleteDoc(catDocRef);
         setCustomCategories(prev => prev.filter(c => c.id !== id));
       }
-      
+
       // Update custom drugs in state and firestore
       setCustomDrugs(prev => prev.map(d => d.category === name ? { ...d, category: defaultOtherCat } : d));
       const ref = getCustomMedicationsRef(clinic.id);
@@ -728,7 +667,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
     const handleSync = (e: Event) => {
       const customEvent = e as CustomEvent;
       const { table } = customEvent.detail || {};
-      
+
       const relevantTables = ['custom_medications', 'custom_categories', 'patients', 'prescriptions'];
       if (
         relevantTables.includes(table) &&
@@ -780,7 +719,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
       dialogs.alert(isEn ? 'This medication is already added to the prescription' : 'هذا الدواء تمت إضافته مسبقاً في الروشتة', { severity: 'warning' });
       return;
     }
-    
+
     if (editingIndex !== null) {
       setMedications(medications.map((med, idx) => idx === editingIndex ? {
         name: medName.trim(),
@@ -800,19 +739,19 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
         }
       ]);
     }
-    
+
     // Clear form states
     setMedName('');
     setMedDose(isEn ? '1 Tablet' : 'قرص واحد');
     setMedFreq(isEn ? 'Every 12 hours (after meals)' : 'كل 12 ساعة (بعد الأكل)');
     setMedDur(isEn ? '5 Days' : '5 أيام');
+    setShowCustomDrug(false);
   };
 
   const handleRemoveMedication = (index: number) => {
-    setMedications(medications.filter((_, i) => i !== index));
-    if (editingIndex === index) {
-      setEditingIndex(null);
-    }
+    setMedications(prev => prev.filter((_, i) => i !== index));
+    if (editingIndex === index) handleCancelEdit();
+    else if (editingIndex !== null && editingIndex > index) setEditingIndex(editingIndex - 1);
   };
 
   const handleEditMedication = (index: number) => {
@@ -904,11 +843,10 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
     }
   };
 
-  const selectDrugTemplate = (template: any) => {
-    setMedName(template.name);
-    setMedDose(translateDoseValue(template.dose));
-    setMedFreq(translateFreqValue(template.frequency));
-    setMedDur(translateDurValue(template.duration));
+  const selectDrugTemplate = (template: typeof customDrugs[number]) => {
+    const index = medications.findIndex(m => m.name.trim().toLowerCase() === template.name.trim().toLowerCase());
+    if (index >= 0) { handleRemoveMedication(index); return; }
+    setMedications(prev => [...prev, { name: template.name, dose: translateDoseValue(template.dose), frequency: translateFreqValue(template.frequency), duration: translateDurValue(template.duration) }]);
   };
 
   // Build the themed color classes for the visual WYSIWYG preview
@@ -1079,10 +1017,156 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
     }
   };
 
+  const medicationForm = (
+<div className={editingIndex !== null ? 'border-t border-slate-100 pt-3' : 'bg-emerald-50/40 p-5 rounded-2xl border border-dashed border-emerald-300/70'}>
+          {/* Add Medicine form segments */}
+          <div className="space-y-4">
+            {editingIndex === null && <div className="flex items-center justify-between">
+              <h4 className="font-bold text-xs text-slate-700 flex items-center gap-1">
+                <Plus className="h-4 w-4 text-emerald-600" />
+                {editingIndex !== null
+                  ? (isEn ? 'Edit Current Medication:' : 'تعديل بند العلاج الحالي:')
+                  : (isEn ? 'Add custom medication (not in the pharmacy)' : 'إضافة علاج مخصص (دواء مش موجود في الصيدلية)')}
+              </h4>
+              {editingIndex !== null && (
+                <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">
+                  {isEn ? `Editing Item #${editingIndex + 1}` : `جاري تعديل البند رقم ${editingIndex + 1}`}
+                </span>
+              )}
+            </div>}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Drug Name */}
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-500 mb-1">
+                  {isEn ? 'Medication / Trade Name' : 'اسم المستحضر الدوائي أو الصنف التجاري'}
+                </label>
+                <input
+                  type="text"
+                  placeholder={isEn ? "e.g., Augmentin 1g" : "مثال: Augmentin 1g"}
+                  value={medName}
+                  onChange={(e) => setMedName(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg text-xs bg-white text-slate-800 font-semibold shadow-2xs"
+                />
+              </div>
+
+              {/* Dosage with click helpers */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 mb-1">
+                  {isEn ? 'Dosage' : 'الجرعة المحددة'}
+                </label>
+                <input
+                  type="text"
+                  placeholder={isEn ? "e.g., 1 Tablet" : "مثال: قرص واحد"}
+                  value={medDose}
+                  onChange={(e) => setMedDose(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg text-xs bg-white text-slate-800 font-semibold shadow-2xs"
+                />
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {(isEn
+                    ? ['1 Tablet', '1 Capsule', '1 Spoon (5ml)', '2 Capsules', 'Thin layer', 'As needed']
+                    : ['قرص واحد', 'كبسولة واحدة', 'ملعقة (5مل)', 'كبسولتان', 'مسحة خفيفة', 'عند اللزوم']
+                  ).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setMedDose(d)}
+                      className={`px-1.5 py-0.5 rounded text-[9px] transition ${medDose === d ? 'bg-emerald-600 text-white font-bold' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200/60'}`}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Duration with click helpers */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 mb-1">
+                  {isEn ? 'Duration' : 'المدة المطلوبة'}
+                </label>
+                <input
+                  type="text"
+                  placeholder={isEn ? "e.g., 5 Days" : "مثال: 5 أيام"}
+                  value={medDur}
+                  onChange={(e) => setMedDur(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg text-xs bg-white text-slate-800 font-semibold shadow-2xs"
+                />
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {(isEn
+                    ? ['3 Days', '5 Days', '7 Days', '10 Days', '2 Weeks', 'As needed']
+                    : ['3 أيام', '5 أيام', '7 أيام', '10 أيام', 'أسبوعين', 'عند اللزوم']
+                  ).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setMedDur(d)}
+                      className={`px-1.5 py-0.5 rounded text-[9px] transition ${medDur === d ? 'bg-emerald-600 text-white font-bold' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200/60'}`}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Frequency with click helpers */}
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-500 mb-1">
+                  {isEn ? 'Frequency & Instructions' : 'التكرار والإرشادات الزمنية'}
+                </label>
+                <input
+                  type="text"
+                  placeholder={isEn ? "e.g., Every 12 hours after meals" : "مثال: كل 12 ساعة بعد الأكل"}
+                  value={medFreq}
+                  onChange={(e) => setMedFreq(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg text-xs bg-white text-slate-800 font-semibold shadow-2xs"
+                />
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {(isEn
+                    ? ['Every 12 hours (after meals)', 'Every 8 hours (after meals)', 'Every 24 hours', '30 min before meals', 'As needed for pain', 'Every 6 hours']
+                    : ['كل 12 ساعة (بعد الأكل)', 'كل 8 ساعات (بعد الأكل)', 'كل 24 ساعة', 'قبل الأكل بـ 30 دقيقة', 'عند اللزوم للآلام', 'كل 6 ساعات']
+                  ).map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setMedFreq(f)}
+                      className={`px-1.5 py-0.5 rounded text-[9px] transition ${medFreq === f ? 'bg-emerald-600 text-white font-bold' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200/60'}`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200/40">
+              {editingIndex !== null && (
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="px-3.5 py-1.5 text-[11px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
+                >
+                  {isEn ? 'Cancel Edit' : 'إلغاء التعديل'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleAddMedication}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition flex items-center gap-1 shadow-xs"
+              >
+                <Check className="h-3.5 w-3.5" />
+                {editingIndex !== null
+                  ? (isEn ? 'Save Changes' : 'حفظ تعديلات البند')
+                  : (isEn ? 'Add to Prescription' : 'إدراج بالروشتة الطبية')}
+              </button>
+            </div>
+          </div>
+
+          </div>
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4" dir={isEn ? 'ltr' : 'rtl'}>
       {/* Navy hero */}
-      <div className="bg-[#272E40] rounded-3xl p-5 sm:p-6 shadow-lg border border-slate-800 space-y-4">
+      <div className="bg-[#272E40] rounded-[20px] p-4 sm:px-5 shadow-lg border border-slate-800 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
             <FileSpreadsheet className="h-5 w-5 text-emerald-400" />
@@ -1123,7 +1207,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Prescription Setup Form (Left block of controls) */}
-        <div className="lg:col-span-6 space-y-5">
+        <div className="lg:col-span-7 space-y-3">
           <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -1155,7 +1239,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
               <span className="text-[12px] font-bold text-slate-700 flex items-center gap-1.5">
                 <Sparkles className="h-4 w-4 text-emerald-600" />
-                {isEn ? 'Quick Clinic Pharmacy' : 'صيدلية العيادة السريعة'}
+                {isEn ? 'Clinic pharmacy' : 'صيدلية العيادة'}<span className="text-[10px] text-emerald-600 bg-emerald-50 rounded-lg px-2 py-1 ms-2">{isEn ? 'Tap to add · Tap again to remove' : 'دوسة تضيف · دوسة تانية تشيل'}</span>
               </span>
               <div className="flex gap-2">
                 <input
@@ -1175,7 +1259,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                 </button>
               </div>
             </div>
-            
+
             {/* Category filter tabs */}
             <div className="flex items-center gap-1 overflow-x-auto pb-1.5 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
               <button
@@ -1205,12 +1289,12 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                 let filtered = selectedCategoryTab === 'الكل'
                   ? customDrugs
                   : customDrugs.filter(d => d.category === selectedCategoryTab);
-                
+
                 if (drugSearchQuery.trim()) {
                   const query = drugSearchQuery.toLowerCase();
                   filtered = filtered.filter(d => d.name.toLowerCase().includes(query) || d.category.toLowerCase().includes(query) || getCategoryDisplayName(d.category).toLowerCase().includes(query));
                 }
-                
+
                 if (filtered.length === 0) {
                   return (
                     <p className="text-slate-400 text-[10px] text-center col-span-2 py-4 italic">
@@ -1224,13 +1308,15 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                     key={drug.id || idx}
                     type="button"
                     onClick={() => selectDrugTemplate(drug)}
-                    className={`p-1.5 sm:p-2.5 bg-white hover:bg-emerald-50/60 border border-slate-200/80 hover:border-emerald-300 rounded-xl transition shadow-2xs flex flex-col justify-between group h-14 sm:h-14 cursor-pointer ${isEn ? 'text-left' : 'text-right'}`}
+                    data-testid="pharmacy-drug" aria-pressed={medications.some(m => m.name.trim().toLowerCase() === drug.name.trim().toLowerCase())}
+                    className={`relative p-1.5 sm:p-2.5 border ${medications.some(m => m.name.trim().toLowerCase() === drug.name.trim().toLowerCase()) ? 'bg-emerald-50 border-emerald-500 ring-1 ring-emerald-500' : 'bg-white border-slate-200/80 hover:bg-emerald-50/60 hover:border-emerald-300'} rounded-xl transition shadow-2xs flex flex-col justify-between group min-h-16 cursor-pointer ${isEn ? 'text-left' : 'text-right'}`}
                   >
+                    {medications.some(m => m.name.trim().toLowerCase() === drug.name.trim().toLowerCase()) && <span className="absolute -top-2 start-2 bg-emerald-500 text-white px-2 py-0.5 rounded-full text-[9px] font-bold">✓ {isEn ? 'Added' : 'تمت الإضافة'}</span>}
                     <div className="flex items-center justify-between w-full gap-1">
                       <strong className="text-slate-800 text-[10px] sm:text-[13px] font-black group-hover:text-emerald-700 truncate">{drug.name}</strong>
                       <span className="text-[8px] sm:text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1 sm:px-1.5 py-0.5 rounded-md border border-emerald-100 shrink-0 truncate max-w-[40px] sm:max-w-none">{getCategoryDisplayName(drug.category)}</span>
                     </div>
-                    <div className="text-[8px] sm:text-[9px] text-slate-400 font-bold truncate mt-0.5 sm:mt-1">
+                    <div className="text-[9px] text-slate-400 font-bold truncate mt-1">
                       {translateDoseValue(drug.dose)} • {translateFreqValue(drug.frequency)} • {translateDurValue(drug.duration)}
                     </div>
                   </button>
@@ -1258,7 +1344,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                   type="button"
                   onClick={() => {
                     dialogs.confirm(
-                      isEn ? 'Do you want to clear all current medications and start over?' : 'هل تريد مسح جميع الأدوية الحالية والبدء من جديد؟', 
+                      isEn ? 'Do you want to clear all current medications and start over?' : 'هل تريد مسح جميع الأدوية الحالية والبدء من جديد؟',
                       { severity: 'warning' }
                     )
                       .then((confirmed) => {
@@ -1275,21 +1361,21 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                 </button>
               )}
             </div>
-            
+
             {medications.length === 0 ? (
               <div className="text-center text-slate-400 text-xs py-6 border border-dashed border-slate-100 rounded-lg bg-slate-50/50">
-                {isEn 
-                  ? 'No medications added yet. Use the quick clinic pharmacy or write a new item above.' 
+                {isEn
+                  ? 'No medications added yet. Use the quick clinic pharmacy or write a new item above.'
                   : 'لم تقم بإدراج أي دواء للروشتة حتى الآن. استخدم صيدلية العيادة السريعة أو اكتب بنداً جديداً أعلاه.'}
               </div>
             ) : (
-              <div className="space-y-2 max-h-56 overflow-y-auto">
+              <div className="space-y-2">
                 {medications.map((med, index) => {
                   const isBeingEdited = editingIndex === index;
                   return (
-                    <div 
-                      key={index} 
-                      className={`flex flex-col sm:flex-row justify-between sm:items-center gap-2 p-3 rounded-xl transition border text-xs ${isBeingEdited ? 'bg-amber-50/50 border-amber-300 ring-2 ring-amber-100' : 'bg-slate-50 hover:bg-slate-100 border-slate-200/60'}`}
+                    <div
+                      key={index}
+                      data-testid="rx-medication-row" className={`flex flex-wrap justify-between items-center gap-2 p-3 rounded-xl transition border text-xs ${isBeingEdited ? 'bg-white border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-50 hover:bg-slate-100 border-slate-200/60'}`}
                     >
                       <div className="flex items-start gap-2.5">
                         <span className="w-5 h-5 shrink-0 bg-slate-200 rounded-full flex items-center justify-center font-bold text-slate-600 text-[10px] mt-0.5">{index + 1}</span>
@@ -1300,7 +1386,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                           </div>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-center justify-end gap-1 shrink-0">
                         {/* Move Up */}
                         <button
@@ -1357,6 +1443,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
+                      {isBeingEdited && <div className="w-full sm:col-span-2">{medicationForm}</div>}
                     </div>
                   );
                 })}
@@ -1364,150 +1451,8 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
             )}
           </div>
           </div>
-          <div className="bg-emerald-50/40 p-5 rounded-2xl border-2 border-dashed border-emerald-300/70">
-          {/* Add Medicine form segments */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-bold text-xs text-slate-700 flex items-center gap-1">
-                <Plus className="h-4 w-4 text-emerald-600" />
-                {editingIndex !== null 
-                  ? (isEn ? 'Edit Current Medication:' : 'تعديل بند العلاج الحالي:') 
-                  : (isEn ? 'Add custom medication (not in the pharmacy)' : 'إضافة علاج مخصص (دواء مش موجود في الصيدلية)')}
-              </h4>
-              {editingIndex !== null && (
-                <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">
-                  {isEn ? `Editing Item #${editingIndex + 1}` : `جاري تعديل البند رقم ${editingIndex + 1}`}
-                </span>
-              )}
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Drug Name */}
-              <div className="sm:col-span-2">
-                <label className="block text-[10px] font-bold text-slate-500 mb-1">
-                  {isEn ? 'Medication / Trade Name' : 'اسم المستحضر الدوائي أو الصنف التجاري'}
-                </label>
-                <input
-                  type="text"
-                  placeholder={isEn ? "e.g., Augmentin 1g" : "مثال: Augmentin 1g"}
-                  value={medName}
-                  onChange={(e) => setMedName(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg text-xs bg-white text-slate-800 font-semibold shadow-2xs"
-                />
-              </div>
-
-              {/* Dosage with click helpers */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-1">
-                  {isEn ? 'Dosage' : 'الجرعة المحددة'}
-                </label>
-                <input
-                  type="text"
-                  placeholder={isEn ? "e.g., 1 Tablet" : "مثال: قرص واحد"}
-                  value={medDose}
-                  onChange={(e) => setMedDose(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg text-xs bg-white text-slate-800 font-semibold shadow-2xs"
-                />
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  {(isEn 
-                    ? ['1 Tablet', '1 Capsule', '1 Spoon (5ml)', '2 Capsules', 'Thin layer', 'As needed']
-                    : ['قرص واحد', 'كبسولة واحدة', 'ملعقة (5مل)', 'كبسولتان', 'مسحة خفيفة', 'عند اللزوم']
-                  ).map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => setMedDose(d)}
-                      className={`px-1.5 py-0.5 rounded text-[9px] transition ${medDose === d ? 'bg-emerald-600 text-white font-bold' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200/60'}`}
-                    >
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Duration with click helpers */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-1">
-                  {isEn ? 'Duration' : 'المدة المطلوبة'}
-                </label>
-                <input
-                  type="text"
-                  placeholder={isEn ? "e.g., 5 Days" : "مثال: 5 أيام"}
-                  value={medDur}
-                  onChange={(e) => setMedDur(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg text-xs bg-white text-slate-800 font-semibold shadow-2xs"
-                />
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  {(isEn 
-                    ? ['3 Days', '5 Days', '7 Days', '10 Days', '2 Weeks', 'As needed']
-                    : ['3 أيام', '5 أيام', '7 أيام', '10 أيام', 'أسبوعين', 'عند اللزوم']
-                  ).map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => setMedDur(d)}
-                      className={`px-1.5 py-0.5 rounded text-[9px] transition ${medDur === d ? 'bg-emerald-600 text-white font-bold' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200/60'}`}
-                    >
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Frequency with click helpers */}
-              <div className="sm:col-span-2">
-                <label className="block text-[10px] font-bold text-slate-500 mb-1">
-                  {isEn ? 'Frequency & Instructions' : 'التكرار والإرشادات الزمنية'}
-                </label>
-                <input
-                  type="text"
-                  placeholder={isEn ? "e.g., Every 12 hours after meals" : "مثال: كل 12 ساعة بعد الأكل"}
-                  value={medFreq}
-                  onChange={(e) => setMedFreq(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-lg text-xs bg-white text-slate-800 font-semibold shadow-2xs"
-                />
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  {(isEn 
-                    ? ['Every 12 hours (after meals)', 'Every 8 hours (after meals)', 'Every 24 hours', '30 min before meals', 'As needed for pain', 'Every 6 hours']
-                    : ['كل 12 ساعة (بعد الأكل)', 'كل 8 ساعات (بعد الأكل)', 'كل 24 ساعة', 'قبل الأكل بـ 30 دقيقة', 'عند اللزوم للآلام', 'كل 6 ساعات']
-                  ).map((f) => (
-                    <button
-                      key={f}
-                      type="button"
-                      onClick={() => setMedFreq(f)}
-                      className={`px-1.5 py-0.5 rounded text-[9px] transition ${medFreq === f ? 'bg-emerald-600 text-white font-bold' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200/60'}`}
-                    >
-                      {f}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200/40">
-              {editingIndex !== null && (
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="px-3.5 py-1.5 text-[11px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
-                >
-                  {isEn ? 'Cancel Edit' : 'إلغاء التعديل'}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleAddMedication}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition flex items-center gap-1 shadow-xs"
-              >
-                <Check className="h-3.5 w-3.5" />
-                {editingIndex !== null 
-                  ? (isEn ? 'Save Changes' : 'حفظ تعديلات البند') 
-                  : (isEn ? 'Add to Prescription' : 'إدراج بالروشتة الطبية')}
-              </button>
-            </div>
-          </div>
-
-          </div>
+          <button type="button" data-testid="custom-drug-toggle" onClick={() => { handleCancelEdit(); setShowCustomDrug(!showCustomDrug); }} className="w-full flex items-center gap-2 text-xs font-bold text-slate-500 border border-dashed border-slate-300 rounded-xl px-4 py-3 hover:bg-white"><Plus size={15} className="text-emerald-600" />{isEn ? 'Add a medication outside the pharmacy' : 'إضافة دواء مش موجود في الصيدلية'}<span className="ms-auto text-[9px] text-amber-700 bg-amber-100 rounded px-2 py-0.5">{isEn ? 'Optional' : 'اختياري'}</span></button>
+          {showCustomDrug && editingIndex === null && medicationForm}
           <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
@@ -1529,7 +1474,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                 </button>
               </div>
             </div>
-            <textarea
+            {recommendationsOn && <textarea
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -1538,23 +1483,23 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                 ? (isEn ? "e.g., Warm salt water rinse, avoid hot foods and beverages..." : "مثال: المضمضة بماء وملح دافئ، الامتناع عن المشروبات الساخنة...")
                 : (isEn ? "Recommendations are off and won't appear on the printed prescription. Turn on the switch to write them." : "التوصيات مقفولة، مش هتظهر في الروشتة المطبوعة. فعّل المفتاح لو عايز تكتب توصيات للمريض.")}
               className={`w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs font-semibold ${!recommendationsOn ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : ''}`}
-            />
+            />}
           </div>
         </div>
 
         {/* Live WYSIWYG A4 Preview (Right block of layout) */}
-        <div className="lg:col-span-6 space-y-4">
+        <div className="lg:col-span-5 space-y-3">
           <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
                 <Printer className="h-4 w-4 text-emerald-600" />
                 {isEn ? 'Preview & Print' : 'المعاينة والطباعة'}
               </h3>
-              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">{isEn ? 'Live Update' : 'تحديث مباشر'}</span>
+              <button type="button" data-testid="print-style-toggle" aria-expanded={showPrintStyle} onClick={() => setShowPrintStyle(!showPrintStyle)} className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 bg-slate-100 px-3 py-2 rounded-lg"><Settings size={13} />{isEn ? 'Print appearance' : 'شكل الطباعة'}</button>
             </div>
-            <div className="space-y-1">
+            {showPrintStyle && <div className="space-y-3">
         {/* Style selection pill indicators */}
-        <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200/60 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200/60 self-start sm:self-auto">
           <span className="text-[10px] font-bold text-slate-400 px-2">{t('prescriptions.prescriptionIdentity')}:</span>
           <button
             onClick={() => setPStyle('classic')}
@@ -1584,14 +1529,13 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
             type="button"
             onClick={() => {
               setPStyle('custom_pad');
-              setShowPadEditor(!showPadEditor);
+              setShowPadEditor(true);
             }}
             className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${pStyle === 'custom_pad' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
           >
             🎨 {t('prescriptions.customPad')}
           </button>
         </div>
-            </div>
             <div className="flex items-center gap-2 border-t border-slate-100 pt-3">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-bold text-slate-400">{isEn ? 'Format:' : 'التنسيق:'}</span>
@@ -1611,311 +1555,20 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
               </button>
             </div>
             </div>
+            </div>}
           </div>
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <span />
-            <div className="flex items-center gap-2">
-              {pStyle === 'custom_pad' && (
-                <button
-                  type="button"
-                  onClick={() => setShowPadEditor(!showPadEditor)}
-                  className={`text-xs font-bold px-3 py-1.5 rounded-xl border transition flex items-center gap-1.5 shadow-sm ${
-                    showPadEditor
-                      ? 'bg-rose-600 text-white border-rose-700 hover:bg-rose-700'
-                      : 'text-amber-800 bg-amber-100 hover:bg-amber-200 border-amber-300'
-                  }`}
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                  {showPadEditor 
-                    ? (isEn ? 'Close Editor ✕' : 'إغلاق المحرر ✕') 
-                    : (isEn ? 'Edit Positions & Background 🎨' : 'تعديل أماكن الخانات وصورة الروشتة 🎨')}
-                </button>
-              )}
-
-            </div>
-          </div>
-
-          {/* Inline Pad Customizer Controls Bar */}
-          {pStyle === 'custom_pad' && showPadEditor && (
-            <div className="bg-slate-900 text-white p-4 rounded-2xl border-2 border-indigo-500 shadow-xl space-y-3 animate-fade-in" dir={isEn ? "ltr" : "rtl"}>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-amber-400" />
-                  <span className="text-xs font-black text-amber-400">
-                    {isEn ? 'Pad Controls & Drag Positioning:' : 'تحريك الخانات والتحكم المباشر بالروشتة:'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleResetPadPositions}
-                    className="text-[11px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded-lg transition border border-slate-700 flex items-center gap-1"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    <span>{isEn ? 'Reset Positions' : 'إعادة ضبط المواضع'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowPadEditor(false)}
-                    className="text-xs font-bold text-slate-400 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800"
-                  >
-                    {isEn ? 'Close ✕' : 'إغلاق ✕'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Top Bar Actions: Upload image + Print Toggle */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                <div className="bg-slate-800/90 p-2.5 rounded-xl border border-slate-700 flex items-center justify-between gap-2">
-                  <span className="font-bold text-slate-300 text-[11px]">{isEn ? 'Background Image:' : 'صورة خلفية الروشتة:'}</span>
-                  {effectivePadConfig.backgroundImage ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-emerald-400 font-bold">{isEn ? 'Attached' : 'مرفقة'}</span>
-                      <label className="bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded-lg cursor-pointer text-[10px] font-bold transition">
-                        {isEn ? 'Change' : 'تغيير'}
-                        <input type="file" accept="image/*" onChange={handlePadImageUpload} className="hidden" />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleRemovePadImage}
-                        className="p-1 text-rose-400 hover:bg-rose-500/20 rounded transition"
-                        title={isEn ? "Delete Image" : "حذف الصورة"}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded-lg cursor-pointer text-[10px] font-bold transition flex items-center gap-1">
-                      <Upload className="h-3 w-3" />
-                      <span>{isEn ? 'Upload Prescription Pad Image' : 'رفع صورة الروشتة'}</span>
-                      <input type="file" accept="image/*" onChange={handlePadImageUpload} className="hidden" />
-                    </label>
-                  )}
-                </div>
-
-                <div className="bg-slate-800/90 p-2.5 rounded-xl border border-slate-700 flex items-center justify-between">
-                  <span className="font-bold text-slate-300 text-[11px]">{isEn ? 'Print Background:' : 'طباعة خلفية الصورة:'}</span>
-                  <button
-                    type="button"
-                    onClick={handleToggleHideOnPrint}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center gap-1 transition ${
-                      effectivePadConfig.hideBackgroundOnPrint
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                        : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                    }`}
-                  >
-                    {effectivePadConfig.hideBackgroundOnPrint ? (
-                      <>
-                        <EyeOff className="h-3 w-3" />
-                        <span>{isEn ? 'Hide on Print' : 'إخفاء عند الطباعة'}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="h-3 w-3" />
-                        <span>{isEn ? 'Print Image' : 'طباعة الصورة'}</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Element selector & Sliders for fine-tuning */}
-              <div className="space-y-2 pt-1 border-t border-slate-800">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-slate-300">
-                    {isEn ? 'Select element to adjust:' : 'اختر الخانة لضبط أبعادها بدقة:'}
-                  </span>
-                  <span className="text-[10px] text-indigo-400 font-mono">
-                    top: {effectivePadConfig[selectedElement].top}%, left: {effectivePadConfig[selectedElement].left}%
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap gap-1">
-                  {(['patientName', 'patientAge', 'date', 'medicationsBox', 'notesBox'] as ElementKey[]).map((key) => {
-                    const isSel = selectedElement === key;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setSelectedElement(key)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
-                          isSel ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {isEn ? ELEMENT_LABELS[key].titleEn : ELEMENT_LABELS[key].title}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] text-slate-300">
-                      <span>{isEn ? 'Top:' : 'من الأعلى (Top):'}</span>
-                      <span className="text-indigo-400 font-bold">{effectivePadConfig[selectedElement].top}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="95"
-                      value={effectivePadConfig[selectedElement].top}
-                      onChange={(e) => updatePadElementConfig(selectedElement, { top: Number(e.target.value) })}
-                      className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] text-slate-300">
-                      <span>{isEn ? 'Left:' : 'من اليسار (Left):'}</span>
-                      <span className="text-indigo-400 font-bold">{effectivePadConfig[selectedElement].left}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="95"
-                      value={effectivePadConfig[selectedElement].left}
-                      onChange={(e) => updatePadElementConfig(selectedElement, { left: Number(e.target.value) })}
-                      className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] text-slate-300">
-                      <span>{isEn ? 'Font Size:' : 'حجم الخط:'}</span>
-                      <span className="text-indigo-400 font-bold font-mono">{effectivePadConfig[selectedElement].fontSize || 14}px</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="8"
-                      max="48"
-                      value={effectivePadConfig[selectedElement].fontSize || 14}
-                      onChange={(e) => updatePadElementConfig(selectedElement, { fontSize: Number(e.target.value) })}
-                      className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
-                    />
-                  </div>
-
-                  {(selectedElement === 'medicationsBox' || selectedElement === 'notesBox') && (
-                    <>
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] text-slate-300">
-                          <span>{isEn ? 'Box Width:' : 'عرض المربع:'}</span>
-                          <span className="text-indigo-400 font-bold">{effectivePadConfig[selectedElement].width || 80}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="20"
-                          max="100"
-                          value={effectivePadConfig[selectedElement].width || 80}
-                          onChange={(e) => updatePadElementConfig(selectedElement, { width: Number(e.target.value) })}
-                          className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] text-slate-300">
-                          <span>{isEn ? 'Box Height:' : 'ارتفاع المربع:'}</span>
-                          <span className="text-indigo-400 font-bold">{effectivePadConfig[selectedElement].height || 20}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="10"
-                          max="80"
-                          value={effectivePadConfig[selectedElement].height || 20}
-                          onChange={(e) => updatePadElementConfig(selectedElement, { height: Number(e.target.value) })}
-                          className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Directional Nudge Pad (Arrow Keys & Buttons) */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800">
-                  <div className="text-[11px] font-bold text-slate-300 space-y-0.5">
-                    <div className="flex items-center gap-1.5 text-indigo-300">
-                      <Move className="h-3.5 w-3.5" />
-                      <span>{isEn ? 'Arrow Keys Control (⬆️ ⬇️ ⬅️ ➡️):' : 'التحكم بالأسهم (⬆️ ⬇️ ⬅️ ➡️):'}</span>
-                    </div>
-                    <p className="text-[10px] text-slate-400">
-                      {isEn 
-                        ? 'Use arrow keys or buttons to nudge the selected box. (Hold Shift for 5% fast nudge).'
-                        : 'اضغط أسهم الكيبورد أو الأزرار لتحريك الخانة المحددة. (اضغط Shift للتحريك السريع 5%).'}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-col items-center gap-1 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => nudgePadElement(selectedElement, 'up', 1)}
-                      className="p-1.5 bg-slate-800 hover:bg-indigo-600 active:bg-indigo-700 text-white rounded-lg transition border border-slate-700 shadow"
-                      title={isEn ? "Nudge Up (ArrowUp)" : "تحريك لأعلى (ArrowUp)"}
-                    >
-                      <ArrowUp className="h-3.5 w-3.5" />
-                    </button>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => nudgePadElement(selectedElement, 'right', 1)}
-                        className="p-1.5 bg-slate-800 hover:bg-indigo-600 active:bg-indigo-700 text-white rounded-lg transition border border-slate-700 shadow"
-                        title={isEn ? "Nudge Right (ArrowRight)" : "تحريك لليمين (ArrowRight)"}
-                      >
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </button>
-                      <span className="text-[10px] text-indigo-300 font-mono font-bold px-1">
-                        {effectivePadConfig[selectedElement].top}% / {effectivePadConfig[selectedElement].left}%
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => nudgePadElement(selectedElement, 'left', 1)}
-                        className="p-1.5 bg-slate-800 hover:bg-indigo-600 active:bg-indigo-700 text-white rounded-lg transition border border-slate-700 shadow"
-                        title={isEn ? "Nudge Left (ArrowLeft)" : "تحريك لليسار (ArrowLeft)"}
-                      >
-                        <ArrowLeft className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => nudgePadElement(selectedElement, 'down', 1)}
-                      className="p-1.5 bg-slate-800 hover:bg-indigo-600 active:bg-indigo-700 text-white rounded-lg transition border border-slate-700 shadow"
-                      title={isEn ? "Nudge Down (ArrowDown)" : "تحريك لأسفل (ArrowDown)"}
-                    >
-                      <ArrowDown className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Visual Paper Canvas */}
           {pStyle === 'custom_pad' ? (
-            <div 
-              ref={canvasRef}
-              onMouseMove={handleCanvasMouseMove}
-              onMouseUp={handleCanvasDragEnd}
-              onMouseLeave={handleCanvasDragEnd}
-              onTouchMove={handleCanvasTouchMove}
-              onTouchEnd={handleCanvasDragEnd}
-              onTouchCancel={handleCanvasDragEnd}
-              className={`w-full bg-white rounded-2xl shadow-xl relative overflow-hidden flex flex-col min-h-[680px] transition-all select-none ${
-                showPadEditor ? 'border-4 border-indigo-500 ring-4 ring-indigo-500/20 cursor-crosshair touch-none' : 'border-2 border-amber-300'
-              }`}
+            <div
+              className="w-full bg-white rounded-2xl shadow-xl relative overflow-hidden flex flex-col min-h-[520px] select-none border-2 border-amber-300"
               style={{ aspectRatio: '1 / 1.414' }}
             >
-              {/* Active Edit Mode Ribbon Banner inside canvas */}
-              {showPadEditor && (
-                <div className="bg-indigo-600 text-white text-[11px] font-black py-1.5 px-3 text-center flex items-center justify-center gap-1.5 shadow-md z-30 shrink-0">
-                  <Move className="h-3.5 w-3.5 animate-bounce" />
-                  <span>{isEn ? 'Drag boxes directly on the prescription pad' : 'قم بالسحب بالماوس لتحريك الخانات مباشرة فوق ورقة الروشتة'}</span>
-                </div>
-              )}
-
               {/* Background prescription image if uploaded */}
               {effectivePadConfig.backgroundImage && effectivePadConfig.backgroundImage.trim() !== '' ? (
-                <img 
-                  src={effectivePadConfig.backgroundImage} 
-                  alt="Custom Prescription Background" 
-                  className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-0" 
+                <img
+                  src={effectivePadConfig.backgroundImage}
+                  alt="Custom Prescription Background"
+                  className="absolute inset-0 w-full h-full object-fill pointer-events-none select-none z-0"
                 />
               ) : (
                 <div className="absolute inset-0 bg-gradient-to-b from-amber-50/20 via-white to-amber-50/10 border-2 border-dashed border-amber-200 flex flex-col items-center justify-center p-6 text-center text-amber-800/60 z-0 pointer-events-none">
@@ -1927,15 +1580,11 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
               {/* Absolute elements based on customPrescriptionPadConfig */}
               {(['patientName', 'patientAge', 'date', 'medicationsBox', 'notesBox'] as ElementKey[]).map((key) => {
                 const el = effectivePadConfig[key];
-                const info = ELEMENT_LABELS[key];
                 const isBox = key === 'medicationsBox' || key === 'notesBox';
-                const isSelected = showPadEditor && selectedElement === key;
 
                 return (
                   <div
                     key={key}
-                    onMouseDown={(e) => handleCanvasMouseDown(key, e)}
-                    onTouchStart={(e) => handleCanvasMouseDown(key, e)}
                     style={{
                       position: 'absolute',
                       top: `${el.top}%`,
@@ -1944,23 +1593,8 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                       height: isBox ? `${el.height || 20}%` : 'auto',
                       fontSize: `${el.fontSize || 13}px`,
                     }}
-                    className={`${
-                      showPadEditor
-                        ? `cursor-move z-20 rounded-lg p-1 transition-shadow ${
-                            isSelected
-                              ? 'ring-2 ring-indigo-600 bg-indigo-50/90 shadow-2xl border-2 border-indigo-600 font-black z-30'
-                              : 'border-2 border-dashed border-slate-400/80 bg-white/70 hover:border-indigo-500 hover:bg-white/90'
-                          }`
-                        : 'pointer-events-none z-10'
-                    }`}
+                    className="pointer-events-none z-10"
                   >
-                    {/* If editing mode is active, display ONLY the box title for clear positioning */}
-                    {showPadEditor ? (
-                      <div className="flex items-center justify-between gap-1.5 font-black text-indigo-950 pointer-events-none w-full h-full p-0.5">
-                        <span className="truncate">{isEn ? info.titleEn : info.title}</span>
-                        <Move className="h-3.5 w-3.5 shrink-0 text-indigo-600" />
-                      </div>
-                    ) : (
                       <>
                         {/* Real Content Rendering */}
                         {key === 'patientName' && (
@@ -2002,18 +1636,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                                       </tr>
                                     ))
                                   ) : (
-                                    <>
-                                      <tr className="border-b border-dashed border-slate-200">
-                                        <td className="p-1 font-extrabold text-slate-900 font-mono text-left" dir="ltr">Augmentin 1g</td>
-                                        <td className="p-1 text-center font-bold text-slate-800">{isEn ? '1 Capsule' : 'كبسولة واحدة'}</td>
-                                        <td className="p-1 text-center font-bold text-slate-800">{isEn ? 'Every 12 hours • 7 days' : 'كل 12 ساعة • 7 أيام'}</td>
-                                      </tr>
-                                      <tr className="border-b border-dashed border-slate-200">
-                                        <td className="p-1 font-extrabold text-slate-900 font-mono text-left" dir="ltr">Cataflam 50mg</td>
-                                        <td className="p-1 text-center font-bold text-slate-800">{isEn ? '1 Tablet' : 'قرص واحد'}</td>
-                                        <td className="p-1 text-center font-bold text-slate-800">{isEn ? 'As needed • 5 days' : 'عند اللزوم • 5 أيام'}</td>
-                                      </tr>
-                                    </>
+                                    <tr><td colSpan={3} className="p-3 text-slate-300 text-center">{isEn ? 'No medications added yet' : 'لم تتم إضافة أدوية بعد'}</td></tr>
                                   )}
                                 </tbody>
                               </table>
@@ -2031,23 +1654,14 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                                     </div>
                                   ))
                                 ) : (
-                                  <div className={`space-y-1.5 ${isEn ? 'text-left' : 'text-right'}`}>
-                                    <div className="border-b border-dashed border-slate-200 pb-1">
-                                      <div className="font-extrabold text-slate-900 font-mono text-left" dir="ltr" style={{ fontSize: '1.05em' }}>1. Augmentin 1g</div>
-                                      <div className={`font-bold text-slate-600 ${isEn ? 'pl-2' : 'pr-2'}`} style={{ fontSize: '0.85em' }}>{isEn ? '1 Capsule • Every 12 hours • 7 days' : 'كبسولة واحدة • كل 12 ساعة • 7 أيام'}</div>
-                                    </div>
-                                    <div className="border-b border-dashed border-slate-200 pb-1">
-                                      <div className="font-extrabold text-slate-900 font-mono text-left" dir="ltr" style={{ fontSize: '1.05em' }}>2. Cataflam 50mg</div>
-                                      <div className={`font-bold text-slate-600 ${isEn ? 'pl-2' : 'pr-2'}`} style={{ fontSize: '0.85em' }}>{isEn ? '1 Tablet as needed after meals' : 'قرص عند اللزوم بعد الأكل'}</div>
-                                    </div>
-                                  </div>
+                                  <p className="text-slate-300 text-center text-xs">{isEn ? 'No medications added yet' : 'لم تتم إضافة أدوية بعد'}</p>
                                 )}
                               </div>
                             )}
                           </div>
                         )}
 
-                        {key === 'notesBox' && (
+                        {key === 'notesBox' && recommendationsOn && (
                           <div className={`overflow-y-auto font-bold text-slate-700 h-full w-full ${isEn ? 'text-left' : 'text-right'}`} dir={isEn ? "ltr" : "rtl"}>
                             <div>
                               <span className="font-extrabold text-slate-900">{isEn ? 'Instructions & Notes: ' : 'ملاحظات وطريقة الاستعمال: '}</span>
@@ -2056,14 +1670,13 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                           </div>
                         )}
                       </>
-                    )}
                   </div>
                 );
               })}
             </div>
           ) : (
-            <div 
-              className="w-full bg-white rounded-2xl shadow-xl border border-slate-200/80 p-8 relative overflow-hidden flex flex-col min-h-[680px]"
+            <div
+              className="w-full bg-white rounded-2xl shadow-xl border border-slate-200/80 p-8 relative overflow-hidden flex flex-col min-h-[520px]"
               style={{
                 borderColor: colors.primary + '30',
                 borderWidth: pStyle === 'classic' || pStyle === 'elegant' ? '4px' : '2px',
@@ -2071,7 +1684,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
               }}
             >
               {/* Watermark in background */}
-              <div 
+              <div
                 className="absolute inset-0 pointer-events-none opacity-[0.15] z-0 flex items-center justify-center"
                 style={{
                   backgroundImage: clinic.logoUrl ? `url('${clinic.logoUrl}')` : undefined,
@@ -2086,8 +1699,8 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
               </div>
 
               {/* Header layout */}
-              <div 
-                className="grid grid-cols-12 items-center gap-2 p-5 rounded-2xl mb-5 z-10 text-white" 
+              <div
+                className="grid grid-cols-12 items-center gap-2 p-5 rounded-2xl mb-5 z-10 text-white"
                 style={{ backgroundColor: colors.primary }}
               >
                 {/* Right: Arabic Header */}
@@ -2188,14 +1801,14 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
 
               {/* Recommendations/Notes block - Placed at the very bottom above footer */}
               {recommendationsOn && (
-              <div 
-                className={`mt-8 p-3 rounded-lg text-[11px] leading-relaxed z-10 ${isEn ? 'text-left' : 'text-right'}`} 
-                style={{ 
-                  borderRightWidth: isEn ? '0px' : '4px', 
+              <div
+                className={`mt-8 p-3 rounded-lg text-[11px] leading-relaxed z-10 ${isEn ? 'text-left' : 'text-right'}`}
+                style={{
+                  borderRightWidth: isEn ? '0px' : '4px',
                   borderLeftWidth: isEn ? '4px' : '0px',
-                  borderStyle: 'solid', 
-                  borderColor: colors.primary, 
-                  backgroundColor: '#f8fafc' 
+                  borderStyle: 'solid',
+                  borderColor: colors.primary,
+                  backgroundColor: '#f8fafc'
                 }}
               >
                 <strong className="text-slate-800 block mb-1">
@@ -2231,10 +1844,10 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
               type="button"
               onClick={handleSaveOnly}
               disabled={medications.length === 0 || loading || isSavingOnly}
-              className="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-md shadow-slate-100 disabled:opacity-50 cursor-pointer"
+              className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-500 font-bold py-3 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-md shadow-slate-100 disabled:opacity-50 cursor-pointer"
             >
               <Save className="h-4 w-4" />
-              {isSavingOnly ? (isEn ? 'Saving...' : 'جاري الحفظ...') : (isEn ? 'Save to patient record without printing' : 'حفظ في سجل المريض بدون طباعة')}
+              {isSavingOnly ? (isEn ? 'Saving...' : 'جاري الحفظ...') : (isEn ? 'Save without printing' : 'حفظ بدون طباعة')}
             </button>
 
             <button
@@ -2244,12 +1857,13 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
               className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-md shadow-emerald-50 disabled:opacity-50 cursor-pointer"
             >
               <Printer className="h-4 w-4" />
-              {loading ? (isEn ? 'Saving & Preparing Print...' : 'جاري حفظ وطباعة الروشتة...') : (isEn ? 'Save & Print Prescription Now' : 'حفظ وطباعة الروشتة الآن')}
+              {loading ? (isEn ? 'Saving & Preparing Print...' : 'جاري حفظ وطباعة الروشتة...') : (isEn ? 'Save & Print' : 'حفظ وطباعة')}
             </button>
           </div>
         </div>
       </div>
 
+      {showPadEditor && <PrescriptionPadModal config={effectivePadConfig} isEn={!!isEn} onChange={updatePadElementConfig} onClose={() => setShowPadEditor(false)} onReset={handleResetPadPositions} onUpload={handlePadImageUpload} onRemoveImage={handleRemovePadImage} onTogglePrint={handleToggleHideOnPrint} uploading={isCompressingImage} saveStatus={padSaveStatus} onRetry={() => persistPadConfig(effectivePadConfig)} />}
       {/* Custom Medications Management Modal */}
       {showMedSettings && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4" dir={isEn ? "ltr" : "rtl"}>
@@ -2298,7 +1912,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                       <Plus className="h-4 w-4" />
                       {isEn ? 'Add New Medication to Clinic List:' : 'إضافة دواء جديد لقائمة العيادة:'}
                     </h4>
-                    
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
                       <div className="sm:col-span-2 md:col-span-1">
                         <label className="block text-[10px] font-bold text-slate-500 mb-1">
@@ -2389,7 +2003,7 @@ export default function PrescriptionGenerator({ clinic, isStaff, initialPatientI
                     <h4 className="text-xs font-bold text-slate-500">
                       {isEn ? `Current Clinic Medications List (${customDrugs.length}):` : `قائمة الأدوية والمستحضرات الحالية (${customDrugs.length}):`}
                     </h4>
-                    
+
                     <div className="border border-slate-100 rounded-xl overflow-hidden bg-white">
                       <div className="overflow-x-auto max-h-[350px]">
                         <table className={`w-full border-collapse text-xs ${isEn ? 'text-left' : 'text-right'}`}>
