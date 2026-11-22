@@ -28,7 +28,8 @@
     "test:lab-alerts": "npm run lint && npm run build && TEST_UI=1 TEST_UI_ENTRY=tests/lab-alerts.ui.cjs node tests/run-finance.mjs",
     "test:services-prices": "npm run lint && npm run build && TEST_UI=1 TEST_UI_ENTRY=tests/services-prices.ui.cjs node tests/run-finance.mjs",
     "test:orthodontic-catalog": "npm run lint && npm run build && tsx tests/dental-service-catalog.test.ts && node tests/run-orthodontic-catalog.mjs",
-    "test:prescriptions": "npm run lint && npm run build && node tests/run-prescription-simplification.mjs"
+    "test:prescriptions": "npm run lint && npm run build && node tests/run-prescription-simplification.mjs",
+    "test:patient-workspace": "npm run lint && npm run build && node tests/run-patient-workspace.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1108.0",

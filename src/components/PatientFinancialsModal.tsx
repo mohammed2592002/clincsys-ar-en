@@ -14,6 +14,8 @@ import { ToothBadge } from './ToothBadge';
 
 interface PatientFinancialsModalProps {
   isOpen: boolean;
+  embedded?: boolean;
+  onOpenWindow?: () => void;
   onClose: () => void;
   clinicId: string;
   patientId?: string;
@@ -97,6 +99,8 @@ export const getAppointmentPayments = (app: any): any[] => {
 
 export default function PatientFinancialsModal({
   isOpen,
+  embedded = false,
+  onOpenWindow,
   onClose,
   clinicId,
   patientId,
@@ -435,6 +439,21 @@ export default function PatientFinancialsModal({
     setPrintingApp(app);
   };
 
+  const openPaymentCollector = () => {
+    setShowPaymentBox(true);
+    if (!selectedAppId && appointments.length > 0) {
+      const firstPending = appointments.find(a => a.status!=='cancelled'&&(a.remainingAmount !== undefined ? a.remainingAmount : 0) > 0) || appointments[0];
+      if (firstPending) {
+        setSelectedAppId(firstPending.id);
+        const rem = firstPending.remainingAmount !== undefined ? firstPending.remainingAmount : 0;
+        if (rem > 0) setPaymentAmount(rem);
+      }
+    }
+    setTimeout(() => {
+      paymentBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -442,7 +461,7 @@ export default function PatientFinancialsModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-md"
+          data-testid="patient-financials-panel" className={embedded ? "w-full" : "fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-md"}
           dir={isEn ? 'ltr' : 'rtl'}
         >
           <motion.div
@@ -450,20 +469,20 @@ export default function PatientFinancialsModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 15 }}
             transition={{ type: "spring", duration: 0.35 }}
-            className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200/90"
+            className={embedded ? "bg-white rounded-2xl w-full flex flex-col border border-slate-200/90" : "bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200/90"}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 bg-slate-900 text-white shrink-0">
+            <div className={embedded ? "flex flex-wrap gap-3 items-center justify-between px-6 py-4 bg-white text-slate-800 border-b border-slate-100 rounded-t-2xl" : "flex items-center justify-between px-6 py-4 bg-slate-900 text-white shrink-0"}>
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/30 shrink-0">
                   <Info className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-white flex items-center gap-2">
+                  <h3 className={`font-bold text-base flex items-center gap-2 ${embedded ? "text-slate-800" : "text-white"}`}>
                     {isEn ? 'Patient Account Statement & Installments' : 'كشف الحساب والأقساط'}
                   </h3>
                   <p className="text-xs text-slate-400 font-medium mt-0.5">
-                    <strong className="text-slate-300">{patientName}</strong>
+                    <strong className={embedded ? "text-slate-500" : "text-slate-300"}>{patientName}</strong>
                     {patientPhone && <span className="font-mono text-slate-500" dir="ltr"> • {patientPhone}</span>}
                   </p>
                 </div>
@@ -472,26 +491,26 @@ export default function PatientFinancialsModal({
               {/* Right Side Header Loyalty Badge */}
               <div className="flex items-center gap-3">
                 {isLoyaltyEnabled && (
-                  <div className="flex items-center gap-1.5 bg-amber-500/10 text-amber-300 border border-amber-500/30 px-3 py-1.5 rounded-xl text-xs font-bold">
+                  <div className={`flex items-center gap-1.5 border px-3 py-1.5 rounded-xl text-xs font-bold ${embedded ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-amber-500/10 text-amber-300 border-amber-500/30"}`}>
                     <Gift className="h-4 w-4 text-amber-400 shrink-0" />
                     <span>{isEn ? 'Loyalty Points:' : 'نقاط الولاء:'}</span>
-                    <span className="font-mono text-amber-200 text-sm font-black">{patientPoints}</span>
+                    <span className={`font-mono text-sm font-black ${embedded ? "text-amber-700" : "text-amber-200"}`}>{patientPoints}</span>
                   </div>
                 )}
 
                 <button
                   type="button"
-                  onClick={onClose}
-                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
-                  title={isEn ? 'Close' : 'إغلاق'}
+                  onClick={embedded ? onOpenWindow : onClose}
+                  className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                  title={embedded ? (isEn ? 'Open separate window' : 'فتح نافذة مستقلة') : (isEn ? 'Close' : 'إغلاق')}
                 >
-                  <X className="h-5 w-5" />
+                  {embedded ? <span className="text-xs text-slate-600 font-bold border border-slate-200 px-3 py-2 rounded-lg">{isEn ? 'Open separate window' : 'فتح نافذة مستقلة'}</span> : <X className="h-5 w-5" />}
                 </button>
               </div>
             </div>
 
             {/* Modal Body */}
-            <div className="p-5 sm:p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50/50">
+            <div className={`p-5 sm:p-6 space-y-6 flex-1 ${embedded ? "bg-white rounded-b-2xl" : "overflow-y-auto bg-slate-50/50"}`}>
               {loading ? (
                 <div className="py-20 text-center text-slate-400 space-y-3">
                   <RefreshCw className="h-8 w-8 animate-spin mx-auto text-emerald-600" />
@@ -504,7 +523,12 @@ export default function PatientFinancialsModal({
               ) : (
                 <>
                   {/* Remaining Balance Card */}
-                  {(() => {
+                  {embedded ? <div className="flex flex-wrap items-center justify-between gap-5 p-5 rounded-xl border border-emerald-200 bg-emerald-50/40" data-testid="patient-balance-summary">
+  <div><div className="text-xs text-emerald-700 font-bold">{isEn ? 'Remaining balance' : 'المتبقي على المريض'}</div><div className="text-3xl font-extrabold text-emerald-700 mt-1 font-mono">{totalRemaining.toLocaleString()} <span className="text-sm">{isEn ? 'EGP' : 'ج.م'}</span></div></div>
+  <div className="flex gap-8 text-xs text-slate-500"><div>{isEn ? 'Total bill' : 'إجمالي الحساب'}<b className="block text-lg font-mono text-slate-700 mt-1">{totalCost.toLocaleString()}</b></div><div>{isEn ? 'Paid' : 'المدفوع'}<b className="block text-lg font-mono text-emerald-700 mt-1">{totalPaid.toLocaleString()}</b></div></div>
+  <button type="button" onClick={openPaymentCollector} className="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg flex gap-2 items-center"><Plus className="h-4 w-4"/>{isEn ? 'Collect Payment / Installment' : 'تحصيل دفعة أو قسط'}</button>
+  <div className="basis-full h-1 bg-emerald-100 rounded-full overflow-hidden" title={isEn ? 'Payment progress' : 'نسبة السداد'}><div className="h-full bg-emerald-500" style={{width: `${totalCost > 0 ? Math.min(100, totalPaid / totalCost * 100) : 0}%`}}/></div>
+</div> : (() => {
                     const paidPct = totalCost > 0 ? Math.min(100, Math.round((totalPaid / totalCost) * 100)) : (totalPaid > 0 ? 100 : 0);
                     return (
                       <div className={`rounded-3xl border p-5 sm:p-6 space-y-3.5 shadow-2xs ${totalRemaining > 0 ? 'bg-red-50/70 border-red-200' : 'bg-emerald-50/60 border-emerald-200'}`}>
@@ -529,21 +553,8 @@ export default function PatientFinancialsModal({
                   {!showPaymentBox ? (
                     <button
                       type="button"
-                      onClick={() => {
-                        setShowPaymentBox(true);
-                        if (!selectedAppId && appointments.length > 0) {
-                          const firstPending = appointments.find(a => a.status!=='cancelled'&&(a.remainingAmount !== undefined ? a.remainingAmount : 0) > 0) || appointments[0];
-                          if (firstPending) {
-                            setSelectedAppId(firstPending.id);
-                            const rem = firstPending.remainingAmount !== undefined ? firstPending.remainingAmount : 0;
-                            if (rem > 0) setPaymentAmount(rem);
-                          }
-                        }
-                        setTimeout(() => {
-                          paymentBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }, 50);
-                      }}
-                      className="w-full py-4 bg-gradient-to-l from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-base rounded-2xl shadow-lg shadow-emerald-500/25 transition flex items-center justify-center gap-2.5 cursor-pointer"
+                      onClick={openPaymentCollector}
+                      className={embedded ? "hidden" : "w-full py-4 bg-gradient-to-l from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-base rounded-2xl shadow-lg shadow-emerald-500/25 transition flex items-center justify-center gap-2.5 cursor-pointer"}
                     >
                       <span className="w-6 h-6 rounded-full bg-white/25 flex items-center justify-center">
                         <Plus className="h-4 w-4" />
@@ -796,7 +807,7 @@ export default function PatientFinancialsModal({
                               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-xs font-bold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg">
-                                    {app.date} • {formatTimeTo12Hour(app.time)}
+                                    {app.date} • {(isEn ? formatTimeTo12Hour(app.time).replace('ص', 'AM').replace('م', 'PM') : formatTimeTo12Hour(app.time))}
                                   </span>
                                   {app.status==='cancelled'?<span className="text-xs text-slate-400">{isEn?'Cancelled, financial history retained':'ملغي، التاريخ المالي محفوظ'}</span>:rem === 0 ? (
                                     <span className="text-[11px] bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-bold border border-emerald-200">
@@ -925,7 +936,7 @@ export default function PatientFinancialsModal({
             </div>
 
             {/* Footer Actions */}
-            <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
+            {!embedded && <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between gap-3 shrink-0">
               <button
                 type="button"
                 onClick={onClose}
@@ -947,7 +958,7 @@ export default function PatientFinancialsModal({
                   {isEn ? 'Go to Full Medical Record' : 'الانتقال للملف الطبي الشامل'}
                 </button>
               )}
-            </div>
+            </div>}
           </motion.div>
 
           {/* Dedicated Points Payment Modal Dialog */}

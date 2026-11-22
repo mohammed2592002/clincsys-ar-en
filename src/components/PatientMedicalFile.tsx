@@ -152,6 +152,33 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
     initialTab || null
   );
 
+  const [patientChooserOpen, setPatientChooserOpen] = useState(false);
+  const [alertsExpanded, setAlertsExpanded] = useState(false);
+  const [focusNoteOnOpen, setFocusNoteOnOpen] = useState(false);
+  const noteInputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (rightColTab === 'notes' && focusNoteOnOpen) {
+      noteInputRef.current?.focus();
+      noteInputRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      setFocusNoteOnOpen(false);
+    }
+  }, [rightColTab, focusNoteOnOpen]);
+  useEffect(() => {
+    setAlertsExpanded(false);
+    setPatientChooserOpen(false);
+    setNoteDraft('');
+    setEditingNoteId(null);
+    setEditingNoteText('');
+    setActiveXrayViewer(null);
+    setEditingXray(null);
+    setXrayPreview(null);
+    setXrayFile(null);
+    setXrayDiagnosis('');
+    setXrayCompressionStats(null);
+    setIsXrayModalOpen(false);
+    setIsFinancialsModalOpen(false);
+  }, [selectedPatientId]);
+
   // Doctor Notes state
   const [noteDraft, setNoteDraft] = useState('');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
@@ -374,11 +401,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
 
   useEffect(() => {
     setRightColTab(initialTab || null);
-    if (initialTab === 'financials') {
-      setIsFinancialsModalOpen(true);
-    } else if (initialTab === 'xrays') {
-      setIsXrayModalOpen(true);
-    }
+
   }, [initialTab]);
 
   // Financials tracking state for this patient
@@ -1466,7 +1489,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
       setIsAddingRecord(false);
       setIsAddingPrescriptionStandalone(false);
       setAddPrescriptionWithVisit(false);
-      setRightColTab(null);
+      setRightColTab(initialTab || null);
     }
   }, [selectedPatientId]);
 
@@ -3007,302 +3030,87 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
     } catch (e) { return ''; }
   };
 
+  const clinicalAlerts = (() => {
+    const questions = clinic.questionnaireQuestions?.length ? clinic.questionnaireQuestions : DEFAULT_QUESTIONNAIRE_QUESTIONS;
+    const answers = activePatient?.questionnaire?.customAnswers || {};
+    return Object.entries(answers as Record<string, { answer: string; details?: string }>).flatMap(([id, value]) => {
+      if (!value || value.answer !== 'نعم') return [];
+      const question = questions.find(q => q.id === id);
+      return [{ id, title: question?.text?.replace(/^\d+[.\-]\s*/, '').trim() || id, label: question?.category || question?.text || id, details: value.details?.trim() || '' }];
+    });
+  })();
+  const tabs = [
+    { key: null, label: isEn ? 'Dental Chart' : 'خريطة الفم', count: undefined },
+    { key: 'visits' as const, label: isEn ? 'Visits' : 'الزيارات', count: groupedVisits.length },
+    { key: 'notes' as const, label: isEn ? 'Notes' : 'الملاحظات', count: doctorNotes.length },
+    { key: 'xrays' as const, label: isEn ? 'X-Rays' : 'الأشعة', count: xrays.length },
+    { key: 'prescriptions' as const, label: isEn ? 'Prescriptions' : 'الروشتات', count: prescriptions.length },
+    { key: 'financials' as const, label: isEn ? 'Financials' : 'المالية', count: undefined },
+  ];
   return (
-    <div className="space-y-6">
-      {/* Selector header */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <FileText className="h-6 w-6 text-emerald-600" />
-            {t('medicalFile.title')}
-          </h2>
+    <div className="space-y-4" dir={isEn ? 'ltr' : 'rtl'} data-testid="patient-file">
+      <div className="bg-[#272E40] rounded-2xl p-5 sm:p-6 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5" data-testid="patient-file-header">
+        <div className="min-w-0 space-y-1.5">
+          <div className="flex items-center gap-2 text-xs text-slate-400">{t('medicalFile.title')}{activePatient && <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[10px]">{isEn ? 'Active file' : 'ملف نشط'}</span>}</div>
+          <div className="flex items-center flex-wrap gap-3"><h2 className="text-xl sm:text-2xl font-extrabold">{activePatient?.name || t('medicalFile.selectPatient')}</h2>{activePatient && <span className="text-xs text-slate-300">{activePatient.gender === 'أنثى' ? (isEn ? 'Female' : 'أنثى') : (isEn ? 'Male' : 'ذكر')}{activePatient.age ? ` · ${activePatient.age} ${isEn ? 'yrs' : 'سنة'}` : ''}</span>}</div>
+          {activePatient && <div className="text-xs text-slate-400 flex flex-wrap items-center gap-x-3 gap-y-1">
+            {activePatient.occupation && <span>{activePatient.occupation}</span>}
+            {(activePatient.governorate || activePatient.cityOrDistrict || activePatient.area || activePatient.address) && <span title={activePatient.address || ''}>{formatLocationDisplayName(activePatient.governorate, activePatient.cityOrDistrict, activePatient.area || activePatient.address, isEn)}</span>}
+            {activePatient.phone && <bdi>{activePatient.phone}</bdi>}
+            {clinic.loyaltyProgramEnabled !== false && <span>{isEn ? 'Loyalty points:' : 'نقاط الولاء:'} <b className="text-slate-200">{activePatient.loyaltyPoints || 0}</b></span>}
+          </div>}
         </div>
-
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          {onBackToPatients && (
-            <button
-              onClick={onBackToPatients}
-              className="px-4 py-2 text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              {isEn ? '← Back to Patients' : '← العودة لسجل المرضى'}
-            </button>
-          )}
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-bold text-slate-500 shrink-0">{t('medicalFile.selectPatient')}:</label>
-            <PatientSearchSelect
-              patients={patients}
-              selectedPatientId={selectedPatientId}
-              onSelectPatient={setSelectedPatientId}
-              placeholder={isEn ? 'Search patient name or phone...' : 'ابحث باسم المريض أو هاتفه...'}
-              className="w-64 sm:w-72"
-            />
+        <div className="flex flex-col items-start sm:items-end gap-3 shrink-0">
+          <div className="flex items-center gap-4 text-xs text-slate-300">
+            <button type="button" data-testid="patient-switch-toggle" aria-expanded={patientChooserOpen} onClick={() => setPatientChooserOpen(v => !v)} className="hover:text-white">{isEn ? 'Change patient' : 'تغيير المريض'} ▾</button>
+            {onBackToPatients && <button type="button" onClick={onBackToPatients} className="hover:text-white">{isEn ? '← Back to Patients' : 'العودة لسجل المرضى ←'}</button>}
           </div>
+          {activePatient && <div className="flex flex-wrap gap-2">
+            <button type="button" data-testid="patient-add-note" onClick={() => { setRightColTab('notes'); setFocusNoteOnOpen(true); }} className="px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="h-4 w-4"/>{isEn ? 'Add Note' : 'إضافة ملاحظة'}</button>
+            {activePatient.whatsappNumber && <button type="button" onClick={() => { const clean = activePatient.whatsappNumber!.replace(/\D/g, ''); window.open(`https://wa.me/${clean.startsWith('01') ? '2' + clean : clean}`, '_blank'); }} className="px-4 py-2.5 rounded-lg bg-emerald-900/40 border border-emerald-300/25 text-emerald-200 text-xs font-bold">{isEn ? 'WhatsApp Chat' : 'تواصل عبر واتساب'}</button>}
+          </div>}
         </div>
       </div>
-
-      {activePatient && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          
-          {/* Right side: Detailed Medical File */}
-          <div className="lg:col-span-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-6">
-            <div className="border-b border-slate-100 pb-4 space-y-3">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-800">{activePatient.name}</h3>
-                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      activePatient.gender === 'أنثى' ? 'bg-pink-100 text-pink-700' : 'bg-blue-100 text-blue-700'
-                    }`}>
-                      {activePatient.gender ? (activePatient.gender === 'أنثى' ? (isEn ? 'Female' : 'أنثى') : (isEn ? 'Male' : activePatient.gender)) : (isEn ? 'Male' : 'ذكر')}
-                    </span>
-                    {(activePatient.governorate || activePatient.cityOrDistrict || activePatient.area || activePatient.address) && (
-                      <span className="text-[10px] bg-amber-50 text-amber-800 font-bold px-2 py-0.5 rounded-full border border-amber-200/60" title={activePatient.address || ''}>
-                        📍 {formatLocationDisplayName(activePatient.governorate, activePatient.cityOrDistrict, activePatient.area || activePatient.address, isEn)}
-                      </span>
-                    )}
-                    {activePatient.occupation && (
-                      <span className="text-[10px] bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded-full">
-                        💼 {activePatient.occupation}
-                      </span>
-                    )}
-                  </div>
+      {(patientChooserOpen || !activePatient) && <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row gap-3 sm:items-center" data-testid="patient-chooser"><label className="text-xs font-bold text-slate-500">{t('medicalFile.selectPatient')}:</label><PatientSearchSelect patients={patients} selectedPatientId={selectedPatientId} onSelectPatient={setSelectedPatientId} placeholder={isEn ? 'Search patient name or phone...' : 'ابحث باسم المريض أو هاتفه...'} className="w-full sm:w-96" /></div>}
+      {activePatient && <>
+        <section className={`rounded-xl border p-4 ${clinicalAlerts.length ? 'border-rose-200 bg-rose-50/40' : 'border-slate-200 bg-slate-50'}`} data-testid="patient-alerts">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
+            <div className="shrink-0"><h3 className={`text-xs font-bold ${clinicalAlerts.length ? 'text-rose-700' : 'text-slate-600'}`}>{isEn ? 'Reception questionnaire alerts' : 'تنبيهات استبيان الاستقبال'}</h3><p className="text-[10px] text-slate-400 mt-1">{clinicalAlerts.length ? (isEn ? `${clinicalAlerts.length} Yes answers. Review details before treatment.` : `${clinicalAlerts.length} إجابات بنعم، راجع التفاصيل قبل الإجراء`) : (activePatient.medicalHistory || (isEn ? 'No recorded chronic conditions or contraindications' : 'لا توجد أمراض مزمنة أو موانع علاج مسجلة'))}</p></div>
+            <div className="flex flex-wrap gap-1.5 flex-1">{clinicalAlerts.map(item => <button type="button" key={item.id} title={item.title} onClick={() => setAlertsExpanded(true)} className="px-2.5 py-1.5 rounded-md bg-white border border-rose-200 text-rose-700 text-[11px] font-bold">{item.label}</button>)}</div>
+            <button type="button" data-testid="patient-alerts-toggle" aria-expanded={alertsExpanded} onClick={() => setAlertsExpanded(v => !v)} className="text-[11px] text-slate-600 border border-slate-200 bg-white rounded-lg px-3 py-2 shrink-0">{alertsExpanded ? (isEn ? 'Hide answers and details' : 'إخفاء الإجابات والتفاصيل') : (isEn ? 'View answers and details' : 'عرض الإجابات والتفاصيل')} ▾</button>
+          </div>
+          {alertsExpanded && <div className="mt-4 pt-3 border-t border-rose-100 space-y-2" data-testid="patient-alert-details">{clinicalAlerts.map(item => <div key={item.id} className="bg-white border border-rose-100 rounded-lg p-3"><div className="flex justify-between gap-3"><h4 className="text-xs font-bold text-rose-900">{item.title}</h4><span className="text-[10px] text-rose-700 font-bold">{isEn ? 'Yes' : 'نعم'}</span></div><p className="text-xs text-slate-500 mt-1 whitespace-pre-wrap">{item.details || (isEn ? 'No additional details provided' : 'لا توجد تفاصيل إضافية مدخلة')}</p></div>)}{activePatient.medicalHistory && <p className="text-xs text-slate-600 whitespace-pre-wrap">{activePatient.medicalHistory}</p>}{activePatient.questionnaire?.generalNotes && <p className="text-xs text-slate-600 whitespace-pre-wrap"><b>{isEn ? 'Reception notes: ' : 'ملاحظات الاستقبال: '}</b>{activePatient.questionnaire.generalNotes}</p>}</div>}
+        </section>
+        <nav className="grid grid-cols-3 sm:grid-cols-6 gap-1 bg-white border border-slate-200 rounded-xl p-1" role="tablist" aria-label={isEn ? 'Patient record sections' : 'أقسام ملف المريض'} data-testid="patient-file-tabs">{tabs.map(tab => <button type="button" role="tab" key={tab.key || 'chart'} aria-selected={rightColTab === tab.key} data-testid={`patient-tab-${tab.key || 'chart'}`} onClick={() => setRightColTab(tab.key)} className={`flex items-center justify-center gap-2 rounded-lg py-3 px-2 text-xs sm:text-sm font-bold transition ${rightColTab === tab.key ? 'bg-emerald-50 text-emerald-700 shadow-[inset_0_-2px_0_#059669]' : 'text-slate-500 hover:bg-slate-50'}`}>{tab.label}{tab.count !== undefined && <span className="bg-slate-100 text-slate-500 rounded px-1.5 py-0.5 text-[10px]">{tab.count}</span>}</button>)}</nav>
+        <div className={rightColTab === null ? 'bg-white border border-slate-200 rounded-2xl p-4 sm:p-6' : 'hidden'} data-testid="patient-chart-panel"><div className="max-w-[750px] mx-auto">
+              <React.Suspense key={selectedPatientId} fallback={
+                <div className="p-12 text-center text-slate-400 text-xs font-bold flex flex-col items-center justify-center gap-2">
+                  <RefreshCw className="h-6 w-6 animate-spin text-indigo-600" />
+                  {isEn ? 'Loading dental chart...' : 'جاري تحميل خريطة الأسنان...'}
                 </div>
-                <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2.5 py-0.5 rounded-full shrink-0">
-                  {isEn ? 'Active Medical File' : 'ملف طبي نشط'}
-                </span>
-              </div>
-              
-              <div className="grid grid-cols-4 gap-2 text-center text-[11px] bg-slate-50 p-2 rounded-xl border border-slate-100">
-                <div className="border-l border-slate-200/60 pb-1">
-                  <span className="text-slate-400 block text-[9px] mb-0.5">{isEn ? 'Phone:' : 'الهاتف:'}</span>
-                  <span className="font-semibold text-slate-600 block truncate" dir="ltr">{activePatient.phone || '—'}</span>
-                </div>
-                <div className="border-l border-slate-200/60 pb-1">
-                  <span className="text-slate-400 block text-[9px] mb-0.5">{isEn ? 'Age:' : 'العمر:'}</span>
-                  <span className="font-bold text-slate-700 block">{activePatient.age ? (isEn ? `${activePatient.age} yrs` : `${activePatient.age} سنة`) : '—'}</span>
-                </div>
-                <div className="border-l border-slate-200/60 pb-1">
-                  <span className="text-slate-400 block text-[9px] mb-0.5">{isEn ? 'Visits:' : 'الزيارات:'}</span>
-                  <span className="font-black text-indigo-600 block">{groupedVisits.length}</span>
-                </div>
-                {clinic.loyaltyProgramEnabled !== false && (
-                  <div className="pb-1 bg-amber-50/50 rounded-lg">
-                    <span className="text-amber-800 font-extrabold block text-[9px] mb-0.5 flex items-center justify-center gap-0.5">
-                      🎁 {isEn ? 'Points:' : 'النقاط:'}
-                    </span>
-                    <span className="font-black text-amber-700 block font-mono">{activePatient.loyaltyPoints || 0}</span>
-                  </div>
-                )}
-              </div>
-
-              {activePatient.whatsappNumber && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const clean = activePatient.whatsappNumber!.replace(/\D/g, '');
-                    const formatted = clean.startsWith('01') ? '2' + clean : clean;
-                    window.open(`https://wa.me/${formatted}`, '_blank');
-                  }}
-                  className="w-full text-center py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <MessageSquare className="h-3.5 w-3.5 text-emerald-600" />
-                  <span>{isEn ? `WhatsApp Chat (${activePatient.whatsappNumber})` : `تواصل عبر الواتساب مباشر (${activePatient.whatsappNumber})`}</span>
-                </button>
-              )}
-            </div>
-
-            {/* Quick stats / medical warnings / Reception Questionnaire */}
-            <div className="space-y-3">
-              <div className="bg-rose-50/60 p-4 rounded-xl border border-rose-200/80 text-xs shadow-2xs">
-                <span className="font-bold text-rose-800 flex items-center gap-1.5 mb-1.5 text-xs">
-                  <Heart className="h-4 w-4 text-rose-600 shrink-0" />
-                  {isEn ? 'Warnings & Chronic Conditions (Reception Questionnaire):' : 'التحذيرات والأمراض المزمنة (نتائج استبيان الاستقبال):'}
-                </span>
-
-                {(() => {
-                  const qObj = activePatient.questionnaire;
-                  const customAns = qObj?.customAnswers;
-                  const activeQList = (clinic.questionnaireQuestions && clinic.questionnaireQuestions.length > 0)
-                    ? clinic.questionnaireQuestions
-                    : DEFAULT_QUESTIONNAIRE_QUESTIONS;
-
-                  const yesAnswers: Array<{ title: string; details?: string }> = [];
-
-                  if (customAns && Object.keys(customAns).length > 0) {
-                    Object.entries(customAns).forEach(([qId, val]) => {
-                      const itemVal = val as { answer?: string; details?: string } | undefined;
-                      if (itemVal && itemVal.answer === 'نعم') {
-                        const matchedQ = activeQList.find(q => q.id === qId);
-                        const qTitle = matchedQ ? matchedQ.text.replace(/^\d+[\.\-]\s*/, '').trim() : qId;
-                        yesAnswers.push({
-                          title: qTitle,
-                          details: itemVal.details ? itemVal.details.trim() : ''
-                        });
-                      }
-                    });
-                  }
-
-                  if (yesAnswers.length > 0) {
-                    return (
-                      <div className="space-y-2 mt-2">
-                        {yesAnswers.map((item, idx) => (
-                          <div key={idx} className="bg-white/90 p-2.5 rounded-lg border border-rose-200/90 text-rose-900 shadow-2xs flex flex-col gap-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-extrabold text-rose-950 text-xs">
-                                • {item.title}
-                              </span>
-                              <span className="bg-rose-100 text-rose-700 font-black px-2 py-0.5 rounded text-[10px] shrink-0">
-                                {isEn ? 'Yes' : 'نعم'}
-                              </span>
-                            </div>
-                            {item.details ? (
-                              <div className="text-[11px] font-bold text-slate-800 bg-amber-50/90 border border-amber-200 p-2 rounded-md mt-0.5">
-                                <span className="text-amber-900 font-extrabold ml-1">{isEn ? 'Details:' : 'التفاصيل:'}</span>
-                                <span className="text-slate-900">{item.details}</span>
-                              </div>
-                            ) : (
-                              <span className="text-[10px] text-slate-400 italic font-medium">{isEn ? 'No additional details provided' : 'لا توجد تفاصيل إضافية مدخلة'}</span>
-                            )}
-                          </div>
-                        ))}
-                        {qObj?.generalNotes && qObj.generalNotes.trim() && (
-                          <div className="bg-slate-100/90 p-2 rounded-lg border border-slate-200 text-slate-800 text-[11px] font-semibold mt-1">
-                            <span className="font-bold text-slate-900 ml-1">{isEn ? 'General reception notes:' : 'ملاحظات عامة من الاستقبال:'}</span>
-                            {qObj.generalNotes.trim()}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  }
-
-                  if (activePatient.medicalHistory && activePatient.medicalHistory.trim()) {
-                    return (
-                      <p className="text-rose-700 mt-1.5 leading-relaxed font-semibold">
-                        {activePatient.medicalHistory}
-                      </p>
-                    );
-                  }
-
-                  return (
-                    <p className="text-rose-700 mt-1.5 leading-relaxed font-semibold">
-                      {isEn ? 'No recorded chronic diseases or contraindications' : 'لا يوجد أمراض مزمنة أو موانع علاج مسجلة'}
-                    </p>
-                  );
-                })()}
-              </div>
-            </div>
-
-            {/* Patient-file tab bar: 5 equal-width tabs, icon over label, circular badge counters (badges on inactive corner, hidden when no counter) */}
-            <div className="space-y-4">
-              <div className="flex items-stretch w-full bg-[#272E40] p-1 rounded-[14px] gap-1 shadow-md border border-slate-800 h-[58px]">
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => {
-                    if (!selectedPatientId || !activePatient) {
-                      dialogs.alert(isEn ? 'Please select a patient first' : 'يرجى اختيار مريض أولاً', { severity: 'warning' });
-                      return;
-                    }
-                    setRightColTab(rightColTab === 'notes' ? null : 'notes');
-                  }}
-                  className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-[3px] py-1.5 px-0.5 rounded-[10px] transition-all duration-200 cursor-pointer ${
-                    rightColTab === 'notes'
-                      ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md shadow-green-500/25'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
-                  }`}
-                >
-                  <span className="relative">
-                    <StickyNote className={`h-4 w-4 block ${rightColTab === 'notes' ? 'text-white' : 'text-green-400'}`} />
-                    <span className={`absolute -top-1.5 -end-2 h-[14px] min-w-[14px] px-[2px] rounded-full flex items-center justify-center text-[9px] font-bold leading-none ${rightColTab === 'notes' ? 'bg-white text-emerald-600' : 'bg-emerald-500 text-white'}`}>{doctorNotes.length}</span>
-                  </span>
-                  <span className="text-[11px] font-bold whitespace-nowrap leading-[1.2]">{isEn ? 'Notes' : 'الملاحظات'}</span>
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => setRightColTab(rightColTab === 'visits' ? null : 'visits')}
-                  className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-[3px] py-1.5 px-0.5 rounded-[10px] transition-all duration-200 cursor-pointer ${
-                    rightColTab === 'visits'
-                      ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/25'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
-                  }`}
-                >
-                  <span className="relative">
-                    <Clipboard className={`h-4 w-4 block ${rightColTab === 'visits' ? 'text-white' : 'text-emerald-400'}`} />
-                    <span className={`absolute -top-1.5 -end-2 h-[14px] min-w-[14px] px-[2px] rounded-full flex items-center justify-center text-[9px] font-bold leading-none ${rightColTab === 'visits' ? 'bg-white text-emerald-600' : 'bg-emerald-500 text-white'}`}>{groupedVisits.length}</span>
-                  </span>
-                  <span className="text-[11px] font-bold whitespace-nowrap leading-[1.2]">{isEn ? 'Visits' : 'الزيارات'}</span>
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => {
-                    if (!selectedPatientId || !activePatient) {
-                      dialogs.alert(isEn ? 'Please select a patient first' : 'يرجى اختيار مريض أولاً', { severity: 'warning' });
-                      return;
-                    }
-                    setRightColTab('xrays');
-                    setIsXrayModalOpen(true);
-                  }}
-                  className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-[3px] py-1.5 px-0.5 rounded-[10px] transition-all duration-200 cursor-pointer ${
-                    rightColTab === 'xrays'
-                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
-                  }`}
-                >
-                  <span className="relative">
-                    <ToothIcon className={`h-4 w-4 block ${rightColTab === 'xrays' ? 'text-white' : 'text-sky-400'}`} />
-                    <span className={`absolute -top-1.5 -end-2 h-[14px] min-w-[14px] px-[2px] rounded-full flex items-center justify-center text-[9px] font-bold leading-none ${rightColTab === 'xrays' ? 'bg-white text-purple-600' : 'bg-emerald-500 text-white'}`}>{xrays.length}</span>
-                  </span>
-                  <span className="text-[11px] font-bold whitespace-nowrap leading-[1.2]">{isEn ? 'X-Rays' : 'الأشعة'}</span>
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => setRightColTab(rightColTab === 'prescriptions' ? null : 'prescriptions')}
-                  className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-[3px] py-1.5 px-0.5 rounded-[10px] transition-all duration-200 cursor-pointer ${
-                    rightColTab === 'prescriptions'
-                      ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/25'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
-                  }`}
-                >
-                  <span className="relative">
-                    <FileText className={`h-4 w-4 block ${rightColTab === 'prescriptions' ? 'text-white' : 'text-blue-400'}`} />
-                    <span className={`absolute -top-1.5 -end-2 h-[14px] min-w-[14px] px-[2px] rounded-full flex items-center justify-center text-[9px] font-bold leading-none ${rightColTab === 'prescriptions' ? 'bg-white text-blue-600' : 'bg-emerald-500 text-white'}`}>{prescriptions.length}</span>
-                  </span>
-                  <span className="text-[11px] font-bold whitespace-nowrap leading-[1.2]">{isEn ? 'Rx' : 'الروشتات'}</span>
-                </motion.button>
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => {
-                    if (!selectedPatientId || !activePatient) {
-                      dialogs.alert(isEn ? 'Please select a patient first' : 'يرجى اختيار مريض أولاً', { severity: 'warning' });
-                      return;
-                    }
-                    setRightColTab('financials');
-                    setIsFinancialsModalOpen(true);
-                  }}
-                  className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-[3px] py-1.5 px-0.5 rounded-[10px] transition-all duration-200 cursor-pointer ${
-                    rightColTab === 'financials'
-                      ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md shadow-amber-500/25'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
-                  }`}
-                >
-                  <span className="relative">
-                    <Wallet className={`h-4 w-4 block ${rightColTab === 'financials' ? 'text-white' : 'text-amber-400'}`} />
-                  </span>
-                  <span className="text-[11px] font-bold whitespace-nowrap leading-[1.2]">{isEn ? 'Financials' : 'المالية'}</span>
-                </motion.button>
-              </div>
-
-
-              {/* No panel displayed when rightColTab is null */}
-
+              }>
+                <DentalChart
+                  key={selectedPatientId || 'no-patient'}
+                  patientId={selectedPatientId}
+                  clinicId={clinic.id}
+                  customServices={customServices}
+                  onUpdateCustomServices={handleUpdateCustomServices}
+                  categories={serviceCategories}
+                  onUpdateCategories={handleUpdateCategories}
+                  initialChart={toothChart}
+                  onSaveChart={handleSaveToothChart}
+                  readOnly={isStaff || isClinicExpired(clinic)}
+                  onSaveToothSession={handleAddSessionFromChart}
+                  patientAppointments={patientAppointments}
+                  patientRecords={records}
+                />
+              </React.Suspense>
+        </div></div>
+        {(rightColTab === 'notes' || rightColTab === 'visits' || rightColTab === 'prescriptions') && <section className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6">
               {rightColTab === 'notes' && activePatient && (
-                <div className="space-y-4">
+                <div className="space-y-5" data-testid="patient-notes-panel">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                    <h4 className="font-bold text-xs text-slate-600 flex items-center gap-1.5">
+                    <h4 className="font-bold text-base text-slate-800 flex items-center gap-1.5">
                       <StickyNote className="h-4 w-4 text-green-600" />
                       {isEn ? 'Doctor Notes' : 'ملاحظات الطبيب'}
                     </h4>
@@ -3312,28 +3120,34 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                   </div>
 
                   {/* Add note */}
-                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-3 space-y-2">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/20 p-5 space-y-3">
+                    <h5 className="text-sm font-bold text-emerald-800">{isEn ? 'Add a new note' : 'إضافة ملاحظة جديدة'}</h5>
                     <textarea
+                      ref={noteInputRef}
+                      data-testid="patient-note-draft"
                       value={noteDraft}
                       onChange={(e) => setNoteDraft(e.target.value)}
-                      rows={3}
+                      rows={5}
                       placeholder={isEn ? 'Write a new note about this patient...' : 'اكتب ملاحظة جديدة عن المريض...'}
                       className="w-full text-xs sm:text-sm rounded-lg border border-slate-200 bg-white p-2.5 focus:outline-none focus:ring-2 focus:ring-green-500/40 focus:border-green-400 resize-y min-h-[70px]"
                     />
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <p className="text-[10px] text-slate-400 flex items-center gap-1">
                         <AlertCircle className="h-3 w-3" />
-                        {isEn ? 'Notes are saved automatically with date, time and doctor name' : 'تُحفظ الملاحظة تلقائيًا بالتاريخ والوقت واسم الطبيب'}
+                        {isEn ? 'Date, time and doctor name are recorded when you save' : 'يُسجل التاريخ والوقت واسم الطبيب عند الحفظ'}
                       </p>
+                      <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setNoteDraft('')} className="px-3 py-2 text-xs font-bold text-slate-500">{isEn ? 'Cancel' : 'إلغاء'}</button>
                       <button
+                        data-testid="save-patient-note"
                         type="button"
                         onClick={handleAddNote}
                         disabled={savingNote || !noteDraft.trim()}
-                        className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg px-4 py-2 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg px-4 py-2 transition-colors cursor-pointer"
                       >
                         {savingNote ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                         {isEn ? 'Save Note' : 'حفظ الملاحظة'}
-                      </button>
+                      </button></div>
                     </div>
                   </div>
 
@@ -3427,9 +3241,9 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
               )}
 
               {rightColTab === 'visits' && (
-                <div className="space-y-4">
+                <div className="space-y-5" data-testid="patient-visits-panel">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                    <h4 className="font-bold text-xs text-slate-600">{isEn ? 'Visits & Procedures Log' : 'سجل الزيارات والعمليات الطبية'}</h4>
+                    <h4 className="font-bold text-base text-slate-800">{isEn ? 'Visits & Procedures Log' : 'سجل الزيارات والعمليات الطبية'}</h4>
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
@@ -3458,7 +3272,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                       {isEn ? 'No recorded visits for this patient.' : 'لا توجد زيارات سابقة مسجلة لهذا المريض.'}
                     </div>
                   ) : (
-                    <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                    <div className="space-y-3 ">
                       {groupedVisits.map((visit) => {
                         const linkedApp = visit.appointmentIds.length > 0
                           ? patientAppointments.find((a) => visit.appointmentIds.includes(a.id))
@@ -3509,10 +3323,10 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                             </div>
                             
                             {visit.procedures && visit.procedures.length > 0 && (
-                              <div className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50/50 shadow-3xs text-[11px]" dir={isEn ? 'ltr' : 'rtl'}>
+                              <div className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50/50 shadow-3xs text-sm" dir={isEn ? 'ltr' : 'rtl'}>
                                 <table className={`w-full border-collapse ${isEn ? 'text-left' : 'text-right'}`}>
                                   <thead>
-                                    <tr className="bg-slate-100/60 text-[9px] font-bold text-slate-500 border-b border-slate-200/40">
+                                    <tr className="bg-slate-100/60 text-xs font-bold text-slate-500 border-b border-slate-200/40">
                                       <th className={`py-1 px-2 ${isEn ? 'text-left' : 'text-right'}`}>{isEn ? 'Medical Procedure' : 'الإجراء الطبي'}</th>
                                       <th className="py-1 px-2 text-center w-12">{isEn ? 'Tooth' : 'السن'}</th>
                                       <th className={`py-1 px-2 w-20 ${isEn ? 'text-right' : 'text-left'}`}>{isEn ? 'Price' : 'السعر'}</th>
@@ -3586,9 +3400,9 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
               )}
 
               {rightColTab === 'prescriptions' && (
-                <div className="space-y-4">
+                <div className="space-y-5" data-testid="patient-prescriptions-panel">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                    <h4 className="font-bold text-xs text-slate-600">{isEn ? 'Saved Medical Prescriptions' : 'سجل الروشتات الطبية المحفوظة'}</h4>
+                    <h4 className="font-bold text-base text-slate-800">{isEn ? 'Saved Medical Prescriptions' : 'سجل الروشتات الطبية المحفوظة'}</h4>
                     <button
                       type="button"
                       onClick={() => {
@@ -3615,7 +3429,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                       {isEn ? 'No saved prescriptions for this patient.' : 'لا توجد روشتات مسجلة سابقاً لهذا المريض.'}
                     </div>
                   ) : (
-                    <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                    <div className="space-y-3 ">
                       {prescriptions.map((presc) => (
                         <div key={presc.id} className="p-3 bg-white hover:bg-slate-50 border border-slate-100 rounded-xl text-xs space-y-2.5 relative group shadow-sm">
                           <div className="flex justify-between items-start">
@@ -3657,7 +3471,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                               {presc.medications.map((med, idx) => (
                                 <div key={idx} className="text-[11px] text-slate-600 flex justify-between">
                                   <span className="font-semibold">- {med.name}</span>
-                                  <span className="text-slate-400">{med.dose} • {med.duration}</span>
+                                  <span className="text-slate-400">{[med.dose, med.frequency, med.duration].filter(Boolean).join(' • ')}</span>
                                 </div>
                               ))}
                             </div>
@@ -3675,73 +3489,23 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                 </div>
               )}
 
-              {rightColTab === 'financials' && (
-                <div className="space-y-4 text-xs bg-slate-50/80 p-4 rounded-2xl border border-slate-200 text-center">
-                  <div className="p-3 bg-amber-100/80 text-amber-800 rounded-2xl w-fit mx-auto shadow-2xs">
-                    <Receipt className="h-7 w-7" />
-                  </div>
-                  <div>
-                    <h4 className="font-extrabold text-sm text-slate-800">{isEn ? 'Comprehensive Financial Statement' : 'كشف الحساب والأقساط الشامل'}</h4>
-                    <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto leading-relaxed">
-                      {isEn ? 'Track and manage all patient payments, installments, invoice collection, and loyalty points with full flexibility.' : 'يتم تتبع وإدارة جميع مدفوعات المريض، الأقساط المتبقية، تحصيل الفواتير، ونقاط الولاء بمرونة كاملة من خلال نافذة كشف الحساب.'}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!selectedPatientId || !activePatient) {
-                        dialogs.alert(isEn ? 'Please select a patient first' : 'يرجى اختيار مريض أولاً', { severity: 'warning' });
-                        return;
-                      }
-                      setIsFinancialsModalOpen(true);
-                    }}
-                    className="w-full py-3 bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-extrabold rounded-xl text-xs shadow-md hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <Receipt className="h-4.5 w-4.5" />
-                    <span>{isEn ? 'Open Financial Statement & Installments 📑' : 'فتح نافذة كشف الحساب والأقساط 📑'}</span>
-                  </button>
-                </div>
-              )}
 
-              {rightColTab === 'xrays' && (
-                <div className="p-5 bg-gradient-to-br from-purple-900 via-indigo-950 to-slate-900 text-white rounded-3xl shadow-lg border border-purple-800/50 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 bg-purple-500/20 text-purple-300 rounded-2xl border border-purple-500/30">
-                        <Image className="h-6 w-6" />
-                      </div>
-                      <div>
-                        <h4 className="font-extrabold text-sm text-white">{isEn ? `Patient X-Ray Archive (${xrays.length})` : `سجل وأرشيف أشعة المريض (${xrays.length})`}</h4>
-                        <p className="text-xs text-purple-200/80">{isEn ? 'View comprehensive X-ray viewer, upload images with compression & diagnosis' : 'عرض شاشة الأشعة الشاملة، رفع الصور مع الضغط والتشخيص'}</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIsXrayModalOpen(true)}
-                      className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-extrabold rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer"
-                    >
-                      <Eye className="h-4 w-4 text-purple-200" />
-                      <span>{isEn ? 'Open Full X-Ray Viewer 🖼️' : 'فتح نافذة الأشعة المكبّرة الشاملة 🖼️'}</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
+        </section>}
               {/* Large Modal Window for X-Rays */}
-              {isXrayModalOpen && (
-                <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-fadeIn">
-                  <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden">
+              {(rightColTab === 'xrays' || isXrayModalOpen) && (
+                <div data-testid="patient-xrays-panel" className={isXrayModalOpen ? "fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-fadeIn" : "w-full"}>
+                  <div className={isXrayModalOpen ? "bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden" : "bg-white rounded-2xl border border-slate-200 w-full flex flex-col overflow-hidden"}>
                     {/* Modal Header */}
-                    <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between border-b border-slate-800 shrink-0">
+                    <div className={isXrayModalOpen ? "bg-slate-900 text-white px-5 py-4 flex items-center justify-between border-b border-slate-800 shrink-0" : "bg-white text-slate-800 px-5 py-4 flex flex-wrap gap-3 items-center justify-between border-b border-slate-100"}>
                       <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-purple-600/30 text-purple-300 rounded-2xl border border-purple-500/30">
+                        <div className={isXrayModalOpen ? "p-2.5 bg-purple-600/30 text-purple-300 rounded-2xl border border-purple-500/30" : "p-2.5 bg-purple-50 text-purple-600 rounded-2xl border border-purple-100"}>
                           <Image className="h-6 w-6" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="font-black text-base text-white">{isEn ? 'Patient X-Ray Archive' : 'أرشيف وسجل أشعة المريض'}</h3>
+                            <h3 className={`font-bold text-base ${isXrayModalOpen ? "text-white" : "text-slate-800"}`}>{isEn ? 'Patient X-Ray Archive' : 'أرشيف وسجل أشعة المريض'}</h3>
                             {activePatient && (
-                              <span className="text-xs font-bold px-2.5 py-0.5 bg-purple-500/20 text-purple-300 rounded-full border border-purple-500/30">
+                              <span className={isXrayModalOpen ? "text-xs font-bold px-2.5 py-0.5 bg-purple-500/20 text-purple-300 rounded-full border border-purple-500/30" : "text-xs font-bold px-2.5 py-0.5 bg-purple-50 text-purple-700 rounded-full border border-purple-100"}>
                                 {activePatient.name}
                               </span>
                             )}
@@ -3756,17 +3520,17 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                         </span>
                         <button
                           type="button"
-                          onClick={() => setIsXrayModalOpen(false)}
+                          onClick={() => setIsXrayModalOpen(!isXrayModalOpen)}
                           className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
-                          title={isEn ? 'Close Window' : 'إغلاق النافذة'}
+                          title={isXrayModalOpen ? (isEn ? 'Close Window' : 'إغلاق النافذة') : (isEn ? 'Open enlarged X-ray window' : 'فتح نافذة الأشعة المكبّرة')}
                         >
-                          <X className="h-6 w-6" />
+                          {isXrayModalOpen ? <X className="h-6 w-6" /> : <span className="text-xs font-bold text-slate-600 border border-slate-200 rounded-lg px-3 py-2 block">{isEn ? 'Open enlarged X-ray window' : 'فتح نافذة الأشعة المكبّرة'}</span>}
                         </button>
                       </div>
                     </div>
 
                     {/* Modal Content Body */}
-                    <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5" dir={isEn ? 'ltr' : 'rtl'}>
+                    <div className={isXrayModalOpen ? "flex-1 overflow-y-auto p-4 sm:p-6 space-y-5" : "p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-5 items-start"} dir={isEn ? 'ltr' : 'rtl'}>
                       {/* Form to Upload New X-Ray */}
                       <div className="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-4 space-y-3">
                         <h5 className="text-xs font-black text-slate-700 flex items-center gap-1.5">
@@ -3774,7 +3538,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                           {isEn ? 'Add New Radiographic X-Ray Image:' : 'إضافة صورة أشعة جديدة:'}
                         </h5>
 
-                        <div className="grid grid-cols-1 gap-3">
+                        <div className={isXrayModalOpen ? "grid grid-cols-1 md:grid-cols-2 gap-4" : "space-y-4"}>
                           {/* Upload Dropzone */}
                           <div>
                             <label className="block text-xs font-bold text-slate-600 mb-1.5">{isEn ? 'Select X-Ray Image *' : 'اختر صورة الأشعة *'}</label>
@@ -3861,10 +3625,10 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                         <div className="text-center py-12 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 space-y-1">
                           <Image className="h-8 w-8 text-slate-300 mx-auto" />
                           <p className="text-xs font-bold text-slate-600">{isEn ? 'No X-rays recorded for this patient yet' : 'لا توجد أشعة مسجلة لهذا المريض بعد'}</p>
-                          <p className="text-[11px] text-slate-400">{isEn ? 'You can upload the first X-ray image with diagnosis using the form above' : 'يمكنك رفع صورة الأشعة الأولى مع التشخيص من النموذج أعلاه'}</p>
+                          <p className="text-[11px] text-slate-400">{isEn ? 'Upload the first X-ray image with diagnosis using the upload form' : 'يمكنك رفع صورة الأشعة الأولى مع التشخيص من نموذج الرفع'}</p>
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className={isXrayModalOpen ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" : "grid grid-cols-1 md:grid-cols-2 gap-4"}>
                           {xrays.map((xray) => (
                             <div key={xray.id} className="group relative bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs hover:shadow-md transition flex flex-col justify-between">
                               <div
@@ -4001,6 +3765,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                     <button
                       type="button"
                       onClick={() => setActiveXrayViewer(null)}
+                      aria-label={isEn ? 'Close X-ray viewer' : 'إغلاق عارض الأشعة'}
                       className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
                     >
                       <X className="h-6 w-6" />
@@ -4074,6 +3839,9 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                           <RotateCw className="h-4 w-4 text-purple-400" />
                           <span>{isEn ? 'Rotate' : 'تدوير'}</span>
                         </button>
+                        <button type="button" onClick={() => setViewerContrast(v => !v)} aria-pressed={viewerContrast} className={`p-2 rounded-xl text-xs font-bold flex items-center gap-1 ${viewerContrast ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                          <Contrast className="h-4 w-4" />{isEn ? 'High Contrast' : 'تباين عالٍ'}
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -4122,54 +3890,9 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                   </div>
                 </div>
               )}
+        {rightColTab === 'financials' && !isFinancialsModalOpen && <PatientFinancialsModal isOpen embedded onOpenWindow={() => setIsFinancialsModalOpen(true)} onClose={() => setRightColTab(null)} clinicId={clinic.id} patientId={selectedPatientId} patientName={activePatient.name} patientPhone={activePatient.phone} paymentMethods={clinic.paymentMethods} activeShiftDate={activeShift?.date} activeShiftId={activeShift?.id} activeShift={activeShift} />}
 
-
-            </div>
-          </div>
-
-          {/* Left side: Interactive Dental Chart */}
-          <div className="lg:col-span-8 space-y-6">
-
-            {/* Comprehensive Interactive Dental Chart card */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 className="text-md font-bold text-slate-800 flex items-center gap-2">
-                  <Shield className="h-5 w-5 text-indigo-600" />
-                  {isEn ? "Patient's Active Dental Map" : "خريطة فم المريض النشطة"}
-                </h3>
-                <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded font-bold">
-                  {isEn ? 'Real-Time Record Updates' : 'تحديث فوري للسجل'}
-                </span>
-              </div>
-              
-              <React.Suspense fallback={
-                <div className="p-12 text-center text-slate-400 text-xs font-bold flex flex-col items-center justify-center gap-2">
-                  <RefreshCw className="h-6 w-6 animate-spin text-indigo-600" />
-                  {isEn ? 'Loading dental chart...' : 'جاري تحميل خريطة الأسنان...'}
-                </div>
-              }>
-                <DentalChart
-                  key={selectedPatientId || 'no-patient'}
-                  patientId={selectedPatientId}
-                  clinicId={clinic.id}
-                  customServices={customServices}
-                  onUpdateCustomServices={handleUpdateCustomServices}
-                  categories={serviceCategories}
-                  onUpdateCategories={handleUpdateCategories}
-                  initialChart={toothChart}
-                  onSaveChart={handleSaveToothChart}
-                  readOnly={isStaff || isClinicExpired(clinic)}
-                  onSaveToothSession={handleAddSessionFromChart}
-                  patientAppointments={patientAppointments}
-                  patientRecords={records}
-                />
-              </React.Suspense>
-            </div>
-
-          </div>
-
-        </div>
-      )}
+      </>}
 
       {deleteConfirm && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-fade-in">
