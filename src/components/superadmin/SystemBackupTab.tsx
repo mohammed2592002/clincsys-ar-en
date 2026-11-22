@@ -300,7 +300,7 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
         const cId=parsed.clinicId||parsed.clinicInfo?.id;
         if(!full&&!cId)throw new Error('Clinic id missing / رقم العيادة غير موجود');
         const result=await backupRequest({action:full?'restore_system':'restore_clinic',clinicId:cId,backup:parsed});
-        dialogs.alert('تمت استعادة النسخة مع السجل المالي. Backup restored with financial history.'+(result.warnings?.length?'\n'+result.warnings.join('\n'):''),{severity:result.warnings?.length?'warning':'success'});
+        dialogs.alert('تمت استعادة النسخة مع السجل المالي. Backup restored with financial history.'+(result.credentialNotice?'\n'+result.credentialNotice.ar+'\n'+result.credentialNotice.en:'')+(result.warnings?.length?'\n'+result.warnings.join('\n'):''),{severity:result.warnings?.length?'warning':'success'});
         onRefreshClinics();return;
       }
 

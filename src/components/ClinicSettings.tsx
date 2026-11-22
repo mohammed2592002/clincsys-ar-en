@@ -1589,7 +1589,7 @@ export default function ClinicSettings({
       const result=await backupRequest({action:'restore_clinic',clinicId,backup:parsed});
       setBackupRestoreStatus(isEn ? 'Backup restored. Financial history preserved.' : 'تمت الاستعادة مع الحفاظ على السجل المالي.');
       onClinicDataUpdated(result.clinicInfo);
-      dialogs.alert((isEn ? 'Backup restored successfully.' : 'تمت استعادة النسخة بنجاح.')+(result.warnings?.length?'\n'+result.warnings.join('\n'):''),{severity:result.warnings?.length?'warning':'success'});
+      dialogs.alert((isEn ? 'Backup restored successfully.' : 'تمت استعادة النسخة بنجاح.')+(result.credentialNotice ? '\n'+result.credentialNotice[isEn?'en':'ar'] : '')+(result.warnings?.length?'\n'+result.warnings.join('\n'):''),{severity:result.warnings?.length?'warning':'success'});
     } catch (parseErr: any) {
       console.error('Import Restore Error:', parseErr);
       dialogs.alert('فشل قراءة الملف أو استعادة البيانات: ' + parseErr.toString(), { severity: 'error' });

@@ -31,7 +31,8 @@
     "test:prescriptions": "npm run lint && npm run build && node tests/run-prescription-simplification.mjs",
     "test:patient-workspace": "npm run lint && npm run build && node tests/run-patient-workspace.mjs",
     "test:payment-methods": "npm run lint && npm run build && tsx tests/payment-methods.test.ts && node tests/run-payment-methods.mjs && TEST_UI_ENTRY=tests/lab-payment-methods.integration.cjs node tests/run-payment-methods.mjs",
-    "test:backups": "npm run lint && npm run build && tsx tests/backup-rollback.test.ts && node tests/backups.integration.mjs && TEST_UI_ENTRY=tests/financial-print.integration.cjs TEST_ARTIFACT_DIR=/downloads/backup-print-proof node tests/run-payment-methods.mjs"
+    "test:backup-credentials": "npm run lint && npm run build && node tests/backup-credentials.integration.mjs",
+    "test:backups": "npm run lint && npm run build && tsx tests/backup-rollback.test.ts && node tests/backup-credentials.integration.mjs && node tests/backups.integration.mjs && TEST_UI_ENTRY=tests/financial-print.integration.cjs TEST_ARTIFACT_DIR=/downloads/backup-print-proof node tests/run-payment-methods.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1108.0",

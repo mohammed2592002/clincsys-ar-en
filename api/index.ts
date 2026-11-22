@@ -146,11 +146,13 @@ function cleanEnvValue(val: any): string {
 
 // ==================== AUTHENTICATION & AUTHORIZATION LAYER ====================
 // Server-side authentication: scrypt password hashing + HMAC-signed session tokens.
-// Passwords/PINs are NEVER returned from any endpoint, and every data endpoint
-// requires a valid token scoped to the requesting clinic (or the superadmin).
+// Ordinary data responses omit passwords/PINs. The explicit authenticated backup
+// endpoint includes hashes, never plaintext, for the user's recovery workflow.
 import crypto from 'crypto';
 
 const SCRYPT_PREFIX = 'scrypt$';
+const DEFAULT_SUPERADMIN_EMAIL = 'admin@crowndent.com';
+const DEFAULT_SUPERADMIN_PASSWORD = 'admin123';
 
 // Async scrypt: password hashing runs on Node's threadpool so a login never
 // blocks the event loop for every other request.
@@ -299,7 +301,7 @@ function lockoutResponse(res: express.Response, retryAfterSeconds: number) {
   });
 }
 
-// ---- Response sanitization: secrets never leave the server ----
+// ---- Normal data responses omit credentials; explicit backups export hashes ----
 // Legacy records may carry a nested `data` snapshot (old clients wrote the
 // whole API row back, embedding a full copy of the clinic inside itself).
 // That snapshot holds plaintext secrets, so it is stripped from responses too.
@@ -318,7 +320,7 @@ function sanitizeClinicRecord(item: any): any {
   if (Array.isArray(c.staffMembers)) {
     c.staffMembers = c.staffMembers.map((m: any) => {
       if (!m || typeof m !== 'object') return m;
-      const { password, ...rest } = m;
+      const { password, data, ...rest } = m;
       return rest;
     });
   }
@@ -369,6 +371,7 @@ async function secureClinicPayload(data: any, existing: any): Promise<any> {
     out.staffMembers = await Promise.all(out.staffMembers.map(async (m: any) => {
       if (!m || typeof m !== 'object') return m;
       const member: any = { ...m };
+      stripLegacyNestedData(member);
       const prev = exMembers.find((x: any) => x && x.id === member.id);
       if (typeof member.password === 'string' && member.password.trim()) {
         if (!isPasswordHashed(member.password)) member.password = await hashPassword(member.password.trim());
@@ -2403,7 +2406,7 @@ function parsePath(pathStr: string) {
 function financeSync(clinicId:string,event:any){const eventId=crypto.randomUUID();broadcastSync(clinicId,{...event,eventId});publishSyncEvent(clinicId,event.table,event.action,event.id,undefined,eventId).then(id=>{if(id)handledEvents.add(id);});}
 const finance = createFinanceService({db: dbClient, getAuth: getRequestAuth, broadcast: financeSync, mapColumns: mapDataToColumns});
 app.post('/api/finance', finance.handler);
-const backups=createBackupService({db:dbClient,getAuth:getRequestAuth,finance,mapColumns:mapDataToColumns,sanitizeClinic:sanitizeClinicRecord,secureClinic:secureClinicPayload,broadcast:financeSync});
+const backups=createBackupService({db:dbClient,getAuth:getRequestAuth,finance,mapColumns:mapDataToColumns,sanitizeClinic:sanitizeClinicRecord,secureClinic:secureClinicPayload,hashPassword,defaultAdmin:{email:DEFAULT_SUPERADMIN_EMAIL,password:DEFAULT_SUPERADMIN_PASSWORD},broadcast:financeSync});
 app.post('/api/backups',backups.handler);
 
 // Generic Database Queries Router
@@ -4174,7 +4177,7 @@ app.post('/api/superadmin/login', async (req, res) => {
       }
     } else {
       // Default credentials before admin ever changes them
-      if (cleanEmail === 'admin@crowndent.com' && cleanPass === 'admin123') {
+      if (cleanEmail === DEFAULT_SUPERADMIN_EMAIL && cleanPass === DEFAULT_SUPERADMIN_PASSWORD) {
         loginLockout.recordSuccess(lockKey);
         const token = await signAuthToken({ type: 'admin' });
         return res.json({ success: true, token, usingDefaultCredentials: true });
@@ -4199,9 +4202,9 @@ app.get('/api/superadmin/credentials', async (req, res) => {
   try {
     const result = await dbClient.execute("SELECT email FROM superadmin_credentials WHERE id = 'main'");
     if (result.rows.length > 0) {
-      return res.json({ email: result.rows[0].email || 'admin@crowndent.com' });
+      return res.json({ email: result.rows[0].email || DEFAULT_SUPERADMIN_EMAIL });
     }
-    return res.json({ email: 'admin@crowndent.com' });
+    return res.json({ email: DEFAULT_SUPERADMIN_EMAIL });
   } catch (err: any) {
     res.status(500).json({ message: 'Error fetching superadmin credentials' });
   }
@@ -4228,7 +4231,7 @@ app.post('/api/superadmin/credentials', async (req, res) => {
 
   try {
     const checkRes = await dbClient.execute("SELECT password FROM superadmin_credentials WHERE id = 'main'");
-    let expectedPass = 'admin123';
+    let expectedPass = DEFAULT_SUPERADMIN_PASSWORD;
     if (checkRes.rows.length > 0 && checkRes.rows[0].password) {
       expectedPass = String(checkRes.rows[0].password).trim();
     }
