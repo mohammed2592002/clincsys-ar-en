@@ -64,16 +64,18 @@ export default function OverdueLabPanel({ clinicId, onViewOrder, onOpenLabs }: {
   if (!sorted.length || dismissed === today) return null;
   return (
     <section data-testid="overdue-lab-panel" aria-label={en ? 'Overdue lab orders' : 'طلبات معمل متأخرة'} dir={en ? 'ltr' : 'rtl'} className="relative mb-6 rounded-2xl border border-rose-200 border-s-4 border-s-rose-600 bg-white shadow-xs">
-      <button type="button" data-testid="dismiss-lab-alerts" aria-label={dismissText} title={dismissText} onMouseEnter={openTooltip} onMouseLeave={() => setShowTooltip(false)} onFocus={openTooltip} onBlur={() => setShowTooltip(false)} onClick={() => { safeStorage.setItem(key, today); setDismissed(today); }} className={`group absolute -top-3 ${en ? '-right-2' : '-left-2'} z-10 rounded-full border border-slate-300 bg-white p-0.5 text-slate-500 hover:text-rose-700 cursor-pointer focus-visible:ring-2 focus-visible:ring-rose-400`}>
-        <X className="h-5 w-5" />
-        {showTooltip && createPortal(<span data-testid="lab-dismiss-tooltip" role="tooltip" dir={en ? 'ltr' : 'rtl'} style={tooltipPosition} className="pointer-events-none fixed z-[1000] w-max max-w-[280px] rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-lg">{dismissText}</span>, document.body)}
-      </button>
       <header className="flex flex-wrap items-center justify-between gap-4 rounded-t-xl border-b border-rose-100 bg-rose-50/60 p-4 sm:px-5">
         <div className="flex items-center gap-3">
           <span className="rounded-xl bg-rose-100 p-2 text-rose-600"><AlertTriangle className="h-5 w-5" /></span>
           <div><h2 className="flex items-center gap-2 text-base font-black text-rose-800">{en ? 'Overdue lab orders' : 'طلبات معمل متأخرة'} <span className="rounded-lg bg-rose-700 px-2 py-0.5 text-sm text-white">{sorted.length.toLocaleString(en ? 'en-GB' : 'ar-EG')}</span></h2><p className="mt-1 text-xs text-rose-600">{en ? 'Check lab work before the patient arrives' : 'راجع المعمل قبل حضور المريض'}</p></div>
         </div>
-        <button type="button" onClick={onOpenLabs} className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 cursor-pointer">{en ? 'Open lab management →' : 'فتح إدارة المعامل ←'}</button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onOpenLabs} className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 cursor-pointer">{en ? 'Open lab management →' : 'فتح إدارة المعامل ←'}</button>
+          <button type="button" data-testid="dismiss-lab-alerts" aria-label={dismissText} title={dismissText} onMouseEnter={openTooltip} onMouseLeave={() => setShowTooltip(false)} onFocus={openTooltip} onBlur={() => setShowTooltip(false)} onClick={() => { safeStorage.setItem(key, today); setDismissed(today); }} className="group inline-flex items-center justify-center rounded-md bg-rose-600 p-2 text-white hover:bg-rose-700 cursor-pointer focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-1">
+            <X className="h-4 w-4" strokeWidth={3} />
+            {showTooltip && createPortal(<span data-testid="lab-dismiss-tooltip" role="tooltip" dir={en ? 'ltr' : 'rtl'} style={tooltipPosition} className="pointer-events-none fixed z-[1000] w-max max-w-[280px] rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-lg">{dismissText}</span>, document.body)}
+          </button>
+        </div>
       </header>
       <div className="divide-y divide-slate-100">
         {(expanded ? sorted : sorted.slice(0, 3)).map(order => {

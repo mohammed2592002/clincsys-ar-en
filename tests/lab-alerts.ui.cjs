@@ -20,6 +20,7 @@ const day = n => new Date(Date.parse(today + 'T12:00:00Z') + n * 86400000).toISO
   const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   try {
     const page = await browser.newPage();
+    const checkX = async (dir) => { const g = await page.evaluate(() => { const r = s => document.querySelector(s).getBoundingClientRect(); const x = r('[data-testid="dismiss-lab-alerts"]'), p = r('[data-testid="overdue-lab-panel"]'), m = [...document.querySelectorAll('[data-testid="overdue-lab-panel"] header button')][0].getBoundingClientRect(); const bg = getComputedStyle(document.querySelector('[data-testid="dismiss-lab-alerts"]')).backgroundColor; return { inside: x.left >= p.left && x.right <= p.right && x.top >= p.top && x.bottom <= p.bottom, xLeftOfManage: x.right <= m.left, xRightOfManage: x.left >= m.right, bg }; }); assert.ok(g.inside, 'X inside panel'); assert.ok(/^oklch\(0\.586 0\.253 17\./.test(g.bg) || g.bg === 'rgb(225, 29, 72)', 'X is rose-600 red: ' + g.bg); assert.ok(dir === 'rtl' ? g.xLeftOfManage : g.xRightOfManage, 'X side for ' + dir); };
     const errors = []; page.on('pageerror', e => errors.push(e.message)); page.on('console', m => { if (m.type() === 'error') console.log('BROWSER ERROR', m.text()); });
     await page.setViewport({ width: 1440, height: 1050 });
     await page.evaluateOnNewDocument((token, clinic) => {
@@ -39,6 +40,7 @@ const day = n => new Date(Date.parse(today + 'T12:00:00Z') + n * 86400000).toISO
     await page.waitForSelector(panel);
     assert.equal(await page.$$eval(rows, es => es.length), 3);
     assert((await page.$eval(panel, e => e.textContent)).includes('٧'));
+    await checkX('rtl');
     await page.screenshot({ path: '/downloads/lab-alerts-panel-ar.png', fullPage: true });
     await page.click('[data-testid="expand-lab-alerts"]');
     assert.equal(await page.$$eval(rows, es => es.length), 7);
@@ -72,6 +74,7 @@ const day = n => new Date(Date.parse(today + 'T12:00:00Z') + n * 86400000).toISO
     await page.waitForSelector(panel);
     assert.equal(await page.$eval(panel, e => e.dir), 'ltr');
     assert((await page.$eval(panel, e => e.textContent)).includes('Overdue lab orders'));
+    await checkX('ltr');
     await page.screenshot({ path: '/downloads/lab-alerts-panel-en.png', fullPage: true });
     await clickText('Appointments');
     await page.waitForSelector('[data-testid="appointment-lab-warning"]');
