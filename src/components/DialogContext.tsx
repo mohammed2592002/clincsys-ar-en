@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useRef, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Info, CheckCircle, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -35,6 +36,7 @@ export function DialogProvider({ children }: DialogProviderProps) {
   const [options, setOptions] = useState<DialogOptions>({});
   
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
+  const { t } = useTranslation();
 
   React.useEffect(() => {
     if (isOpen) {
@@ -51,7 +53,7 @@ export function DialogProvider({ children }: DialogProviderProps) {
     setMessage(message);
     setOptions({
       title: opt?.title || 'تنبيه',
-      confirmText: opt?.confirmText || 'حسناً',
+      confirmText: opt?.confirmText || t('common.ok'),
       type: 'alert',
       severity: opt?.severity || 'info',
     });
@@ -142,7 +144,7 @@ export function DialogProvider({ children }: DialogProviderProps) {
               </h3>
 
               {/* Message */}
-              <div className="max-h-[50vh] overflow-y-auto scroll-smooth pr-1 mb-6 text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-line text-center [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
+              <div dir="auto" className="max-h-[50vh] overflow-y-auto scroll-smooth pr-1 mb-6 text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-line text-center [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
                 {message}
               </div>
 
@@ -170,7 +172,7 @@ export function DialogProvider({ children }: DialogProviderProps) {
                       : 'bg-emerald-600 hover:bg-emerald-700'
                   }`}
                 >
-                  {options.confirmText || 'حسناً'}
+                  {options.confirmText || t('common.ok')}
                 </button>
               </div>
             </motion.div>
