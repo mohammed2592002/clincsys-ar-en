@@ -41,6 +41,10 @@ const files = [
   { path: `${pub}/clinics/${clinicA.id}/xrays/aaa-f2.png`, mimeType: "image/png", data: "", clinicId: clinicA.id },
   // Owned by clinic A, but the stub is told to fail its first deletion attempt.
   { path: `${pub}/clinics/${clinicA.id}/xrays/aaa-fail-me.png`, mimeType: "image/png", data: "", clinicId: clinicA.id },
+  // Legacy row, the user's real incident: uploaded before the clinicId column
+  // existed (old key format, no random segment), so clinicId is NULL. The
+  // startup backfill migration must restore its ownership from the key itself.
+  { path: `${pub}/clinics/${clinicA.id}/xrays/1786808561987_xray_19c20d9e-6c1e-4385-ae67-a200c59c55f0_2026-08-11.webp`, mimeType: "image/webp", data: "", clinicId: null },
   // Phantom row: well-formed and owned by clinic A, but the object does not
   // exist in the bucket. A bare DeleteObject would 204 on it and fake success;
   // the endpoint must report it honestly instead.

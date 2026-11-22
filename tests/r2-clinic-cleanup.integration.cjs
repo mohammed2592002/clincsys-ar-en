@@ -15,6 +15,7 @@ const existingObjects = new Set([
   `/clinics/${clinicA}/xrays/aaa-fail-me.png`,
   `/clinics/${clinicB}/xrays/bbb-stolen.png`,
   `/clinics/${clinicB}/xrays/bbb-f1.png`,
+  `/clinics/${clinicA}/xrays/1786808561987_xray_19c20d9e-6c1e-4385-ae67-a200c59c55f0_2026-08-11.webp`,
   // Deliberately absent: aaa-ghost.png (phantom DB row).
 ]);
 let failMode = true; // first round: one object refuses deletion
@@ -94,11 +95,12 @@ const call = (method, path, token) =>
   assert.equal(weird.status, 400, 'invalid clinic id must be 400');
   console.log('ok - unknown clinic 404 and invalid id 400');
 
-  // Count: 4 candidate objects (incl. the phantom row), 1 ownership-rejected
-  // row and 1 non-R2 local row, both reported as skipped.
+  // Count: 5 candidate objects (incl. the phantom row and the legacy row whose
+  // NULL clinicId the startup migration backfilled from the key itself),
+  // 1 ownership-rejected row and 1 non-R2 local row, both reported as skipped.
   const countA = await call('GET', `/api/superadmin/clinics/${clinicA}/r2-files`, admin);
   assert.equal(countA.status, 200);
-  assert.equal(countA.data.count, 4, 'count must be the 4 verified-owned keys');
+  assert.equal(countA.data.count, 5, 'count must include the backfilled legacy row');
   assert.equal(countA.data.skipped, 2, 'tampered row + local row must be reported as skipped');
   const countB = await call('GET', `/api/superadmin/clinics/${clinicB}/r2-files`, admin);
   assert.equal(countB.data.count, 1, 'clinic B has its own single object');
@@ -108,14 +110,15 @@ const call = (method, path, token) =>
   const del1 = await call('POST', `/api/superadmin/clinics/${clinicA}/r2-files/delete`, admin);
   assert.equal(del1.status, 200);
   assert.equal(del1.data.success, false, 'partial failure must not claim success');
-  assert.equal(del1.data.deleted, 2, 'two objects deleted in round 1');
+  assert.equal(del1.data.deleted, 3, 'three objects deleted in round 1, incl. the legacy one');
   assert.equal(del1.data.failed, 2, 'stub failure + ownership rejection');
   assert.equal(del1.data.missing, 1, 'phantom row reported as missing, never faked as deleted');
   assert.ok((del1.data.missingKeys || []).some((k) => k.includes('ghost')), 'phantom key listed as missing');
   const failedKeys = (del1.data.failures || []).map((f) => f.key).sort();
   assert.ok(failedKeys.some((k) => k.includes('fail-me')), 'stub failure listed');
   assert.ok(failedKeys.some((k) => k.includes('stolen')), 'ownership rejection listed');
-  console.log('ok - partial failure reported with per-object reasons, phantom row not faked as deleted');
+  assert.ok(deletedKeys.some((k) => k.includes('19c20d9e')), 'backfilled legacy object must be deleted - this was the user incident');
+  console.log('ok - partial failure reported with per-object reasons, phantom row not faked as deleted, legacy row purged after backfill');
 
   // Ownership: the stub must never receive a DELETE for clinic B objects,
   // the tampered key, or the local-disk file.
@@ -130,7 +133,7 @@ const call = (method, path, token) =>
 
   // Database rows are preserved: the cleanup touches R2 storage only.
   const countAfter = await call('GET', `/api/superadmin/clinics/${clinicA}/r2-files`, admin);
-  assert.equal(countAfter.data.count, 4, 'files table rows must remain after cleanup');
+  assert.equal(countAfter.data.count, 5, 'files table rows must remain after cleanup');
   console.log('ok - database file records preserved');
 
   // Round 2: stub healthy again, the remaining objects delete cleanly.
@@ -139,9 +142,10 @@ const call = (method, path, token) =>
   assert.equal(del2.data.success, false, 'tampered + missing rows keep success honest');
   assert.equal(del2.data.deleted, 1, 'only the previously-failed object is deleted now');
   assert.equal(del2.data.failed, 1, 'only the ownership rejection still fails');
-  assert.equal(del2.data.missing, 3, 'already-deleted objects and the phantom are reported as missing');
+  assert.equal(del2.data.missing, 4, 'already-deleted objects and the phantom are reported as missing');
   assert.ok((del2.data.failures || []).every((f) => f.error === 'ownership_unverified'), 'only ownership rejections remain');
   assert.ok(existingObjects.size === 2, 'only clinic B objects remain in the bucket');
+  assert.ok(!existingObjects.has(`/clinics/${clinicA}/xrays/1786808561987_xray_19c20d9e-6c1e-4385-ae67-a200c59c55f0_2026-08-11.webp`), 'legacy object is gone after the backfill made it visible to the purge');
   console.log('ok - retry after transient failure deletes the rest');
 
   // Clinic B is untouched.

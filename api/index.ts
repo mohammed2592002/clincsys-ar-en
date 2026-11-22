@@ -1839,6 +1839,32 @@ async function runMigrations() {
           await dbClient.execute(`ALTER TABLE files ADD COLUMN IF NOT EXISTS clinicId TEXT;`);
           await loadTableSchemas();
         }
+      },
+      {
+        id: '20261123_001_backfill_files_clinic_id',
+        up: async () => {
+          // Files uploaded before the clinicId column existed have it NULL,
+          // which makes them invisible to ownership checks (the R2 purge
+          // selects WHERE clinicId = ?). Their ownership is still exact, not a
+          // prefix guess: R2 keys have always been built server-side as
+          // clinics/{clinicId}/{category}/{file}, so the key's own second
+          // segment is the owning clinic. Local-disk and foreign rows keep NULL.
+          const { publicUrlBase } = getR2ClientConfig();
+          const prefix = `${publicUrlBase}/clinics/`;
+          const result = await dbClient.execute({ sql: 'SELECT path, clinicId FROM files', args: [] });
+          let backfilled = 0;
+          for (const row of result.rows) {
+            if (row.clinicId) continue;
+            const storedPath = String(row.path || '');
+            if (!storedPath.startsWith(prefix)) continue;
+            const keyFromRoot = storedPath.slice(publicUrlBase.length + 1); // path minus publicUrlBase + '/'
+            const parts = keyFromRoot.split('/');
+            if (parts.length !== 4 || !R2_KEY_PATTERN.test(keyFromRoot)) continue;
+            await dbClient.execute({ sql: 'UPDATE files SET clinicId = ? WHERE path = ?', args: [parts[1], storedPath] });
+            backfilled++;
+          }
+          console.log(`[Schema Migration] Backfilled clinicId on ${backfilled} files rows`);
+        }
       }
     ];
 
