@@ -33,9 +33,10 @@ interface LabTrackingViewProps {
   isStaff?: boolean;
   operatorName?: string;
   activeShift?: any;
+  initialOrderId?: string | null;
 }
 
-export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorName, activeShift }: LabTrackingViewProps) {
+export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorName, activeShift, initialOrderId }: LabTrackingViewProps) {
   const { t, i18n } = useTranslation();
   const isEn = i18n.language?.startsWith('en');
   const dialogs = useDialogs();
@@ -120,7 +121,7 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
     try {
       const [labsData, ordersData, patientsData, apptsData, workTypesData] = await Promise.all([
         dentalService.getLaboratories(clinic.id, isDemoMode),
-        dentalService.getLabOrders(clinic.id, isDemoMode),
+        dentalService.getLabOrders(clinic.id, isDemoMode, !!initialOrderId),
         dentalService.getPatients(clinic.id, isDemoMode),
         dentalService.getAppointments(clinic.id, isDemoMode),
         dentalService.getLabWorkTypes(clinic.id, isDemoMode)
@@ -512,6 +513,16 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
     setIsPatientDropdownOpen(false);
     setIsOrderModalOpen(true);
   };
+
+  const openedInitialOrder = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialOrderId || openedInitialOrder.current === initialOrderId) return;
+    const order = labOrders.find(o => o.id === initialOrderId);
+    if (order) {
+      openedInitialOrder.current = initialOrderId;
+      handleEditOrder(order);
+    }
+  }, [initialOrderId, labOrders, patients]);
 
   // Quick Change status of lab order
   const handleUpdateOrderStatus = async (order: LabOrder, newStatus: LabOrder['status']) => {

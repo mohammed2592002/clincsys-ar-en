@@ -1,0 +1,20 @@
+export const formatProcedureName = (name: string, isEn: boolean = false): string => {
+  if (!isEn || !name) return name;
+  const trimmed = name.trim();
+  if (trimmed === 'كشف جديد') return 'New Consultation';
+  if (trimmed === 'استكمال جلسات') return 'Follow-up Session';
+  if (trimmed === 'خلع عادي') return 'Simple Extraction';
+  if (trimmed === 'خلع جراحي') return 'Surgical Extraction';
+  if (trimmed === 'تنظيف جير وتلميع') return 'Scaling & Polishing';
+  if (trimmed === 'حشو تجميلي ليزر') return 'Composite Laser Filling';
+  if (trimmed === 'حشو عصب وجذور' || trimmed === 'علاج جذور وعصب') return 'Root Canal Treatment';
+  if (trimmed === 'تركيبات وزركون') return 'Crown & Zirconia';
+  if (trimmed === 'تبييض أسنان') return 'Teeth Whitening';
+  if (trimmed === 'أشعة أسنان') return 'Dental X-Ray';
+  if (trimmed === 'تقويم أسنان') return 'Orthodontics';
+  if (trimmed === 'زراعة أسنان') return 'Dental Implant';
+  if (trimmed === 'طربوش / تاج') return 'Crown / Cap';
+  if (trimmed === 'حشو بلاتين') return 'Amalgam Filling';
+  if (trimmed === 'حشو زجاجي') return 'Glass Ionomer Filling';
+  return name;
+};

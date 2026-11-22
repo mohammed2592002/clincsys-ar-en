@@ -313,11 +313,11 @@ export const dentalService = {
   },
 
   // --- LAB ORDERS ---
-  async getLabOrders(clinicId: string, isDemo: boolean): Promise<LabOrder[]> {
+  async getLabOrders(clinicId: string, isDemo: boolean, allOrders = false): Promise<LabOrder[]> {
     if (isDemo) return getLocal(`lab_orders_${clinicId}`, MOCK_LAB_ORDERS);
     try {
       const ref = collection(db, `clinics/${clinicId}/lab_orders`);
-      const q = query(ref, orderBy('createdAt', 'desc'), limit(150));
+      const q = allOrders ? query(ref, orderBy('createdAt', 'desc')) : query(ref, orderBy('createdAt', 'desc'), limit(150));
       const snap = await getDocs(q);
       return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as LabOrder));
     } catch (err) {

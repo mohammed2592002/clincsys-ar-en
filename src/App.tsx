@@ -1,3 +1,4 @@
+import OverdueLabPanel from './components/OverdueLabPanel';
 import OfflineCommands from './components/OfflineCommands';
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -281,6 +282,7 @@ export default function App() {
   // Nav Tabs
   const [clinicActiveTab, setClinicActiveTab] = useState<'patients' | 'calendar' | 'medical_files' | 'prescriptions' | 'analytics' | 'settings' | 'financials' | 'laboratory'>('patients');
   const [selectedPatientIdForFile, setSelectedPatientIdForFile] = useState<string>('');
+  const [initialLabOrderId, setInitialLabOrderId] = useState<string | null>(null);
   const [prescriptionInitialPatientId, setPrescriptionInitialPatientId] = useState<string>('');
   const [medicalFileInitialTab, setMedicalFileInitialTab] = useState<'visits' | 'prescriptions' | 'financials' | null>(null);
   const [adminActiveTab, setAdminActiveTab] = useState<'clinics' | 'renewals'>('clinics');
@@ -1467,7 +1469,7 @@ export default function App() {
             {allowedFeatures.includes('laboratory') && (!isStaff || staffAllowedTabs.includes('laboratory')) && (
               <motion.button
                 whileTap={{ scale: 0.98 }}
-                onClick={() => setClinicActiveTab('laboratory')}
+                onClick={() => { setInitialLabOrderId(null); setClinicActiveTab('laboratory'); }}
                 className={`py-1.5 px-2.5 sm:px-3.5 rounded-xl text-xs sm:text-sm transition-colors duration-200 flex items-center gap-1.5 sm:gap-2 shrink-0 cursor-pointer group border ${
                   clinicActiveTab === 'laboratory'
                     ? 'bg-gradient-to-r from-indigo-500 to-cyan-600 text-white shadow-md shadow-indigo-500/20 border-indigo-400/40 font-bold'
@@ -1555,6 +1557,11 @@ export default function App() {
             }>
               {allowedFeatures.includes('patients') && clinicActiveTab === 'patients' && (
                 <div className="space-y-6">
+                  {allowedFeatures.includes('laboratory') && (!isStaff || staffAllowedTabs.includes('laboratory')) && <OverdueLabPanel
+                    clinicId={currentClinicInfo.id}
+                    onViewOrder={(id) => { setInitialLabOrderId(id); setClinicActiveTab('laboratory'); }}
+                    onOpenLabs={() => { setInitialLabOrderId(null); setClinicActiveTab('laboratory'); }}
+                  />}
                   <PatientsManager
                     clinic={currentClinicInfo}
                     isStaff={isStaff}
@@ -1619,7 +1626,8 @@ export default function App() {
         )}
 
         {allowedFeatures.includes('laboratory') && clinicActiveTab === 'laboratory' && (
-          <LabTrackingView 
+          <LabTrackingView
+            initialOrderId={initialLabOrderId}
             clinic={currentClinicInfo} 
             isDemoMode={false} 
             isStaff={isStaff} 

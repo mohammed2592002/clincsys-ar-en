@@ -1,3 +1,5 @@
+import { formatProcedureName } from '../utils/procedureLabels';
+import { useOverdueLabOrders, overdueDays } from '../hooks/useOverdueLabOrders';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getAppointmentsRef, getPatientsRef, getPatientRecordsRef, OperationType, handleDbError, cleanDbData, getDocsSmart as getDocs, getDocSmart as getDoc, collection, addDoc, updateDoc, setDoc, deleteDoc, doc, query, where, orderBy, limit, getAppointmentsCounts } from '../dbClient';
@@ -65,26 +67,6 @@ export const formatPaymentMethodName = (method: string, isEn: boolean = false): 
   return method;
 };
 
-export const formatProcedureName = (name: string, isEn: boolean = false): string => {
-  if (!isEn || !name) return name;
-  const trimmed = name.trim();
-  if (trimmed === 'كشف جديد') return 'New Consultation';
-  if (trimmed === 'استكمال جلسات') return 'Follow-up Session';
-  if (trimmed === 'خلع عادي') return 'Simple Extraction';
-  if (trimmed === 'خلع جراحي') return 'Surgical Extraction';
-  if (trimmed === 'تنظيف جير وتلميع') return 'Scaling & Polishing';
-  if (trimmed === 'حشو تجميلي ليزر') return 'Composite Laser Filling';
-  if (trimmed === 'حشو عصب وجذور' || trimmed === 'علاج جذور وعصب') return 'Root Canal Treatment';
-  if (trimmed === 'تركيبات وزركون') return 'Crown & Zirconia';
-  if (trimmed === 'تبييض أسنان') return 'Teeth Whitening';
-  if (trimmed === 'أشعة أسنان') return 'Dental X-Ray';
-  if (trimmed === 'تقويم أسنان') return 'Orthodontics';
-  if (trimmed === 'زراعة أسنان') return 'Dental Implant';
-  if (trimmed === 'طربوش / تاج') return 'Crown / Cap';
-  if (trimmed === 'حشو بلاتين') return 'Amalgam Filling';
-  if (trimmed === 'حشو زجاجي') return 'Glass Ionomer Filling';
-  return name;
-};
 
 interface InteractiveCalendarProps {
   clinic: Clinic;
@@ -108,6 +90,14 @@ export default function InteractiveCalendar({
   const { t, i18n } = useTranslation();
   const isEn = i18n.language?.startsWith('en');
   const dialogs = useDialogs();
+  const { overdue: overdueLabOrders, today: labToday } = useOverdueLabOrders(clinic.id);
+  const overdueByAppointment = useMemo(() => {
+    const map = new Map<string, typeof overdueLabOrders>();
+    for (const order of overdueLabOrders) {
+      if (order.appointmentId) map.set(order.appointmentId, [...(map.get(order.appointmentId) || []), order]);
+    }
+    return map;
+  }, [overdueLabOrders]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [appointmentCounts, setAppointmentCounts] = useState<Record<string, number>>({});
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -2413,6 +2403,12 @@ export default function InteractiveCalendar({
                         : 'bg-white border-slate-200/80 hover:border-slate-300 hover:shadow-md'
                     }`}
                   >
+                    {overdueByAppointment.has(app.id) && <div data-testid="appointment-lab-warning" role="status" className="mb-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <div><p className="font-black">{isEn ? 'Lab work overdue. Check before treatment.' : 'طلب المعمل متأخر، راجع المعمل قبل الجلسة'}</p>
+                        {overdueByAppointment.get(app.id)!.map(order => <p key={order.id} className="mt-1">{order.workType} · {isEn ? `${overdueDays(order, labToday)} ${overdueDays(order, labToday) === 1 ? 'day' : 'days'} late` : `متأخر ${overdueDays(order, labToday)} يوم`}</p>)}
+                      </div>
+                    </div>}
                     {/* Top row: turn badge + patient info | amount */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-3 min-w-0">
