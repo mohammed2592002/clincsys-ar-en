@@ -3030,6 +3030,10 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
     } catch (e) { return ''; }
   };
 
+  const formatClinicalTime = (value?: string) => {
+    if (!value || !isEn) return value || '';
+    return value.replace(/[٠-٩]/g, digit => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit))).replace(/ص/g, 'AM').replace(/م/g, 'PM');
+  };
   const clinicalAlerts = (() => {
     const questions = clinic.questionnaireQuestions?.length ? clinic.questionnaireQuestions : DEFAULT_QUESTIONNAIRE_QUESTIONS;
     const answers = activePatient?.questionnaire?.customAnswers || {};
@@ -3075,7 +3079,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
       {activePatient && <>
         <section className={`rounded-xl border p-4 ${clinicalAlerts.length ? 'border-rose-200 bg-rose-50/40' : 'border-slate-200 bg-slate-50'}`} data-testid="patient-alerts">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
-            <div className="shrink-0"><h3 className={`text-xs font-bold ${clinicalAlerts.length ? 'text-rose-700' : 'text-slate-600'}`}>{isEn ? 'Reception questionnaire alerts' : 'تنبيهات استبيان الاستقبال'}</h3><p className="text-[10px] text-slate-400 mt-1">{clinicalAlerts.length ? (isEn ? `${clinicalAlerts.length} Yes answers. Review details before treatment.` : `${clinicalAlerts.length} إجابات بنعم، راجع التفاصيل قبل الإجراء`) : (activePatient.medicalHistory || (isEn ? 'No recorded chronic conditions or contraindications' : 'لا توجد أمراض مزمنة أو موانع علاج مسجلة'))}</p></div>
+            <div className="shrink-0"><h3 className={`text-xs font-bold ${clinicalAlerts.length ? 'text-rose-700' : 'text-slate-600'}`}>{isEn ? 'Reception questionnaire alerts' : 'تنبيهات استبيان الاستقبال'}</h3><p className="text-[10px] text-slate-400 mt-1">{clinicalAlerts.length ? (isEn ? `${clinicalAlerts.length} Yes answer${clinicalAlerts.length === 1 ? '' : 's'}. Review details before treatment.` : `${clinicalAlerts.length === 1 ? 'إجابة واحدة' : `${clinicalAlerts.length} إجابات`} بنعم، راجع التفاصيل قبل الإجراء`) : (activePatient.medicalHistory || (isEn ? 'No recorded chronic conditions or contraindications' : 'لا توجد أمراض مزمنة أو موانع علاج مسجلة'))}</p></div>
             <div className="flex flex-wrap gap-1.5 flex-1">{clinicalAlerts.map(item => <button type="button" key={item.id} title={item.title} onClick={() => setAlertsExpanded(true)} className="px-2.5 py-1.5 rounded-md bg-white border border-rose-200 text-rose-700 text-[11px] font-bold">{item.label}</button>)}</div>
             <button type="button" data-testid="patient-alerts-toggle" aria-expanded={alertsExpanded} onClick={() => setAlertsExpanded(v => !v)} className="text-[11px] text-slate-600 border border-slate-200 bg-white rounded-lg px-3 py-2 shrink-0">{alertsExpanded ? (isEn ? 'Hide answers and details' : 'إخفاء الإجابات والتفاصيل') : (isEn ? 'View answers and details' : 'عرض الإجابات والتفاصيل')} ▾</button>
           </div>
@@ -3115,7 +3119,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                       {isEn ? 'Doctor Notes' : 'ملاحظات الطبيب'}
                     </h4>
                     <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-100 rounded-full px-2 py-0.5">
-                      {isEn ? `${doctorNotes.length} notes` : `${doctorNotes.length} ملاحظات`}
+                      {isEn ? `${doctorNotes.length} note${doctorNotes.length === 1 ? '' : 's'}` : `${doctorNotes.length} ملاحظات`}
                     </span>
                   </div>
 
@@ -3679,7 +3683,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                                 )}
 
                                 <span className="absolute bottom-2 right-2 bg-slate-900/80 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-md">
-                                  {xray.date} {xray.time ? `• ${xray.time}` : ''}
+                                  {xray.date} {xray.time ? `• ${formatClinicalTime(xray.time)}` : ''}
                                 </span>
                               </div>
 
@@ -3758,7 +3762,7 @@ export default function PatientMedicalFile({ clinic, isStaff, preselectedPatient
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-400">{isEn ? `Date: ${activeXrayViewer.date}` : `التاريخ: ${activeXrayViewer.date}`} {activeXrayViewer.time ? `(${activeXrayViewer.time})` : ''}</p>
+                        <p className="text-xs text-slate-400">{isEn ? `Date: ${activeXrayViewer.date}` : `التاريخ: ${activeXrayViewer.date}`} {activeXrayViewer.time ? `(${formatClinicalTime(activeXrayViewer.time)})` : ''}</p>
                       </div>
                     </div>
 
