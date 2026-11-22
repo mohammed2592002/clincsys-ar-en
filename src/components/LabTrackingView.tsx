@@ -328,6 +328,11 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
       return;
     }
 
+    if (orderForm.sentDate && orderForm.expectedDeliveryDate < orderForm.sentDate) {
+      dialogs.alert(isEn ? 'Expected delivery date cannot be earlier than the sent date.' : 'تاريخ الاستلام المتوقع لا يمكن أن يكون قبل تاريخ الإرسال للمعمل.', { severity: 'warning' });
+      return;
+    }
+
     setLoading(true);
     try {
       const selectedPatient = patients.find(p => p.id === orderForm.patientId);
@@ -1776,8 +1781,14 @@ export default function LabTrackingView({ clinic, isDemoMode, isStaff, operatorN
                       required
                       value={orderForm.expectedDeliveryDate}
                       onChange={(e) => setOrderForm({...orderForm, expectedDeliveryDate: e.target.value})}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-bold"
+                      aria-invalid={Boolean(orderForm.sentDate && orderForm.expectedDeliveryDate && orderForm.expectedDeliveryDate < orderForm.sentDate)}
+                      className={`w-full px-3.5 py-2.5 bg-slate-50 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 font-bold ${orderForm.sentDate && orderForm.expectedDeliveryDate && orderForm.expectedDeliveryDate < orderForm.sentDate ? 'border-red-400 focus:ring-red-300' : 'border-slate-200'}`}
                     />
+                    {orderForm.sentDate && orderForm.expectedDeliveryDate && orderForm.expectedDeliveryDate < orderForm.sentDate && (
+                      <p role="alert" className="text-xs font-bold text-red-600 mt-1.5">
+                        {isEn ? 'Expected delivery date cannot be earlier than the sent date.' : 'تاريخ الاستلام المتوقع لا يمكن أن يكون قبل تاريخ الإرسال للمعمل.'}
+                      </p>
+                    )}
                   </div>
                 </div>
 
