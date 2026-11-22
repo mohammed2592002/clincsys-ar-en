@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {setActiveRequestScreen,requestScope,screenOwnsPath,isPageVisible} from '../src/utils/screenActivity';
+let state='visible';
+Object.defineProperty(globalThis,'document',{value:{get visibilityState(){return state;}},configurable:true});
+setActiveRequestScreen('calendar');const calendar=requestScope();assert(calendar());
+setActiveRequestScreen('settings');assert(!calendar());
+assert(!screenOwnsPath('clinics/test/appointments'));
+assert(!screenOwnsPath('clinics/test/shifts'));
+assert(screenOwnsPath('clinics/test'));
+state='hidden';assert(!isPageVisible());assert(!requestScope()());
+state='visible';setActiveRequestScreen('medical_files');
+assert(screenOwnsPath('clinics/test/patients/p1/records'));
+setActiveRequestScreen('settings');assert(!screenOwnsPath('clinics/test/patients/p1/records'));
+setActiveRequestScreen('');assert(screenOwnsPath('clinics/test/appointments'));
+console.log('PASS request ownership: navigation invalidates old scopes; hidden pages pause; nested patient records scoped; non-UI callers retained');

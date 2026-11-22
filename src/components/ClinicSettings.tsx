@@ -1,3 +1,4 @@
+import { isPageVisible, getActiveRequestScreen } from '../utils/screenActivity';
 import {backupRequest,backupSqlPayload} from '../utils/backupTransport';
 import { getClinicPaymentMethods, paymentMethodLabel, samePaymentMethod } from '../utils/paymentMethods';
 import { ORTHODONTIC_CATALOG_VERSION } from '../utils/dentalServiceCatalog';
@@ -1531,7 +1532,7 @@ export default function ClinicSettings({
   // Automatic Daily Backup Engine (Midnight / Connection Listener)
   useEffect(() => {
     const checkAndRunAutoBackup = async () => {
-      if (!clinicId) return;
+      if (!clinicId || !isPageVisible() || getActiveRequestScreen() !== 'settings') return;
       const isEnabled = safeStorage.getItem(`auto_backup_enabled_${clinicId}`) === 'true' || clinic?.autoBackupEnabled === true;
       if (!isEnabled) return;
 

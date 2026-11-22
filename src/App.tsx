@@ -1,3 +1,4 @@
+import { isPageVisible, setActiveRequestScreen } from './utils/screenActivity';
 import { seedOrthodonticCatalog, ORTHODONTIC_CATALOG_VERSION } from './utils/dentalServiceCatalog';
 import OverdueLabPanel from './components/OverdueLabPanel';
 import OfflineCommands from './components/OfflineCommands';
@@ -282,6 +283,15 @@ export default function App() {
 
   // Nav Tabs
   const [clinicActiveTab, setClinicActiveTab] = useState<'patients' | 'calendar' | 'medical_files' | 'prescriptions' | 'analytics' | 'settings' | 'financials' | 'laboratory'>('patients');
+  setActiveRequestScreen(currentClinicId ? clinicActiveTab : '');
+  const [pageVisible, setPageVisible] = useState(isPageVisible);
+  useEffect(() => {
+    const visibility = () => setPageVisible(isPageVisible());
+    document.addEventListener('visibilitychange', visibility);
+    return () => document.removeEventListener('visibilitychange', visibility);
+  }, []);
+  const activeScreenRef = useRef(clinicActiveTab);
+  activeScreenRef.current = clinicActiveTab;
   const [selectedPatientIdForFile, setSelectedPatientIdForFile] = useState<string>('');
   const [initialLabOrderId, setInitialLabOrderId] = useState<string | null>(null);
   const [prescriptionInitialPatientId, setPrescriptionInitialPatientId] = useState<string>('');
@@ -329,7 +339,7 @@ export default function App() {
   };
 
   const fetchSharedAppointments = async (silent: boolean | any = false, targetDate?: string, force = false) => {
-    if (!currentClinicId) return;
+    if (!currentClinicId || !isPageVisible() || !['calendar','financials','medical_files'].includes(activeScreenRef.current)) return;
     
     const isSilent = typeof silent === 'boolean' ? silent : false;
     
@@ -423,7 +433,7 @@ export default function App() {
   };
 
   const fetchActiveShift = async (silent = false) => {
-    if (!currentClinicId) return;
+    if (!currentClinicId || !isPageVisible() || !['patients','calendar','medical_files','laboratory','financials'].includes(activeScreenRef.current)) return;
     if (!silent) setLoadingActiveShift(true);
     try {
       const { collection, getDocs, query, where, db } = await import('./dbClient');
@@ -456,26 +466,29 @@ export default function App() {
     }
   };
 
-  const effectiveSyncClinicId = currentClinicId || (session.type === 'superadmin' ? 'superadmin' : '');
+  useEffect(() => {
+    if (!pageVisible || !currentClinicId) return;
+    if (['patients','calendar','medical_files','laboratory','financials'].includes(clinicActiveTab)) void fetchActiveShift();
+  }, [currentClinicId, clinicActiveTab, pageVisible]);
+
+  const effectiveSyncClinicId = currentClinicId || (session.type === 'admin' ? 'superadmin' : '');
 
   useEffect(() => {
     if (effectiveSyncClinicId) {
-      if (currentClinicId) {
-        fetchSharedAppointments();
-        fetchActiveShift();
-      }
+      // Screen-owned data is loaded by the active-screen effect, not by sync startup.
 
       console.log(`[Sync Engine] Initializing instant WebSocket synchronization for ${effectiveSyncClinicId}...`);
       let socket: WebSocket | null = null;
       let reconnectTimeout: any = null;
       let pingInterval: any = null;
-      let pollingInterval: any = null;
       let isUnmounted = false;
       let consecutiveErrors = 0;
       let lastFetchedTimestamp = Date.now() - 30000; // Track last event timestamp, adjust for potential clock mismatch
       const processedEventIds = new Set<string>();
 
       function processSyncEvent(eventData: any) {
+        // Transport heartbeats are not database changes.
+        if (!isPageVisible() || !eventData?.table || ['ping','pong'].includes(eventData.type)) return;
         // Instantly clear client-side query cache so that subsequent requests get fresh data
         if (eventData.table) {
           clearTableCache(eventData.table);
@@ -522,9 +535,9 @@ export default function App() {
         window.dispatchEvent(new CustomEvent('clinic-sync', { detail: eventData }));
       }
 
-      // HTTP Polling Fallback for environments where WebSockets are closed or unstable
+      // One catch-up read after connecting; normal idle operation is event-driven.
       const pollForUpdates = async () => {
-        if (!effectiveSyncClinicId || isUnmounted) return;
+        if (!effectiveSyncClinicId || isUnmounted || !isPageVisible()) return;
         try {
           const res = await fetch(`/api/sync/updates?clinicId=${encodeURIComponent(effectiveSyncClinicId)}&since=${lastFetchedTimestamp}`, { headers: { ...authHeaders() } });
           if (!res.ok) return;
@@ -558,17 +571,8 @@ export default function App() {
         }
       };
 
-      function startPolling(intervalMs: number) {
-        if (pollingInterval) {
-          clearInterval(pollingInterval);
-        }
-        if (!isUnmounted) {
-          pollingInterval = setInterval(pollForUpdates, intervalMs);
-        }
-      }
-
       function connectWS() {
-        if (!effectiveSyncClinicId || isUnmounted) return;
+        if (!effectiveSyncClinicId || isUnmounted || !isPageVisible()) return;
         if (socket) {
           socket.onclose = null;
           socket.onerror = null;
@@ -588,15 +592,16 @@ export default function App() {
           socket = new WebSocket(wsUrl);
         } catch (wsErr) {
           console.warn('[Sync Engine] Could not create WebSocket instance:', wsErr);
-          startPolling(5000);
+          // Reconnect the event channel; do not poll inactive data.
           return;
         }
 
         socket.onopen = () => {
           console.log('[Sync Engine] WebSocket connection established successfully.');
           consecutiveErrors = 0;
-          // Keep active polling as a gentle safety background check every 15s alongside WebSocket
-          startPolling(15000);
+          // An open event channel needs no HTTP polling.
+          // Catch up changes missed during a disconnect once, not every 15 seconds.
+          void pollForUpdates();
 
           pingInterval = setInterval(() => {
             if (socket && socket.readyState === WebSocket.OPEN) {
@@ -616,6 +621,7 @@ export default function App() {
               processedEventIds.add(eventData.eventId);
             }
 
+            if (eventData.table) lastFetchedTimestamp = Date.now();
             console.log('[Sync Engine] Received real-time update event:', eventData);
             processSyncEvent(eventData);
           } catch (e) {
@@ -630,8 +636,7 @@ export default function App() {
             pingInterval = null;
           }
           
-          // Switch to fast polling while disconnected
-          startPolling(5000);
+          // Reconnect the event channel without recurring HTTP data reads.
           
           // Continuously reconnect with exponential backoff capped at 10 seconds
           if (!isUnmounted) {
@@ -651,31 +656,23 @@ export default function App() {
         };
       }
 
-      // Initialize both polling and WebSocket
-      startPolling(5000);
+      // Connect the event channel without recurring HTTP polling.
       connectWS();
 
       const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') {
           console.log('[Sync Engine] App became visible. Refreshing caches and reconnecting...');
           clearQueryCache();
-          if (currentClinicId) {
-            fetchSharedAppointments(true, getTodayDateString(), true);
-            fetchActiveShift(true);
-          }
+          // Reactivated screen effects load only their own current data.
           consecutiveErrors = 0;
           lastFetchedTimestamp = Date.now() - 30000;
-          startPolling(5000);
+          // Reconnect the event channel; do not poll inactive data.
           connectWS();
         } else {
           console.log('[Sync Engine] App hidden. Cleaning up active sockets and timers to save resources.');
           if (pingInterval) {
             clearInterval(pingInterval);
             pingInterval = null;
-          }
-          if (pollingInterval) {
-            clearInterval(pollingInterval);
-            pollingInterval = null;
           }
           if (socket) {
             socket.onclose = null;
@@ -694,7 +691,7 @@ export default function App() {
         const customEvent = e as CustomEvent;
         const { table, id, payload } = customEvent.detail || {};
         console.log('[App] Received clinic-sync custom window event for table:', table);
-        if (currentClinicId) {
+        if (currentClinicId && isPageVisible()) {
           if (!table) {fetchSharedAppointments(true,getTodayDateString(),true);fetchActiveShift(true);return;}
           if (table === 'appointments' || table === 'records' || table === 'patients') {
             clearTableCache('appointments');
@@ -709,8 +706,8 @@ export default function App() {
             }
             const todayStr = getEgyptTodayStr();
             const target = affectedDate || todayStr;
-            fetchSharedAppointments(true, target, true);
-            if (target !== todayStr) {
+            if (activeScreenRef.current === 'calendar') fetchSharedAppointments(true, target, true);
+            if (activeScreenRef.current === 'calendar' && target !== todayStr) {
               fetchSharedAppointments(true, todayStr, true);
             }
           } else if (table === 'shifts') {
@@ -728,9 +725,6 @@ export default function App() {
         window.removeEventListener('clinic-sync', handleClinicSyncEvent);
         if (pingInterval) {
           clearInterval(pingInterval);
-        }
-        if (pollingInterval) {
-          clearInterval(pollingInterval);
         }
         if (socket) {
           socket.onclose = null;
@@ -750,8 +744,9 @@ export default function App() {
   useEffect(() => {
     let unsub: (() => void) | null = null;
     let disposed = false;
-    if ((session.type === 'clinic' || session.type === 'clinic_staff') && currentClinicId) {
+    if ((session.type === 'clinic' || session.type === 'clinic_staff') && currentClinicId && pageVisible) {
       import('./dbClient').then(({ doc, onSnapshot, getDoc }) => {
+        if (disposed || !isPageVisible()) return;
         const clinicDocRef = doc(db, 'clinics', currentClinicId);
 
         let catalogUpgradePending = false;
@@ -823,18 +818,18 @@ export default function App() {
               if (disposed) return;
               const next = parseDocToClinic(nextSnap);
               if (next) setCurrentClinicData(next);
-            });
+            }, { initialRead: false });
           }
         }).catch(err => console.warn('Error fetching clinic doc:', err));
       }).catch(err => console.error('Error importing dbClient for clinic listener:', err));
-    } else {
+    } else if (!currentClinicId) {
       setCurrentClinicData(null);
     }
     return () => {
       disposed = true;
       if (unsub) unsub();
     };
-  }, [session, currentClinicId]);
+  }, [session, currentClinicId, pageVisible]);
 
   // Tab permission redirection for doctor/manager and staff based on Super Admin allowedFeatures
   useEffect(() => {
@@ -1558,6 +1553,7 @@ export default function App() {
             exit={{ opacity: 0, y: -12 }}
             transition={{ duration: 0.18, ease: "easeInOut" }}
           >
+            <React.Activity mode={pageVisible ? "visible" : "hidden"}>
             <AppErrorBoundary>
             <Suspense fallback={
               <div className="flex flex-col items-center justify-center p-12 min-h-[350px] w-full animate-pulse bg-white border border-slate-200/60 rounded-3xl shadow-xs">
@@ -1702,6 +1698,7 @@ export default function App() {
         )}
             </Suspense>
             </AppErrorBoundary>
+            </React.Activity>
           </motion.div>
         </AnimatePresence>
       </main>

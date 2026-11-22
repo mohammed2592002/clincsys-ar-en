@@ -1,6 +1,7 @@
 import {stableJson} from './documentComparison';
 // Durable commands are written before any optimistic UI update.
 export interface DurableCommand {
+  screen?: string;
   id: string;
   owner: string;
   clinicId: string;

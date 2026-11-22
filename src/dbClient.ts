@@ -1,3 +1,4 @@
+import { requestScope, isPageVisible, screenOwnsPath, getActiveRequestScreen } from './utils/screenActivity';
 import {sameValue, SERVER_METADATA} from './utils/documentComparison';
 import {commandMessage} from './utils/commandMessages';
 import {listCommands,saveCommand,removeCommand,enqueueCommand,settleConflict,commandOwner,commandFingerprint, type DurableCommand} from './utils/commandQueue';
@@ -196,7 +197,9 @@ async function fetchWithRetry(url: string, options: RequestInit = {}, retries = 
     throw new Error('OFFLINE_NETWORK');
   }
   const fullUrl = getApiUrl(url);
+  if (!isPageVisible()) throw new DOMException('Page hidden', 'AbortError');
   for (let i = 0; i < retries; i++) {
+    if (!isPageVisible()) throw new DOMException('Page hidden', 'AbortError');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     let callerAbortListener: (() => void) | null = null;
@@ -346,7 +349,13 @@ export function startAfter(docSnap: any) {
   };
 }
 
+function scopedRead(scopeIsActive: () => boolean, ...args: Parameters<typeof fetchWithRetry>) {
+  if (!scopeIsActive()) return Promise.reject(new DOMException('Screen inactive', 'AbortError'));
+  return fetchWithRetry(...args);
+}
+
 export async function getDocs(q: any, forceRefresh = false): Promise<any> {
+  const scopeIsActive = requestScope();
   const path = q instanceof MockQuery ? q.ref.path : q.path;
   const constraints = q instanceof MockQuery ? q.constraints : [];
   const table = getTableNameFromPath(path);
@@ -372,7 +381,7 @@ export async function getDocs(q: any, forceRefresh = false): Promise<any> {
           // Background revalidation fetch to keep local storage synced with server
           (async () => {
             try {
-              const res = await fetchWithRetry('/api/db', {
+              const res = await scopedRead(scopeIsActive, '/api/db', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'getDocs', path, constraints })
@@ -432,7 +441,7 @@ export async function getDocs(q: any, forceRefresh = false): Promise<any> {
   }
 
   try {
-    const res = await fetchWithRetry('/api/db', {
+    const res = await scopedRead(scopeIsActive, '/api/db', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'getDocs', path, constraints })
@@ -504,6 +513,7 @@ export async function getDocs(q: any, forceRefresh = false): Promise<any> {
 }
 
 export async function getAppointmentsCounts(clinicId: string): Promise<Record<string, number>> {
+  const scopeIsActive = requestScope();
   const path = `clinics/${clinicId}/appointments`;
   try {
     const localAppointments = await getLocalDocsForPath(path);
@@ -511,14 +521,13 @@ export async function getAppointmentsCounts(clinicId: string): Promise<Record<st
       // Revalidate in background
       (async () => {
         try {
-          const res = await fetchWithRetry('/api/db', {
+          const res = await scopedRead(scopeIsActive, '/api/db', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'getAppointmentsCounts', path })
           }, 1, 300, 8000);
-          if (res.ok) {
-            notifyLocalSync(path, 'revalidated');
-          }
+          // A successful read is not a data-change event.
+          if (res.ok) await res.json();
         } catch (e) {}
       })();
 
@@ -534,7 +543,7 @@ export async function getAppointmentsCounts(clinicId: string): Promise<Record<st
   } catch (e) {}
 
   try {
-    const res = await fetchWithRetry('/api/db', {
+    const res = await scopedRead(scopeIsActive, '/api/db', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'getAppointmentsCounts', path })
@@ -557,6 +566,7 @@ export async function getAppointmentsCounts(clinicId: string): Promise<Record<st
 }
 
 export async function getDoc(docRef: MockDocumentReference, forceRefresh = false): Promise<any> {
+  const scopeIsActive = requestScope();
   const path = docRef.path;
   const id = docRef.id;
 
@@ -567,7 +577,7 @@ export async function getDoc(docRef: MockDocumentReference, forceRefresh = false
         // Revalidate in background
         (async () => {
           try {
-            const res = await fetchWithRetry('/api/db', {
+            const res = await scopedRead(scopeIsActive, '/api/db', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action: 'getDoc', path, id })
@@ -594,7 +604,7 @@ export async function getDoc(docRef: MockDocumentReference, forceRefresh = false
   }
 
   try {
-    const res = await fetchWithRetry('/api/db', {
+    const res = await scopedRead(scopeIsActive, '/api/db', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'getDoc', path, id })
@@ -631,6 +641,7 @@ function sendDurable(command:DurableCommand):Promise<any>{
  activeSends.set(command.id,work);return work;
 }
 async function sendDurableOnce(command:DurableCommand){
+ if(!isPageVisible() || (command.screen && command.screen !== getActiveRequestScreen())) throw new DOMException('Screen inactive', 'AbortError');
  if(command.owner!==commandOwner(getAuthToken()))throw commandError('الطلب يخص حسابًا آخر');
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
  try{
@@ -650,8 +661,8 @@ function commandsDependOn(current:DurableCommand,earlier:DurableCommand){
  if(earlier.body.create&&earlier.body.id&&current.body.data?.patientId===earlier.body.id)return true;
  return earlier.body.table==='clinics'&&current.financial;
 }
-export async function flushDurableCommands(){if(commandFlush)return commandFlush;if(!navigator.onLine)return;
- commandFlush=(async()=>{const owner=commandOwner(getAuthToken()),blocked:DurableCommand[]=[];for(const command of await listCommands()){if(command.owner!==owner)continue;if(command.status==='conflict'||blocked.some(c=>commandsDependOn(command,c))){blocked.push(command);continue;}try{await sendDurable(command);}catch{if((command as DurableCommand).status==='conflict'){blocked.push(command);continue;}break;}}})().finally(()=>{commandFlush=null;});return commandFlush;
+export async function flushDurableCommands(){if(commandFlush)return commandFlush;if(!navigator.onLine || !isPageVisible())return;
+ commandFlush=(async()=>{const owner=commandOwner(getAuthToken()),blocked:DurableCommand[]=[];for(const command of await listCommands()){if(command.owner!==owner)continue;if((command.screen && command.screen !== getActiveRequestScreen()) || !screenOwnsPath(command.localPath || ('clinics/'+command.clinicId+'/'+(command.body.table || 'appointments')))){blocked.push(command);continue;}if(command.status==='conflict'||blocked.some(c=>commandsDependOn(command,c))){blocked.push(command);continue;}try{await sendDurable(command);}catch{if((command as DurableCommand).status==='conflict'){blocked.push(command);continue;}break;}}})().finally(()=>{commandFlush=null;});return commandFlush;
 }
 export async function inspectFinancialConflict(id:string){const command=(await getPendingCommands()).find(c=>c.id===id);if(!command||!command.financial||command.status!=='conflict')throw commandError('اختر طلبًا ماليًا متعارضًا');const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId:command.clinicId,action:'inspect_pending',targetRequestId:command.id,appointmentId:command.body.appointmentId})});if(!response.ok)throw commandError((await response.json()).message||'تعذر المراجعة المالية');return {command,...await response.json()};}
 export async function reconcileFinancialConflict(id:string,reason:string){const review=await inspectFinancialConflict(id);const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId:review.command.clinicId,action:'review_pending',targetRequestId:id,reason,requestId:crypto.randomUUID()})});const result=await response.json();if(!response.ok)throw commandError(result.message||'لم يؤكد السيرفر المراجعة');await settleConflict({...review.command,status:'resolved',resolution:result.reviewState,resolvedAt:new Date().toISOString()});if(result.originalResult?.appointment)await saveLocalDoc('clinics/'+review.command.clinicId+'/appointments',result.originalResult.appointment.id,result.originalResult.appointment);clearQueryCache();window.dispatchEvent(new CustomEvent('clinic-sync',{detail:{action:'financial-reviewed'}}));return result;}
@@ -674,14 +685,15 @@ export async function exportCommandHistory(){const owner=commandOwner(getAuthTok
 export function pendingMoneyAmount(c:DurableCommand){if(['collect','refund'].includes(c.body.action))return Number(c.body.amount||0);if(c.body.pendingMoneyAmount!==undefined)return Number(c.body.pendingMoneyAmount);if(c.body.table==='expenses')return Number(c.body.data?.amount||0);return 0;}
 export async function getPendingCommands(){const owner=commandOwner(getAuthToken());return (await listCommands()).filter(c=>c.owner===owner||(owner.startsWith('manager:')&&c.clinicId===owner.split(':')[1]));}
 export async function financeCommand(clinicId:string,body:any):Promise<any>{
- if(body.action==='read'||body.action==='calendar_summary'){const ledgerKey=commandOwner(getAuthToken())+':'+clinicId+(body.action==='calendar_summary'?':calendar:'+body.date:'');try{const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId,...body})});if(!response.ok){const denied:any=commandError((await response.json()).message||'تعذر تحميل السجل');denied.authoritative=true;throw denied;}const result=await response.json();await saveLocalDoc('finance-ledger',ledgerKey,result);return result;}catch(e:any){if(e.authoritative)throw e;const cached=await getLocalDoc('finance-ledger',ledgerKey);if(cached)return {...cached,fromCache:true};throw e;}}
+ const originatingScreen=getActiveRequestScreen();
+ if(body.action==='read'||body.action==='calendar_summary'){if(!isPageVisible())throw new DOMException('Page hidden','AbortError');const ledgerKey=commandOwner(getAuthToken())+':'+clinicId+(body.action==='calendar_summary'?':calendar:'+body.date:'');try{const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId,...body})});if(!response.ok){const denied:any=commandError((await response.json()).message||'تعذر تحميل السجل');denied.authoritative=true;throw denied;}const result=await response.json();await saveLocalDoc('finance-ledger',ledgerKey,result);return result;}catch(e:any){if(e.authoritative)throw e;const cached=await getLocalDoc('finance-ledger',ledgerKey);if(cached)return {...cached,fromCache:true};throw e;}}
  const owner=commandOwner(getAuthToken());if(!owner)throw commandError('يلزم تسجيل الدخول قبل تسجيل طلب');
  if(body.action==='close'){const unresolved=(await getPendingCommands()).some(c=>c.financial&&c.body.action!=='close'&&(!c.body.expectedShiftId||c.body.expectedShiftId===body.shiftId));if(unresolved)throw commandError('توجد حركات مالية معلقة، راجع تنبيهات الإعدادات قبل إقفال الوردية');}
  const fingerprint=commandFingerprint(clinicId,body);let command=(await listCommands()).find(c=>c.owner===owner&&c.fingerprint===fingerprint);
  if(command?.status==='conflict')throw commandError('طلب محفوظ للمراجعة: '+command.error);
- if(!command){const shifts=await getLocalDocsForPath('clinics/'+clinicId+'/shifts');const activeShifts=shifts.filter(s=>s.status==='open');if((['collect','points','refund','discount'].includes(body.action)||body.table==='expenses'||(body.table==='lab_orders'&&Number(body.data?.paidAmount)>0)))body={...body,expectedShiftId:activeShifts.length===1?activeShifts[0].id:(!navigator.onLine?'unverified':undefined)};command={id:crypto.randomUUID(),owner,clinicId,body:{...body,clientOccurredAt:new Date().toISOString(),queuedBy:owner},fingerprint,createdAt:new Date().toISOString(),status:'pending',financial:!body.optimistic,localPath:body.localPath,localId:body.id};const clinic=await getLocalDoc('clinics',clinicId);let identity:any={};try{identity=JSON.parse(atob(getAuthToken().split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));}catch{}command.actorName=identity.staffName||clinic?.doctorName||clinic?.name||(owner.startsWith('manager:')?'مدير العيادة':'حساب العيادة');command.actorRole=identity.staffRole||(owner.startsWith('manager:')?'المدير':'موظف');const entity=body.localPath&&body.id?await getLocalDoc(body.localPath,body.id):body.appointmentId?await getLocalDoc('clinics/'+clinicId+'/appointments',body.appointmentId):null;const patientId=body.data?.patientId||entity?.patientId;const patient=patientId?await getLocalDoc('clinics/'+clinicId+'/patients',patientId):null;command.entityName=body.data?.patientName||body.data?.name||entity?.patientName||entity?.name||patient?.name||body.data?.title||entity?.title;command=await enqueueCommand(command);}
+ if(!command){const shifts=await getLocalDocsForPath('clinics/'+clinicId+'/shifts');const activeShifts=shifts.filter(s=>s.status==='open');if((['collect','points','refund','discount'].includes(body.action)||body.table==='expenses'||(body.table==='lab_orders'&&Number(body.data?.paidAmount)>0)))body={...body,expectedShiftId:activeShifts.length===1?activeShifts[0].id:(!navigator.onLine?'unverified':undefined)};command={id:crypto.randomUUID(),screen:originatingScreen,owner,clinicId,body:{...body,clientOccurredAt:new Date().toISOString(),queuedBy:owner},fingerprint,createdAt:new Date().toISOString(),status:'pending',financial:!body.optimistic,localPath:body.localPath,localId:body.id};const clinic=await getLocalDoc('clinics',clinicId);let identity:any={};try{identity=JSON.parse(atob(getAuthToken().split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));}catch{}command.actorName=identity.staffName||clinic?.doctorName||clinic?.name||(owner.startsWith('manager:')?'مدير العيادة':'حساب العيادة');command.actorRole=identity.staffRole||(owner.startsWith('manager:')?'المدير':'موظف');const entity=body.localPath&&body.id?await getLocalDoc(body.localPath,body.id):body.appointmentId?await getLocalDoc('clinics/'+clinicId+'/appointments',body.appointmentId):null;const patientId=body.data?.patientId||entity?.patientId;const patient=patientId?await getLocalDoc('clinics/'+clinicId+'/patients',patientId):null;command.entityName=body.data?.patientName||body.data?.name||entity?.patientName||entity?.name||patient?.name||body.data?.title||entity?.title;command=await enqueueCommand(command);}
  if(body.optimistic&&body.localPath&&command.localId){const old=await getLocalDoc(body.localPath,command.localId);await saveLocalDoc(body.localPath,command.localId,{...old,...body.data,id:command.localId,_syncStatus:'pending'});notifyLocalSync(body.localPath,'pending',command.localId);}
- if(navigator.onLine){try{const earlier=(await listCommands()).filter(c=>c.owner===owner&&(c.sequence&&command.sequence?c.sequence<command.sequence:c.createdAt<command.createdAt));for(const c of earlier){if(c.status==='conflict'){if(commandsDependOn(command,c))throw commandError('طلب مرتبط يحتاج مراجعة');continue;}try{await sendDurable(c);}catch(e){if((c as DurableCommand).status==='conflict'&&!commandsDependOn(command,c))continue;throw e;}}return await sendDurable(command);}catch(e:any){if(command.status==='conflict')throw e;}}
+ if(navigator.onLine){try{const earlier=(await listCommands()).filter(c=>c.owner===owner&&(c.sequence&&command.sequence?c.sequence<command.sequence:c.createdAt<command.createdAt));for(const c of earlier){if(c.screen&&c.screen!==getActiveRequestScreen()){if(commandsDependOn(command,c))throw commandError('طلب مرتبط ينتظر فتح شاشته');continue;}if(c.status==='conflict'){if(commandsDependOn(command,c))throw commandError('طلب مرتبط يحتاج مراجعة');continue;}try{await sendDurable(c);}catch(e){if((c as DurableCommand).status==='conflict'&&!commandsDependOn(command,c))continue;throw e;}}return await sendDurable(command);}catch(e:any){if(command.status==='conflict')throw e;}}
  if(body.optimistic){return {id:command.localId,pending:true,_syncStatus:'pending'};}
  throw commandError('محفوظ على الجهاز كطلب غير مؤكد. ستتم المزامنة عند رجوع الاتصال، لا تسجله مرة ثانية.');
 }
@@ -866,12 +878,12 @@ export async function deleteDoc(docRef: MockDocumentReference): Promise<any> {
 let isSyncing = false;
 
 export async function processSyncQueue(): Promise<void> {
-  if (isSyncing) return;
+  if (isSyncing || !isPageVisible()) return;
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
 
   isSyncing = true;
   try {
-    const queue = await getSyncQueue();
+    const queue = (await getSyncQueue()).filter(item => screenOwnsPath(item.path || ''));
     if (queue.length === 0) {
       isSyncing = false;
       return;
@@ -1190,30 +1202,26 @@ export function isSupported() {
   return Promise.resolve(false);
 }
 
-export function onSnapshot(docRef_or_query: any, callback: any) {
+export function onSnapshot(docRef_or_query: any, callback: any, options: { initialRead?: boolean } = {}) {
+  let disposed = false;
+  const path = docRef_or_query instanceof MockQuery ? docRef_or_query.ref.path : docRef_or_query.path;
+  const table = getTableNameFromPath(path);
   const refresh = () => {
-    if (docRef_or_query instanceof MockDocumentReference) {
-      getDoc(docRef_or_query).then(snap => callback(snap)).catch(err => console.error(err));
-    } else {
-      getDocs(docRef_or_query, true).then(snap => callback(snap)).catch(err => console.error(err));
-    }
+    if (disposed || !isPageVisible()) return;
+    const work = docRef_or_query instanceof MockDocumentReference
+      ? getDoc(docRef_or_query, true) : getDocs(docRef_or_query, true);
+    work.then(snap => { if (!disposed && isPageVisible()) callback(snap); }).catch(console.error);
   };
-
-  refresh();
-
-  const handleSync = () => {
+  if (options.initialRead !== false) refresh();
+  const handleSync = (event: Event) => {
+    const change = (event as CustomEvent).detail || {};
+    if (change.table && change.table !== table) return;
+    const id = change.id || change.recordId || change.payload?.id;
+    if (docRef_or_query instanceof MockDocumentReference && id && id !== docRef_or_query.id) return;
     refresh();
   };
-
-  if (typeof window !== 'undefined') {
-    window.addEventListener('clinic-sync', handleSync);
-  }
-
-  return () => {
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('clinic-sync', handleSync);
-    }
-  };
+  if (typeof window !== 'undefined') window.addEventListener('clinic-sync', handleSync);
+  return () => { disposed = true; if (typeof window !== 'undefined') window.removeEventListener('clinic-sync', handleSync); };
 }
 
 export enum OperationType {
