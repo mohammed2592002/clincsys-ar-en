@@ -1396,110 +1396,24 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
   // Modal editing state for selected tooth
   const [condition, setCondition] = useState<DentalTooth['condition']>('healthy');
   const [notes, setNotes] = useState('');
-  const [serviceInput, setServiceInput] = useState(isEn ? 'Cosmetic Composite Laser Filling' : 'حشو ليزر تجميلي');
-  const [priceInput, setPriceInput] = useState<number>(600); // matches default service price (حشو ليزر تجميلي = 600)
+  const [serviceInput, setServiceInput] = useState('');
+  const [priceInput, setPriceInput] = useState<number>(0);
   const [isSavingSession, setIsSavingSession] = useState(false);
 
   // Dynamic services and category management state
-  const defaultCategories = isEn ? [
-    'Fillings & Endodontics',
-    'Extractions & Surgery',
-    'Orthodontics & Aesthetics',
-    'Crowns & Prosthetics',
-    'Implants & Bridges',
-    'Hygiene & Prevention',
-    'Pediatric Dentistry',
-    'General'
-  ] : [
-    'حشوات وعلاج عصب',
-    'خلع وجراحة',
-    'تقويم وتجميل الأسنان',
-    'تركيبات وتلبيسات',
-    'زراعة وجسور',
-    'تنظيف وقاية وتجميل',
-    'طب أسنان الأطفال',
-    'عام'
-  ];
+  const [categoriesList, setCategoriesList] = useState<string[]>(categories ?? []);
+  const [servicesList, setServicesList] = useState<CustomDentalService[]>(customServices ?? []);
 
-  const defaultServices: CustomDentalService[] = isEn ? [
-    { id: '1', name: 'Cosmetic Composite Laser Filling', price: 600, condition: 'filled', category: 'Fillings & Endodontics' },
-    { id: '2', name: 'Full Root Canal Treatment (RCT)', price: 1500, condition: 'filled', category: 'Fillings & Endodontics' },
-    { id: '3', name: 'Silver Amalgam Filling', price: 500, condition: 'filled', category: 'Fillings & Endodontics' },
-    { id: '4', name: 'Ceramic / Inlay Cosmetic Filling', price: 1200, condition: 'filled', category: 'Fillings & Endodontics' },
-    { id: '5', name: 'White Zirconia Crown', price: 2500, condition: 'crown', category: 'Crowns & Prosthetics' },
-    { id: '6', name: '24k Gold Crown', price: 4000, condition: 'crown', category: 'Crowns & Prosthetics' },
-    { id: '7', name: 'PFM Metal Crown', price: 1800, condition: 'crown', category: 'Crowns & Prosthetics' },
-    { id: '8', name: 'Pediatric Pulpotomy / Root Canal', price: 800, condition: 'filled', category: 'Pediatric Dentistry' },
-    { id: '9', name: 'Surgical / Simple Extraction', price: 700, condition: 'missing', category: 'Extractions & Surgery' },
-    { id: '10', name: 'Scaling & Root Planing', price: 450, condition: 'healthy', category: 'Hygiene & Prevention' },
-    { id: '11', name: 'Immediate Tooth Implant', price: 7500, condition: 'implant', category: 'Implants & Bridges' },
-    { id: '12', name: '3-Unit Porcelain Bridge', price: 4500, condition: 'bridge', category: 'Implants & Bridges' },
-    { id: '13', name: 'Partial / Full Removable Denture', price: 3000, condition: 'denture', category: 'Crowns & Prosthetics' },
-    { id: '13b', name: 'Specific Teeth Orthodontics', price: 4000, condition: 'ortho', category: 'Orthodontics & Aesthetics' },
-    { id: '14', name: 'Full Braces (Both Arches)', price: 8000, condition: 'ortho', category: 'Orthodontics & Aesthetics' },
-    { id: '15', name: 'Upper/Lower Metal Braces', price: 5000, condition: 'ortho', category: 'Orthodontics & Aesthetics' },
-    { id: '16', name: 'Clear Aligners (Invisalign)', price: 15000, condition: 'ortho', category: 'Orthodontics & Aesthetics' },
-  ] : [
-    { id: '1', name: 'حشو ليزر كومبوزيت تجميلي', price: 600, condition: 'filled', category: 'حشوات وعلاج عصب' },
-    { id: '2', name: 'حشو عصب كامل (RCT)', price: 1500, condition: 'filled', category: 'حشوات وعلاج عصب' },
-    { id: '3', name: 'حشو أملجم فضي (Amalgam)', price: 500, condition: 'filled', category: 'حشوات وعلاج عصب' },
-    { id: '4', name: 'حشو سيراميك / إينلاي تجميلي', price: 1200, condition: 'filled', category: 'حشوات وعلاج عصب' },
-    { id: '5', name: 'تلبيسة زيركون بيضاء (Zirconia)', price: 2500, condition: 'crown', category: 'تركيبات وتلبيسات' },
-    { id: '6', name: 'تلبيسة ذهبية (Gold Crown 24k)', price: 4000, condition: 'crown', category: 'تركيبات وتلبيسات' },
-    { id: '7', name: 'تلبيسة فضية معدنية (PFM Crown)', price: 1800, condition: 'crown', category: 'تركيبات وتلبيسات' },
-    { id: '8', name: 'علاج عصب أطفال', price: 800, condition: 'filled', category: 'طب أسنان الأطفال' },
-    { id: '9', name: 'خلع جراحي / عادي', price: 700, condition: 'missing', category: 'خلع وجراحة' },
-    { id: '10', name: 'تنظيف وتلميع الجذور', price: 450, condition: 'healthy', category: 'تنظيف وقاية وتجميل' },
-    { id: '11', name: 'زراعة ضرس فوري', price: 7500, condition: 'implant', category: 'زراعة وجسور' },
-    { id: '12', name: 'جسر خزفي 3 وحدات', price: 4500, condition: 'bridge', category: 'زراعة وجسور' },
-    { id: '13', name: 'تركيبة متحركة جزئية / كاملة', price: 3000, condition: 'denture', category: 'تركيبات وتلبيسات' },
-    { id: '13b', name: 'تقويم أسنان محددة', price: 4000, condition: 'ortho', category: 'تقويم وتجميل الأسنان' },
-    { id: '14', name: 'تركيب تقويم أسنان (كامل/فكين)', price: 8000, condition: 'ortho', category: 'تقويم وتجميل الأسنان' },
-    { id: '15', name: 'تركيب تقويم معدني علوي/سفلي', price: 5000, condition: 'ortho', category: 'تقويم وتجميل الأسنان' },
-    { id: '16', name: 'تقويم شفاف تجميلي (Invisalign)', price: 15000, condition: 'ortho', category: 'تقويم وتجميل الأسنان' },
-  ];
-
-  const [categoriesList, setCategoriesList] = useState<string[]>(() => {
-    if (categories && categories.length > 0) return categories;
-    if (clinicId) {
-      const saved = safeStorage.getItem(`dental_categories_${clinicId}`);
-      if (saved) {
-        try { return JSON.parse(saved); } catch (e) {}
-      }
-    }
-    return defaultCategories;
-  });
-
-  useEffect(() => {
-    if (categories && categories.length > 0) {
-      setCategoriesList(categories);
-    }
-  }, [categories]);
-
-  const [servicesList, setServicesList] = useState<CustomDentalService[]>(() => {
-    if (customServices && customServices.length > 0) return customServices;
-    if (clinicId) {
-      const saved = safeStorage.getItem(`dental_services_${clinicId}`);
-      if (saved) {
-        try { return JSON.parse(saved); } catch (e) {}
-      }
-    }
-    return defaultServices;
-  });
-
-  useEffect(() => {
-    if (customServices && customServices.length > 0) {
-      setServicesList(customServices);
-    }
-  }, [customServices]);
+  useEffect(() => { setCategoriesList(categories ?? []); }, [categories]);
+  useEffect(() => { setServicesList(customServices ?? []); }, [customServices]);
 
   const [showManageServices, setShowManageServices] = useState(false);
   const [manageTab, setManageTab] = useState<'services' | 'categories'>('services');
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [newServiceName, setNewServiceName] = useState('');
-  const [newServicePrice, setNewServicePrice] = useState<number>(350);
+  const [newServicePrice, setNewServicePrice] = useState<number>(0);
   const [newServiceCondition, setNewServiceCondition] = useState<DentalTooth['condition']>('filled');
-  const [newServiceCategory, setNewServiceCategory] = useState<string>('حشوات وعلاج عصب');
+  const [newServiceCategory, setNewServiceCategory] = useState<string>(categories?.[0] ?? '');
 
   // Category filters and editing state
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
@@ -1695,9 +1609,11 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
       setCondition('healthy');
       setNotes('');
     }
-    setServiceInput('حشو ليزر تجميلي');
-    setPriceInput(600); // keep in sync with the catalog/quick-button price for the default service
-  }, [readOnly, hasAdultAction, hasChildAction, isAdultMatured, isMultiSelectMode, chartState, dialogs]);
+    const catalogService = servicesList.find(s => s.condition === (existing?.condition || 'filled')) || servicesList[0];
+    setServiceInput(catalogService?.name ?? '');
+    setPriceInput(catalogService?.price ?? 0);
+    if (catalogService) setCondition(catalogService.condition);
+  }, [readOnly, hasAdultAction, hasChildAction, isAdultMatured, isMultiSelectMode, chartState, dialogs, servicesList]);
 
   const buildUpdatedToothData = (num: number, cond: DentalTooth['condition'], notesStr: string, serviceName?: string, priceVal?: number): DentalTooth => {
     const existingTooth = chartState[num];
@@ -2142,16 +2058,17 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
                 const firstTooth = multiSelectedTeeth[0];
                 setSelectedTooth(firstTooth);
                 const existing = chartState[firstTooth];
+                const catalogService = servicesList.find(s => s.name === existing?.serviceName) || servicesList.find(s => s.condition === 'ortho');
                 if (existing) {
-                  setCondition(existing.condition || 'ortho');
+                  setCondition(existing.condition || catalogService?.condition || 'healthy');
                   setNotes(existing.notes || '');
-                  setServiceInput(existing.serviceName || (isEn ? 'Specific Teeth Orthodontics' : 'تقويم أسنان محددة'));
-                  setPriceInput(existing.price || 4000);
+                  setServiceInput(existing.serviceName || catalogService?.name || '');
+                  setPriceInput(existing.price ?? catalogService?.price ?? 0);
                 } else {
-                  setCondition('ortho');
+                  setCondition(catalogService?.condition ?? 'healthy');
                   setNotes('');
-                  setServiceInput(isEn ? 'Specific Teeth Orthodontics' : 'تقويم أسنان محددة');
-                  setPriceInput(4000);
+                  setServiceInput(catalogService?.name ?? '');
+                  setPriceInput(catalogService?.price ?? 0);
                 }
               }}
               className={`basis-full sm:basis-auto sm:flex-1 font-extrabold text-sm rounded-[14px] px-4 py-2.5 transition cursor-pointer flex items-center justify-center gap-1.5 ${
@@ -2675,19 +2592,7 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
                       </div>
                     )}
                   {(() => {
-                    const defaultOrthoPresets = [
-                      { id: 'ortho-def-0', name: isEn ? 'Specific Teeth Orthodontics' : 'تقويم أسنان محددة', price: 4000, condition: 'ortho' as const, category: isEn ? 'Orthodontics & Cosmetic' : 'تقويم وتجميل الأسنان' },
-                      { id: 'ortho-def-1', name: isEn ? 'Full Orthodontic Braces (Both Arches)' : 'تركيب تقويم أسنان كامل (فكين)', price: 8000, condition: 'ortho' as const, category: isEn ? 'Orthodontics & Cosmetic' : 'تقويم وتجميل الأسنان' },
-                      { id: 'ortho-def-2', name: isEn ? 'Metal Braces (Single Arch)' : 'تركيب تقويم معدني علوي/سفلي', price: 5000, condition: 'ortho' as const, category: isEn ? 'Orthodontics & Cosmetic' : 'تقويم وتجميل الأسنان' },
-                      { id: 'ortho-def-3', name: isEn ? 'Clear Aligners (Invisalign)' : 'تقويم شفاف تجميلي (Invisalign)', price: 15000, condition: 'ortho' as const, category: isEn ? 'Orthodontics & Cosmetic' : 'تقويم وتجميل الأسنان' },
-                      { id: 'ortho-def-4', name: isEn ? 'Orthodontic Adjustment Session' : 'جلسة شد ومعايرة تقويم', price: 500, condition: 'ortho' as const, category: isEn ? 'Orthodontics & Cosmetic' : 'تقويم وتجميل الأسنان' },
-                      { id: 'ortho-def-5', name: isEn ? 'Debonding & Retainer Installation' : 'فك وإزالة تقويم وتثبيت', price: 1000, condition: 'healthy' as const, category: isEn ? 'Orthodontics & Cosmetic' : 'تقويم وتجميل الأسنان' }
-                    ];
-
-                    const allAvailableServices = [
-                      ...servicesList,
-                      ...defaultOrthoPresets.filter(p => !servicesList.some(s => s.name === p.name))
-                    ];
+                    const allAvailableServices = servicesList;
 
                     const filteredServices = selectedCategoryFilter === 'all'
                       ? allAvailableServices
@@ -2733,6 +2638,8 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
                             return (
                               <button
                                 key={srv.id}
+                                data-testid="tooth-service-card"
+                                data-service-id={srv.id}
                                 type="button"
                                 onClick={() => {
                                   setServiceInput(srv.name);
@@ -2761,110 +2668,25 @@ export default function DentalChart({ patientId, initialChart = {}, onSaveChart,
                     );
                   })()}
 
-                  {/* Quick Material Sub-Type Selector for Fillings and Crowns */}
-                  {condition === 'filled' && (
-                      <div className="mt-3 p-3 bg-teal-50/80 border border-teal-200/80 rounded-xl space-y-1.5 animate-fade-in">
-                        <span className="text-[11px] font-black text-teal-950 block">
-                          {isEn ? 'Select filling type & material for chart visualization:' : 'اختر نوع وتفاصيل الحشو للرسم والتوضيح:'}
-                        </span>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setServiceInput(isEn ? 'Full Root Canal Treatment (RCT)' : 'حشو عصب كامل (RCT)');
-                              setPriceInput(1500);
-                              setNotes(isEn ? 'Root canal filling and complete canal instrumentation' : 'حشو عصب و سحب جذور كامل');
-                            }}
-                            className="px-2.5 py-1 bg-white hover:bg-rose-50 border border-rose-300 text-rose-900 rounded-lg text-xs font-black transition flex items-center gap-1 cursor-pointer shadow-3xs"
-                          >
-                            <span className="w-2 h-2 rounded-full bg-rose-600"></span>
-                            🧪 {isEn ? 'Full Root Canal (RCT)' : 'حشو عصب كامل (RCT)'}
+                  {/* Material shortcuts use the same editable catalog, never fixed names/prices. */}
+                  {(condition === 'filled' || condition === 'crown') && servicesList.some(s => s.condition === condition) && (
+                    <div className="mt-3 p-3 bg-teal-50/80 border border-teal-200/80 rounded-xl space-y-1.5 animate-fade-in" data-testid="catalog-material-shortcuts">
+                      <span className="text-[11px] font-black text-teal-950 block">
+                        {condition === 'filled'
+                          ? (isEn ? 'Select filling type & material for chart visualization:' : 'اختر نوع وتفاصيل الحشو للرسم والتوضيح:')
+                          : (isEn ? 'Select crown type & material for chart visualization:' : 'اختر نوع ونمط التلبيسة للرسم والتوضيح:')}
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {servicesList.filter(s => s.condition === condition).map(service => (
+                          <button key={service.id} type="button" data-testid="catalog-material-shortcut"
+                            onClick={() => { setServiceInput(service.name); setPriceInput(service.price); setCondition(service.condition); }}
+                            className="px-2.5 py-1 bg-white hover:bg-teal-50 border border-teal-300 text-teal-900 rounded-lg text-xs font-black transition flex items-center gap-1 cursor-pointer shadow-3xs">
+                            {service.name} ({service.price.toLocaleString()} {isEn ? 'EGP' : 'ج.م'})
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setServiceInput(isEn ? 'Cosmetic Composite Laser Filling' : 'حشو ليزر كومبوزيت تجميلي');
-                              setPriceInput(600);
-                              setNotes(isEn ? 'Tooth-colored cosmetic laser filling' : 'حشو ليزر تجميلي نفس لون السن');
-                            }}
-                            className="px-2.5 py-1 bg-white hover:bg-teal-50 border border-teal-300 text-teal-900 rounded-lg text-xs font-black transition flex items-center gap-1 cursor-pointer shadow-3xs"
-                          >
-                            <span className="w-2 h-2 rounded-full bg-teal-500"></span>
-                            ✨ {isEn ? 'Cosmetic Composite' : 'حشو كومبوزيت تجميلي'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setServiceInput(isEn ? 'Silver Amalgam Filling' : 'حشو أملجم فضي (Amalgam)');
-                              setPriceInput(500);
-                              setNotes(isEn ? 'Resistant metallic silver amalgam filling' : 'حشو أملجم فضي معدني مقاوم');
-                            }}
-                            className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-900 rounded-lg text-xs font-black transition flex items-center gap-1 cursor-pointer shadow-3xs"
-                          >
-                            <span className="w-2 h-2 rounded-full bg-slate-700"></span>
-                            ⚙️ {isEn ? 'Silver Amalgam' : 'حشو أملجم فضي'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setServiceInput(isEn ? 'Ceramic Inlay / Cosmetic Filling' : 'حشو سيراميك / إينلاي تجميلي');
-                              setPriceInput(1200);
-                              setNotes(isEn ? 'Cosmetic porcelain ceramic inlay filling' : 'حشو سيراميك / إينلاي بورسلين تجميلي');
-                            }}
-                            className="px-2.5 py-1 bg-white hover:bg-sky-50 border border-sky-300 text-sky-900 rounded-lg text-xs font-black transition flex items-center gap-1 cursor-pointer shadow-3xs"
-                          >
-                            <span className="w-2 h-2 rounded-full bg-sky-400"></span>
-                            💎 {isEn ? 'Ceramic / Inlay' : 'حشو سيراميك / إينلاي'}
-                          </button>
-                        </div>
+                        ))}
                       </div>
-                    )}
-
-                    {condition === 'crown' && (
-                      <div className="mt-3 p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl space-y-1.5 animate-fade-in">
-                        <span className="text-[11px] font-black text-amber-950 block">
-                          {isEn ? 'Select crown type & material for chart visualization:' : 'اختر نوع ونمط التلبيسة للرسم والتوضيح:'}
-                        </span>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setServiceInput(isEn ? 'White Zirconia Crown' : 'تلبيسة زيركون بيضاء (Zirconia)');
-                              setPriceInput(2500);
-                              setNotes(isEn ? 'Cosmetic white porcelain zirconia crown' : 'تلبيسة زيركون بورسلين أبيض تجميلي');
-                            }}
-                            className="px-2.5 py-1 bg-white hover:bg-sky-50 border border-sky-300 text-sky-950 rounded-lg text-xs font-black transition flex items-center gap-1 cursor-pointer shadow-3xs"
-                          >
-                            <span className="w-2 h-2 rounded-full bg-sky-300 border border-sky-500"></span>
-                            ⚪ {isEn ? 'White Zirconia / Porcelain' : 'زيركون / بورسلين أبيض'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setServiceInput(isEn ? '24k Gold Crown' : 'تلبيسة ذهبية (Gold Crown 24k)');
-                              setPriceInput(4000);
-                              setNotes(isEn ? '24k Gold crown cap' : 'تلبيسة طربوش ذهب 24k');
-                            }}
-                            className="px-2.5 py-1 bg-white hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-lg text-xs font-black transition flex items-center gap-1 cursor-pointer shadow-3xs"
-                          >
-                            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                            🪙 {isEn ? '24k Gold Crown' : 'تلبيسة ذهبية 24k'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setServiceInput(isEn ? 'PFM Metallic Crown' : 'تلبيسة فضية معدنية (PFM Crown)');
-                              setPriceInput(1800);
-                              setNotes(isEn ? 'PFM metallic crown (PFM/Chrome)' : 'تلبيسة فضية معدنية (PFM/Chrome)');
-                            }}
-                            className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 rounded-lg text-xs font-black transition flex items-center gap-1 cursor-pointer shadow-3xs"
-                          >
-                            <span className="w-2 h-2 rounded-full bg-slate-500"></span>
-                            🔘 {isEn ? 'PFM / Metallic Crown' : 'تلبيسة فضية / معدنية'}
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    </div>
+                  )}
                   </div>
 
                   {/* Step 2: Diagnostic notes */}

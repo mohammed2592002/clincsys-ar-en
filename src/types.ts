@@ -33,6 +33,7 @@ export interface Clinic {
   staffPin?: string; // Optional simple pin code for staff login (e.g. "1234")
   staffMembers?: StaffMember[];
   customDentalServices?: CustomDentalService[];
+  orthodonticCatalogVersion?: number;
   dentalServiceCategories?: string[];
   consultationPrice?: number;
   ownerId?: string;

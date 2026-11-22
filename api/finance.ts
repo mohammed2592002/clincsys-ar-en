@@ -836,6 +836,7 @@ export function createFinanceService(deps: any) {
             "bookingSystemMode",
             "questionnaireQuestions",
             "customDentalServices",
+            "orthodonticCatalogVersion",
             "dentalServiceCategories",
             "paymentMethods",
             "dentalChartStyleSettings",

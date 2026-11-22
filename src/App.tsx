@@ -1,3 +1,4 @@
+import { seedOrthodonticCatalog, ORTHODONTIC_CATALOG_VERSION } from './utils/dentalServiceCatalog';
 import OverdueLabPanel from './components/OverdueLabPanel';
 import OfflineCommands from './components/OfflineCommands';
 import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
@@ -748,13 +749,26 @@ export default function App() {
 
   useEffect(() => {
     let unsub: (() => void) | null = null;
+    let disposed = false;
     if ((session.type === 'clinic' || session.type === 'clinic_staff') && currentClinicId) {
       import('./dbClient').then(({ doc, onSnapshot, getDoc }) => {
         const clinicDocRef = doc(db, 'clinics', currentClinicId);
 
+        let catalogUpgradePending = false;
         const parseDocToClinic = (docSnap: any): Clinic | null => {
           if (!docSnap || !docSnap.exists()) return null;
-          const data = docSnap.data();
+          const raw = docSnap.data();
+          const catalog = seedOrthodonticCatalog(raw, !!isEn);
+          const data = { ...raw, ...catalog };
+          // Persist the additive upgrade once. Staff can read the same projected catalog,
+          // but never write clinic settings. Offline writes use the normal sync queue.
+          if (session.type === 'clinic' && !catalogUpgradePending && (raw.orthodonticCatalogVersion || 0) < ORTHODONTIC_CATALOG_VERSION) {
+            catalogUpgradePending = true;
+            updateDoc(clinicDocRef, catalog).catch(err => {
+              catalogUpgradePending = false;
+              console.warn('Could not save orthodontic catalog upgrade:', err);
+            });
+          }
           const storedBookingMode = safeStorage.getItem(`clinic_booking_mode_${docSnap.id}`);
           return {
             ...data,
@@ -799,22 +813,25 @@ export default function App() {
           };
         };
 
-        getDoc(clinicDocRef).then((snap) => {
+        // Start from a current server read before seeding, not an old device cache.
+        getDoc(clinicDocRef, true).then((snap) => {
+          if (disposed) return;
           const parsed = parseDocToClinic(snap);
           if (parsed) setCurrentClinicData(parsed);
+          if (typeof onSnapshot === 'function') {
+            unsub = onSnapshot(clinicDocRef, (nextSnap) => {
+              if (disposed) return;
+              const next = parseDocToClinic(nextSnap);
+              if (next) setCurrentClinicData(next);
+            });
+          }
         }).catch(err => console.warn('Error fetching clinic doc:', err));
-
-        if (typeof onSnapshot === 'function') {
-          unsub = onSnapshot(clinicDocRef, (snap) => {
-            const parsed = parseDocToClinic(snap);
-            if (parsed) setCurrentClinicData(parsed);
-          });
-        }
       }).catch(err => console.error('Error importing dbClient for clinic listener:', err));
     } else {
       setCurrentClinicData(null);
     }
     return () => {
+      disposed = true;
       if (unsub) unsub();
     };
   }, [session, currentClinicId]);

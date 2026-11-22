@@ -25,7 +25,7 @@ const CATEGORIES = ['عام', 'حشوات', 'تنظيف وتلميع', 'جراح
     const r = await fetch(base + '/api/db', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + login.token }, body: JSON.stringify({ action, path, id, data }) });
     assert.equal(r.status, 200, await r.text());
   };
-  await db('updateDoc', 'clinics/' + cid, cid, { customDentalServices: SERVICES, dentalServiceCategories: CATEGORIES });
+  await db('updateDoc', 'clinics/' + cid, cid, { customDentalServices: SERVICES, dentalServiceCategories: CATEGORIES, orthodonticCatalogVersion: 1 });
 
   const browser = await puppeteer.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
   try {
@@ -227,7 +227,7 @@ const CATEGORIES = ['عام', 'حشوات', 'تنظيف وتلميع', 'جراح
     await page.waitForFunction(() => !document.body.innerText.includes('قسم معدل'));
     await idle();
 
-    await db('updateDoc', 'clinics/' + cid, cid, { customDentalServices: SERVICES, dentalServiceCategories: CATEGORIES });
+    await db('updateDoc', 'clinics/' + cid, cid, { customDentalServices: SERVICES, dentalServiceCategories: CATEGORIES, orthodonticCatalogVersion: 1 });
     await page.evaluate(() => Object.keys(localStorage).filter(k => /categories|services/i.test(k)).forEach(k => localStorage.removeItem(k)));
     await new Promise(r => setTimeout(r, 1000));
     await page.evaluate(() => Object.keys(localStorage).filter(k => /categories|services/i.test(k)).forEach(k => localStorage.removeItem(k)));

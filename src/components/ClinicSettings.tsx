@@ -1,3 +1,4 @@
+import { ORTHODONTIC_CATALOG_VERSION } from '../utils/dentalServiceCatalog';
 import {configuredSocialLinks} from '../utils/supportLinks';
 import OfflineCommands from './OfflineCommands';
 import React, { useState, useEffect } from 'react';
@@ -467,70 +468,16 @@ export default function ClinicSettings({
   };
 
   // Price List & Services State
-  const defaultServicesList: CustomDentalService[] = [
-    { id: '1', name: 'حشو ليزر تجميلي', price: 600, condition: 'filled', category: 'حشوات وعلاج عصب' },
-    { id: '2', name: 'حشو عصب كامل', price: 1500, condition: 'filled', category: 'حشوات وعلاج عصب' },
-    { id: '3', name: 'خلع جراحي / عادي', price: 700, condition: 'missing', category: 'خلع وجراحة' },
-    { id: '4', name: 'تنظيف وتلميع الجذور', price: 450, condition: 'healthy', category: 'تنظيف وقاية وتجميل' },
-    { id: '5', name: 'تلبيسة زيركون تجميلية', price: 2500, condition: 'crown', category: 'تركيبات وتلبيسات' },
-    { id: '6', name: 'علاج عصب أطفال', price: 800, condition: 'filled', category: 'طب أسنان الأطفال' },
-    { id: '7', name: 'زراعة ضرس فوري', price: 7500, condition: 'implant', category: 'زراعة وجسور' },
-    { id: '8', name: 'جسر خزفي 3 وحدات', price: 4500, condition: 'bridge', category: 'زراعة وجسور' },
-    { id: '9', name: 'تركيب تقويم أسنان (كامل/فكين)', price: 8000, condition: 'ortho', category: 'تقويم وتجميل الأسنان' }
-  ];
-
-  const defaultCategoriesList = [
-    'حشوات وعلاج عصب',
-    'خلع وجراحة',
-    'تقويم وتجميل الأسنان',
-    'تركيبات وتلبيسات',
-    'زراعة وجسور',
-    'تنظيف وقاية وتجميل',
-    'طب أسنان الأطفال',
-    'عام'
-  ];
-
-  const [settingsServicesList, setSettingsServicesList] = useState<CustomDentalService[]>(() => {
-    const list = (clinic.customDentalServices && clinic.customDentalServices.length > 0)
-      ? clinic.customDentalServices
-      : defaultServicesList;
-    if (!list.some(s => s.condition === 'ortho' || s.category === 'تقويم وتجميل الأسنان')) {
-      return [...list, { id: '9', name: 'تركيب تقويم أسنان (كامل/فكين)', price: 8000, condition: 'ortho', category: 'تقويم وتجميل الأسنان' }];
-    }
-    return list;
-  });
-
-  const [settingsCategoriesList, setSettingsCategoriesList] = useState<string[]>(() => {
-    const list = (clinic.dentalServiceCategories && clinic.dentalServiceCategories.length > 0)
-      ? clinic.dentalServiceCategories
-      : defaultCategoriesList;
-    if (!list.includes('تقويم وتجميل الأسنان')) {
-      return [...list, 'تقويم وتجميل الأسنان'];
-    }
-    return list;
-  });
+  const [settingsServicesList, setSettingsServicesList] = useState<CustomDentalService[]>(clinic.customDentalServices ?? []);
+  const [settingsCategoriesList, setSettingsCategoriesList] = useState<string[]>(clinic.dentalServiceCategories ?? []);
 
   useEffect(() => {
-    if (clinic.customDentalServices && clinic.customDentalServices.length > 0) {
-      const list = clinic.customDentalServices;
-      if (!list.some(s => s.condition === 'ortho' || s.category === 'تقويم وتجميل الأسنان')) {
-        setSettingsServicesList([...list, { id: '9', name: 'تركيب تقويم أسنان (كامل/فكين)', price: 8000, condition: 'ortho', category: 'تقويم وتجميل الأسنان' }]);
-      } else {
-        setSettingsServicesList(list);
-      }
-    }
-  }, [clinic.customDentalServices]);
+    setSettingsServicesList(clinic.customDentalServices ?? []);
+  }, [clinic.customDentalServices, clinic.orthodonticCatalogVersion]);
 
   useEffect(() => {
-    if (clinic.dentalServiceCategories && clinic.dentalServiceCategories.length > 0) {
-      const list = clinic.dentalServiceCategories;
-      if (!list.includes('تقويم وتجميل الأسنان')) {
-        setSettingsCategoriesList([...list, 'تقويم وتجميل الأسنان']);
-      } else {
-        setSettingsCategoriesList(list);
-      }
-    }
-  }, [clinic.dentalServiceCategories]);
+    setSettingsCategoriesList(clinic.dentalServiceCategories ?? []);
+  }, [clinic.dentalServiceCategories, clinic.orthodonticCatalogVersion]);
 
   // Form states for services & categories in settings
   const [srvName, setSrvName] = useState('');
@@ -572,7 +519,7 @@ export default function ClinicSettings({
     setSettingsError('');
     setSettingsSuccess('');
     try {
-      const patch = { customDentalServices: services, dentalServiceCategories: categories };
+      const patch = { customDentalServices: services, dentalServiceCategories: categories, orthodonticCatalogVersion: ORTHODONTIC_CATALOG_VERSION };
       const result = await updateDoc(doc(db, 'clinics', clinicId), patch);
       setSettingsServicesList(services);
       setSettingsCategoriesList(categories);
