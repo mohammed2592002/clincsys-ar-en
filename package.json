@@ -37,6 +37,7 @@
     "test:finance:concurrency": "node tests/finance-concurrency.mjs",
     "test:api-limits": "tsx tests/api-limits.test.ts && node tests/scoped-fixes.integration.mjs",
     "test:clinic-delete:postgres": "node tests/clinic-delete-postgres.mjs",
+    "test:r2-clinic-cleanup": "npm run build && node tests/run-r2-clinic-cleanup.mjs",
     "test:patient-search": "TEST_UI=1 TEST_UI_ENTRY=tests/patient-search.ui.cjs node tests/run-finance.mjs"
   },
   "dependencies": {

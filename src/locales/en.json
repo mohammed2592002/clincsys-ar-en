@@ -427,5 +427,18 @@
       "laboratories": "Partner Labs Directory",
       "workTypes": "Work Types & Procedures"
     }
+  },
+  "superadmin": {
+    "r2Cleanup": {
+      "tooltip": "Delete all clinic images from cloud storage (R2)",
+      "confirmTitle": "Delete Clinic Images from Cloud Storage",
+      "confirmMessage": "Critical warning ⚠️\nAll x-ray images and files uploaded by \"{{name}}\" will be permanently deleted from cloud storage (R2).\nFiles to be deleted: {{count}}\nClinic data and patient records will not be affected, but deleted images cannot be recovered and their links inside patient files will stop working.\nAre you absolutely sure?",
+      "confirmButton": "Yes, Delete Images",
+      "cancelButton": "Cancel",
+      "none": "This clinic has no files stored in cloud storage (R2).",
+      "success": "Permanently deleted {{count}} files from cloud storage (R2).",
+      "partial": "Deleted {{deleted}} of {{total}} files. {{failed}} files could not be deleted, please try again later.",
+      "error": "Failed to delete clinic images from cloud storage: {{message}}"
+    }
   }
 }

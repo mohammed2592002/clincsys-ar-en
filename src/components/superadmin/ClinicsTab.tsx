@@ -1,6 +1,7 @@
 import {backupRequest} from '../../utils/backupTransport';
 import React, { useState, useMemo } from 'react';
-import { db, doc, setDoc, deleteDoc, updateDoc } from '../../dbClient';
+import { useTranslation } from 'react-i18next';
+import { db, doc, setDoc, deleteDoc, updateDoc, authHeaders } from '../../dbClient';
 import { Clinic } from '../../types';
 import { useDialogs } from '../DialogContext';
 import { 
@@ -11,6 +12,7 @@ import {
   AlertCircle, 
   Edit, 
   Trash2, 
+  ImageOff,
   Power, 
   Phone, 
   Lock, 
@@ -59,6 +61,7 @@ export default function ClinicsTab({
   saveSession
 }: ClinicsTabProps) {
   const dialogs = useDialogs();
+  const { t } = useTranslation();
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -71,6 +74,9 @@ export default function ClinicsTab({
 
   // Single clinic backup loading state
   const [downloadingClinicId, setDownloadingClinicId] = useState<string | null>(null);
+
+  // R2 cleanup loading state (clinicId currently being purged from cloud storage)
+  const [r2CleaningClinicId, setR2CleaningClinicId] = useState<string | null>(null);
 
   // Modal States
   const [showAddModal, setShowAddModal] = useState(false);
@@ -294,6 +300,51 @@ export default function ClinicsTab({
       onRefreshClinics();
     } catch (err: any) {
       dialogs.alert('فشل تغيير حالة العيادة: ' + err.toString(), { severity: 'error' });
+    }
+  };
+
+  // Action: Delete all of a clinic's files from Cloudflare R2 storage.
+  // Only cloud objects are removed; the clinic's database records stay intact.
+  const handleDeleteClinicR2Files = async (clinic: Clinic) => {
+    if (r2CleaningClinicId) return;
+    setR2CleaningClinicId(clinic.id);
+    try {
+      const countRes = await fetch(`/api/superadmin/clinics/${encodeURIComponent(clinic.id)}/r2-files`, { headers: { ...authHeaders() } });
+      if (!countRes.ok) throw new Error('count_failed');
+      const { count } = await countRes.json();
+      if (!count) {
+        await dialogs.alert(t('superadmin.r2Cleanup.none'), { severity: 'info' });
+        return;
+      }
+      const confirmed = await dialogs.confirm(
+        t('superadmin.r2Cleanup.confirmMessage', { name: clinic.name, count }),
+        {
+          title: t('superadmin.r2Cleanup.confirmTitle'),
+          severity: 'error',
+          confirmText: t('superadmin.r2Cleanup.confirmButton'),
+          cancelText: t('superadmin.r2Cleanup.cancelButton'),
+        }
+      );
+      if (!confirmed) return;
+
+      const deleteRes = await fetch(`/api/superadmin/clinics/${encodeURIComponent(clinic.id)}/r2-files/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      });
+      const result = await deleteRes.json().catch(() => ({}));
+      if (!deleteRes.ok) throw new Error(result?.message || result?.error || 'delete_failed');
+      if (result.failed > 0) {
+        await dialogs.alert(
+          t('superadmin.r2Cleanup.partial', { deleted: result.deleted, total: (result.deleted || 0) + (result.failed || 0), failed: result.failed }),
+          { severity: 'warning' }
+        );
+      } else {
+        await dialogs.alert(t('superadmin.r2Cleanup.success', { count: result.deleted }), { severity: 'success' });
+      }
+    } catch (err: any) {
+      await dialogs.alert(t('superadmin.r2Cleanup.error', { message: err?.message || String(err) }), { severity: 'error' });
+    } finally {
+      setR2CleaningClinicId(null);
     }
   };
 
@@ -775,6 +826,16 @@ export default function ClinicsTab({
                             }`}
                           >
                             <Power className="h-4 w-4" />
+                          </button>
+
+                          {/* Delete Clinic Files from Cloud Storage (R2) */}
+                          <button
+                            onClick={() => handleDeleteClinicR2Files(clinic)}
+                            disabled={r2CleaningClinicId === clinic.id}
+                            title={t('superadmin.r2Cleanup.tooltip')}
+                            className="p-1.5 bg-orange-50 hover:bg-orange-100 text-orange-600 rounded-lg transition cursor-pointer disabled:opacity-50"
+                          >
+                            <ImageOff className={`h-4 w-4 ${r2CleaningClinicId === clinic.id ? 'animate-pulse' : ''}`} />
                           </button>
 
                           {/* Delete Clinic */}

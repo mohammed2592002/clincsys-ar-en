@@ -4201,6 +4201,89 @@ app.post('/api/broadcasts', async (req, res) => {
   }
 });
 
+// ---- SuperAdmin: purge a clinic's Cloudflare R2 objects ----
+// Ownership is verified per object: a file row is eligible only when the files
+// table says it belongs to this clinic (clinicId column, written server-side at
+// upload time) AND its stored key lives under this clinic's clinics/{id}/ prefix
+// and matches the standard key shape. The bucket is never listed by prefix, and
+// nothing outside those verified keys is touched. files table rows are kept on
+// purpose: this clears R2 storage only, database records are not modified.
+async function listClinicR2ObjectKeys(clinicId: string): Promise<{ keys: string[]; rejected: string[] }> {
+  const { publicUrlBase } = getR2ClientConfig();
+  const prefix = `${publicUrlBase}/`;
+  const result = await dbClient.execute({ sql: 'SELECT path FROM files WHERE clinicId = ?', args: [clinicId] });
+  const keys: string[] = [];
+  const rejected: string[] = [];
+  for (const row of result.rows) {
+    const storedPath = String(row.path || '');
+    if (!storedPath.startsWith(prefix)) continue; // local-disk fallback files are not R2 objects
+    const key = storedPath.slice(prefix.length);
+    if (!R2_KEY_PATTERN.test(key) || !key.startsWith(`clinics/${clinicId}/`)) {
+      rejected.push(key || storedPath);
+      continue;
+    }
+    keys.push(key);
+  }
+  return { keys, rejected };
+}
+
+function readSuperAdminClinicIdParam(req: express.Request): string | null {
+  const clinicId = String(req.params.clinicId || '').trim();
+  return /^[A-Za-z0-9_-]+$/.test(clinicId) ? clinicId : null;
+}
+
+// GET /api/superadmin/clinics/:clinicId/r2-files - Count this clinic's deletable R2 objects (superadmin only)
+app.get('/api/superadmin/clinics/:clinicId/r2-files', async (req, res) => {
+  const auth = await getRequestAuth(req);
+  if (!auth || auth.type !== 'admin') {
+    return res.status(403).json({ error: 'forbidden', message: 'غير مصرح بالوصول' });
+  }
+  const clinicId = readSuperAdminClinicIdParam(req);
+  if (!clinicId) return res.status(400).json({ error: 'invalid_clinic' });
+  if (!(await getExistingClinicData(clinicId))) return res.status(404).json({ error: 'clinic_not_found' });
+  try {
+    const { keys, rejected } = await listClinicR2ObjectKeys(clinicId);
+    return res.json({ clinicId, count: keys.length, skipped: rejected.length });
+  } catch (error: any) {
+    console.error('[R2 Cleanup] Failed to count clinic files:', error);
+    return res.status(500).json({ error: 'r2_files_count_failed' });
+  }
+});
+
+// POST /api/superadmin/clinics/:clinicId/r2-files/delete - Delete every verified R2 object of the clinic (superadmin only)
+app.post('/api/superadmin/clinics/:clinicId/r2-files/delete', async (req, res) => {
+  const auth = await getRequestAuth(req);
+  if (!auth || auth.type !== 'admin') {
+    return res.status(403).json({ error: 'forbidden', message: 'غير مصرح بالوصول' });
+  }
+  const clinicId = readSuperAdminClinicIdParam(req);
+  if (!clinicId) return res.status(400).json({ error: 'invalid_clinic' });
+  if (!(await getExistingClinicData(clinicId))) return res.status(404).json({ error: 'clinic_not_found' });
+  const { client, hasConfiguredR2, bucketName } = getR2ClientConfig();
+  if (!hasConfiguredR2) {
+    return res.status(503).json({ error: 'r2_not_configured', message: 'Cloudflare R2 credentials are not configured on the server' });
+  }
+  try {
+    const { keys, rejected } = await listClinicR2ObjectKeys(clinicId);
+    let deleted = 0;
+    const failures: Array<{ key: string; error: string }> = rejected.map((key) => ({ key, error: 'ownership_unverified' }));
+    for (const key of keys) {
+      try {
+        await client.send(new DeleteObjectCommand({ Bucket: bucketName, Key: key }));
+        deleted++;
+      } catch (error: any) {
+        failures.push({ key, error: error?.message || String(error) });
+      }
+    }
+    const failed = failures.length;
+    console.log(`[R2 Cleanup] clinic=${clinicId} requested=${keys.length + rejected.length} deleted=${deleted} failed=${failed}`);
+    return res.json({ success: failed === 0, clinicId, deleted, failed, failures: failures.slice(0, 10) });
+  } catch (error: any) {
+    console.error('[R2 Cleanup] Failed to delete clinic files:', error);
+    return res.status(500).json({ error: 'r2_files_delete_failed', message: error?.message || 'Error deleting clinic files from R2' });
+  }
+});
+
 // POST /api/superadmin/login - Verify superadmin login credentials
 app.post('/api/superadmin/login', async (req, res) => {
   if (isRateLimited(req)) {
