@@ -1,6 +1,6 @@
+import {backupRequest,backupSqlPayload} from '../../utils/backupTransport';
 import { systemSettingsSql } from '../../utils/systemSettingsSql';
 import React, { useState, useEffect } from 'react';
-import { db, doc, collection, setDoc, getDocsSmart as getDocs } from '../../dbClient';
 import { Clinic } from '../../types';
 import { useDialogs } from '../DialogContext';
 import { getLocalTodayStr, createZipBlob, readBackupFile } from '../../utils/backupService';
@@ -79,107 +79,8 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
     try {
       const dateStr = new Date().toISOString().split('T')[0];
 
-      // 1. Fetch clinics list
-      const clinicsSnap = await getDocs(collection(db, 'clinics'));
-      const clinicDocs = clinicsSnap.docs;
-      const totalClinics = clinicDocs.length;
-      const allClinicsData: any[] = [];
-
-      // Process clinics in sequential batches to prevent memory overflow
-      for (let i = 0; i < totalClinics; i++) {
-        const clinicDoc = clinicDocs[i];
-        const cId = clinicDoc.id;
-        const cData = { id: cId, ...clinicDoc.data() } as any;
-
-        setBackupStatusText(`جاري جمع بيانات العيادة (${i + 1}/${totalClinics}): ${cData.name || cId}...`);
-        setBackupProgress(Math.round(10 + (i / totalClinics) * 75));
-
-        const [
-          patientsSnap,
-          appointmentsSnap,
-          prescriptionsSnap,
-          customMedSnap,
-          customCatSnap,
-          shiftsSnap,
-          expensesSnap,
-          inventorySnap,
-          billingSnap,
-          closingsSnap,
-          labsSnap,
-          labOrdersSnap,
-          labWorkTypesSnap
-        ] = await Promise.all([
-          getDocs(collection(db, 'clinics', cId, 'patients')),
-          getDocs(collection(db, 'clinics', cId, 'appointments')),
-          getDocs(collection(db, 'clinics', cId, 'prescriptions')),
-          getDocs(collection(db, 'clinics', cId, 'custom_medications')),
-          getDocs(collection(db, 'clinics', cId, 'custom_categories')),
-          getDocs(collection(db, 'clinics', cId, 'shifts')),
-          getDocs(collection(db, 'clinics', cId, 'expenses')),
-          getDocs(collection(db, 'clinics', cId, 'inventory')),
-          getDocs(collection(db, 'clinics', cId, 'billing')),
-          getDocs(collection(db, 'clinics', cId, 'closings')),
-          getDocs(collection(db, 'clinics', cId, 'laboratories')),
-          getDocs(collection(db, 'clinics', cId, 'lab_orders')),
-          getDocs(collection(db, 'clinics', cId, 'lab_work_types'))
-        ]);
-
-        const patientsData = await Promise.all(
-          patientsSnap.docs.map(async (pDoc) => {
-            const pData = { id: pDoc.id, ...pDoc.data() } as any;
-            const [recsSnap, teethSnap, xraysSnap] = await Promise.all([
-              getDocs(collection(db, 'clinics', cId, 'patients', pDoc.id, 'records')),
-              getDocs(collection(db, 'clinics', cId, 'patients', pDoc.id, 'teeth')),
-              getDocs(collection(db, 'clinics', cId, 'patients', pDoc.id, 'xrays'))
-            ]);
-            return {
-              ...pData,
-              records: recsSnap.docs.map(r => ({ id: r.id, ...r.data() })),
-              teeth: teethSnap.docs.map(t => ({ id: t.id, ...t.data() })),
-              xrays: xraysSnap.docs.map(x => ({ id: x.id, ...x.data() }))
-            };
-          })
-        );
-
-        allClinicsData.push({
-          clinicInfo: cData,
-          patients: patientsData,
-          appointments: appointmentsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          prescriptions: prescriptionsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          customMedications: customMedSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          customCategories: customCatSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          shifts: shiftsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          expenses: expensesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          inventory: inventorySnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          billing: billingSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          dailyClosings: closingsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          laboratories: labsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          labOrders: labOrdersSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          labWorkTypes: labWorkTypesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-        });
-      }
-
-      setBackupStatusText('جاري جلب سجل التجديدات وإعدادات المنظومة العامة...');
-      setBackupProgress(90);
-
-      // Fetch global logs & settings
-      const [renewalsSnap, broadcastsSnap, systemSettingsSnap] = await Promise.all([
-        getDocs(collection(db, 'renewals')),
-        getDocs(collection(db, 'broadcasts')),
-        getDocs(collection(db, 'system_settings'))
-      ]);
-
-      const fullSystemData = {
-        platform: 'CrownDent Multi-Tenant System Master',
-        backupScope: 'FULL_SYSTEM_BACKUP',
-        backupTimestamp: new Date().toISOString(),
-        totalClinicsCount: allClinicsData.length,
-        renewalsLog: renewalsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-        broadcasts: broadcastsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-        systemSettings: systemSettingsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-        clinics: allClinicsData
-      };
-
+      const fullSystemData=await backupRequest({action:'export_system'});
+      const allClinicsData=fullSystemData.clinics;
       setBackupProgress(95);
       setBackupStatusText('جاري إنشاء ملف النسخة الاحتياطية وبدء التنزيل...');
 
@@ -275,6 +176,7 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
 
         sqlStr += systemSettingsSql(fullSystemData.systemSettings);
 
+        sqlStr += backupSqlPayload(fullSystemData);
         const blob = new Blob([sqlStr], { type: 'text/plain;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -282,8 +184,7 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
         a.download = `CMS_FULL_SYSTEM_BACKUP_${dateStr}.sql`;
         document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
       } else if (fmt === 'zip') {
         const jsonStr = JSON.stringify(fullSystemData, null, 2);
         const innerJsonName = `CMS_FULL_SYSTEM_BACKUP_${dateStr}.json`;
@@ -294,8 +195,7 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
         a.download = `CMS_FULL_SYSTEM_BACKUP_${dateStr}.zip`;
         document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
       } else {
         const jsonStr = JSON.stringify(fullSystemData, null, 2);
         const mimeType = fmt === 'db' ? 'application/octet-stream' : 'application/json';
@@ -307,8 +207,7 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
         a.download = `CMS_FULL_SYSTEM_BACKUP_${dateStr}.${ext}`;
         document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
       }
 
       setBackupProgress(100);
@@ -340,75 +239,7 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
     setBackupStatusText(`جاري تنزيل نسخة عيادة: ${clinic.name}...`);
     try {
       const cId = clinic.id;
-      const [
-        patientsSnap,
-        appointmentsSnap,
-        prescriptionsSnap,
-        customMedSnap,
-        customCatSnap,
-        shiftsSnap,
-        expensesSnap,
-        inventorySnap,
-        billingSnap,
-        closingsSnap,
-        labsSnap,
-        labOrdersSnap,
-        labWorkTypesSnap
-      ] = await Promise.all([
-        getDocs(collection(db, 'clinics', cId, 'patients')),
-        getDocs(collection(db, 'clinics', cId, 'appointments')),
-        getDocs(collection(db, 'clinics', cId, 'prescriptions')),
-        getDocs(collection(db, 'clinics', cId, 'custom_medications')),
-        getDocs(collection(db, 'clinics', cId, 'custom_categories')),
-        getDocs(collection(db, 'clinics', cId, 'shifts')),
-        getDocs(collection(db, 'clinics', cId, 'expenses')),
-        getDocs(collection(db, 'clinics', cId, 'inventory')),
-        getDocs(collection(db, 'clinics', cId, 'billing')),
-        getDocs(collection(db, 'clinics', cId, 'closings')),
-        getDocs(collection(db, 'clinics', cId, 'laboratories')),
-        getDocs(collection(db, 'clinics', cId, 'lab_orders')),
-        getDocs(collection(db, 'clinics', cId, 'lab_work_types'))
-      ]);
-
-      const patientsData = await Promise.all(
-        patientsSnap.docs.map(async (pDoc) => {
-          const pData = { id: pDoc.id, ...pDoc.data() } as any;
-          const [recsSnap, teethSnap, xraysSnap] = await Promise.all([
-            getDocs(collection(db, 'clinics', cId, 'patients', pDoc.id, 'records')),
-            getDocs(collection(db, 'clinics', cId, 'patients', pDoc.id, 'teeth')),
-            getDocs(collection(db, 'clinics', cId, 'patients', pDoc.id, 'xrays'))
-          ]);
-          return {
-            ...pData,
-            records: recsSnap.docs.map(r => ({ id: r.id, ...r.data() })),
-            teeth: teethSnap.docs.map(t => ({ id: t.id, ...t.data() })),
-            xrays: xraysSnap.docs.map(x => ({ id: x.id, ...x.data() }))
-          };
-        })
-      );
-
-      const clinicBackup = {
-        platform: 'CrownDent SaaS Single Clinic Backup',
-        clinicId: cId,
-        clinicInfo: clinic,
-        backupTimestamp: new Date().toISOString(),
-        data: {
-          patients: patientsData,
-          appointments: appointmentsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          prescriptions: prescriptionsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          customMedications: customMedSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          customCategories: customCatSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          shifts: shiftsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          expenses: expensesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          inventory: inventorySnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          billing: billingSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          dailyClosings: closingsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          laboratories: labsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          labOrders: labOrdersSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          labWorkTypes: labWorkTypesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-        }
-      };
-
+      const clinicBackup=await backupRequest({action:'export_clinic',clinicId:cId});
       const dateStr = new Date().toISOString().split('T')[0];
       const safeName = (clinic.name || 'Clinic').replace(/[^a-zA-Z0-9\u0600-\u06FF_-]/g, '_');
       const blob = new Blob([JSON.stringify(clinicBackup, null, 2)], { type: 'application/json' });
@@ -418,8 +249,7 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
       a.download = `BACKUP_${safeName}_${dateStr}.json`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
 
       dialogs.alert(`تم استخراج وتنزيل النسخة الاحتياطية لعيادة "${clinic.name}" بنجاح!`, { severity: 'success' });
     } catch (err: any) {
@@ -465,298 +295,13 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
         parsed = null;
       }
 
-      if (parsed) {
-        if (Array.isArray(parsed.clinics) || parsed.backupScope === 'FULL_SYSTEM_BACKUP') {
-          setBackupStatusText('جاري استعادة كافة العيادات وسجلات المرضى...');
-          const clinicsList = parsed.clinics || [];
-          let restoredClinicsCount = 0;
-          let restoredPatientsCount = 0;
-
-          for (const item of clinicsList) {
-            const info = item.clinicInfo || item;
-            const cId = info.id;
-            if (!cId) continue;
-
-            await setDoc(doc(db, 'clinics', cId), info, { merge: true });
-            restoredClinicsCount++;
-
-            if (Array.isArray(item.patients)) {
-              for (const p of item.patients) {
-                const { records, teeth, xrays, id: pId, ...pData } = p;
-                const patId = pId || Math.random().toString(36).substring(2, 11);
-                await setDoc(doc(db, 'clinics', cId, 'patients', patId), pData, { merge: true });
-                restoredPatientsCount++;
-
-                if (Array.isArray(records)) {
-                  for (const r of records) {
-                    const { id: rId, ...rData } = r;
-                    const recId = rId || Math.random().toString(36).substring(2, 11);
-                    await setDoc(doc(db, 'clinics', cId, 'patients', patId, 'records', recId), rData, { merge: true });
-                  }
-                }
-
-                if (Array.isArray(teeth)) {
-                  for (const t of teeth) {
-                    const { id: tId, ...tData } = t;
-                    const toothId = tId || Math.random().toString(36).substring(2, 11);
-                    await setDoc(doc(db, 'clinics', cId, 'patients', patId, 'teeth', toothId), tData, { merge: true });
-                  }
-                }
-
-                if (Array.isArray(xrays)) {
-                  for (const x of xrays) {
-                    const { id: xId, ...xData } = x;
-                    const xrayId = xId || Math.random().toString(36).substring(2, 11);
-                    await setDoc(doc(db, 'clinics', cId, 'patients', patId, 'xrays', xrayId), xData, { merge: true });
-                  }
-                }
-              }
-            }
-
-            if (Array.isArray(item.appointments)) {
-              for (const app of item.appointments) {
-                const { id, ...appData } = app;
-                if (id) await setDoc(doc(db, 'clinics', cId, 'appointments', id), appData, { merge: true });
-              }
-            }
-
-            if (Array.isArray(item.prescriptions)) {
-              for (const rx of item.prescriptions) {
-                const { id, ...rxData } = rx;
-                if (id) await setDoc(doc(db, 'clinics', cId, 'prescriptions', id), rxData, { merge: true });
-              }
-            }
-
-            if (Array.isArray(item.billing)) {
-              for (const bill of item.billing) {
-                const { id, ...billData } = bill;
-                if (id) await setDoc(doc(db, 'clinics', cId, 'billing', id), billData, { merge: true });
-              }
-            }
-
-            const cMedList = item.customMedications || item.custom_medications;
-            if (Array.isArray(cMedList)) {
-              for (const med of cMedList) {
-                const { id, ...medData } = med;
-                if (id) await setDoc(doc(db, 'clinics', cId, 'custom_medications', id), medData, { merge: true });
-              }
-            }
-
-            const cCatList = item.customCategories || item.custom_categories;
-            if (Array.isArray(cCatList)) {
-              for (const cat of cCatList) {
-                const { id, ...catData } = cat;
-                if (id) await setDoc(doc(db, 'clinics', cId, 'custom_categories', id), catData, { merge: true });
-              }
-            }
-
-            if (Array.isArray(item.shifts)) {
-              for (const s of item.shifts) { const { id, ...sData } = s; if (id) await setDoc(doc(db, 'clinics', cId, 'shifts', id), sData, { merge: true }); }
-            }
-
-            const expList = item.expenses || item.expenseList;
-            if (Array.isArray(expList)) {
-              for (const exp of expList) {
-                const { id, ...expData } = exp;
-                if (id) await setDoc(doc(db, 'clinics', cId, 'expenses', id), expData, { merge: true });
-              }
-            }
-
-            if (Array.isArray(item.inventory)) {
-              for (const inv of item.inventory) { const { id, ...invData } = inv; if (id) await setDoc(doc(db, 'clinics', cId, 'inventory', id), invData, { merge: true }); }
-            }
-
-            const closingsList = item.dailyClosings || item.closings;
-            if (Array.isArray(closingsList)) {
-              for (const dc of closingsList) { const { id, ...dcData } = dc; if (id) await setDoc(doc(db, 'clinics', cId, 'closings', id), dcData, { merge: true }); }
-            }
-
-            if (Array.isArray(item.laboratories)) {
-              for (const lab of item.laboratories) { const { id, ...labData } = lab; if (id) await setDoc(doc(db, 'clinics', cId, 'laboratories', id), labData, { merge: true }); }
-            }
-
-            const labOrdersList = item.labOrders || item.lab_orders;
-            if (Array.isArray(labOrdersList)) {
-              for (const lo of labOrdersList) { const { id, ...loData } = lo; if (id) await setDoc(doc(db, 'clinics', cId, 'lab_orders', id), loData, { merge: true }); }
-            }
-
-            const lwtList = item.labWorkTypes || item.lab_work_types;
-            if (Array.isArray(lwtList)) {
-              for (const wt of lwtList) { const { id, ...wtData } = wt; if (id) await setDoc(doc(db, 'clinics', cId, 'lab_work_types', id), wtData, { merge: true }); }
-            }
-          }
-
-          if (Array.isArray(parsed.renewalsLog)) {
-            for (const ren of parsed.renewalsLog) {
-              const { id, ...renData } = ren;
-              if (id) await setDoc(doc(db, 'renewals', id), renData, { merge: true });
-            }
-          }
-
-          if (Array.isArray(parsed.broadcasts)) {
-            for (const bc of parsed.broadcasts) {
-              const { id, ...bcData } = bc;
-              if (id) await setDoc(doc(db, 'broadcasts', id), bcData, { merge: true });
-            }
-          }
-
-          if (Array.isArray(parsed.systemSettings)) {
-            for (const ss of parsed.systemSettings) {
-              const { id, ...ssData } = ss;
-              if (id) await setDoc(doc(db, 'system_settings', id), ssData, { merge: true });
-            }
-          }
-
-          dialogs.alert(
-            `تمت استعادة النسخة الاحتياطية الشاملة للسيستم بنجاح! تم استرجاع وتحديث (${restoredClinicsCount}) عيادة و(${restoredPatientsCount}) مريض بكافة المصروفات، الفواتير، المعامل، والبيانات المالية.`,
-            { severity: 'success' }
-          );
-          onRefreshClinics();
-          return;
-        } else if (parsed.clinicId || parsed.clinicInfo || parsed.data) {
-          // Single clinic restore
-          const cInfo = parsed.clinicInfo || {};
-          const cId = parsed.clinicId || cInfo.id || 'Restored_Clinic_' + Date.now();
-          const backupData = parsed.data || parsed;
-
-          if (cInfo.name || cInfo.id) {
-            await setDoc(doc(db, 'clinics', cId), cInfo, { merge: true });
-          }
-
-          let restoredPatients = 0;
-          let restoredRecords = 0;
-          if (Array.isArray(backupData.patients)) {
-            for (const p of backupData.patients) {
-              const { records, teeth, xrays, id: pId, ...pData } = p;
-              const patId = pId || Math.random().toString(36).substring(2, 11);
-              await setDoc(doc(db, 'clinics', cId, 'patients', patId), pData, { merge: true });
-              restoredPatients++;
-
-              if (Array.isArray(records)) {
-                for (const r of records) {
-                  const { id: rId, ...rData } = r;
-                  const recId = rId || Math.random().toString(36).substring(2, 11);
-                  await setDoc(doc(db, 'clinics', cId, 'patients', patId, 'records', recId), rData, { merge: true });
-                  restoredRecords++;
-                }
-              }
-
-              if (Array.isArray(teeth)) {
-                for (const t of teeth) {
-                  const { id: tId, ...tData } = t;
-                  const toothId = tId || Math.random().toString(36).substring(2, 11);
-                  await setDoc(doc(db, 'clinics', cId, 'patients', patId, 'teeth', toothId), tData, { merge: true });
-                }
-              }
-
-              if (Array.isArray(xrays)) {
-                for (const x of xrays) {
-                  const { id: xId, ...xData } = x;
-                  const xrayId = xId || Math.random().toString(36).substring(2, 11);
-                  await setDoc(doc(db, 'clinics', cId, 'patients', patId, 'xrays', xrayId), xData, { merge: true });
-                }
-              }
-            }
-          }
-
-          if (Array.isArray(backupData.appointments)) {
-            for (const app of backupData.appointments) {
-              const { id, ...appData } = app;
-              if (id) await setDoc(doc(db, 'clinics', cId, 'appointments', id), appData, { merge: true });
-            }
-          }
-
-          if (Array.isArray(backupData.prescriptions)) {
-            for (const rx of backupData.prescriptions) {
-              const { id, ...rxData } = rx;
-              if (id) await setDoc(doc(db, 'clinics', cId, 'prescriptions', id), rxData, { merge: true });
-            }
-          }
-
-          const scCustomMeds = backupData.custom_medications || backupData.customMedications;
-          if (Array.isArray(scCustomMeds)) {
-            for (const med of scCustomMeds) {
-              const { id, ...medData } = med;
-              if (id) await setDoc(doc(db, 'clinics', cId, 'custom_medications', id), medData, { merge: true });
-            }
-          }
-
-          const scCustomCats = backupData.custom_categories || backupData.customCategories;
-          if (Array.isArray(scCustomCats)) {
-            for (const cat of scCustomCats) {
-              const { id, ...catData } = cat;
-              if (id) await setDoc(doc(db, 'clinics', cId, 'custom_categories', id), catData, { merge: true });
-            }
-          }
-
-          if (Array.isArray(backupData.shifts)) {
-            for (const s of backupData.shifts) {
-              const { id, ...sData } = s;
-              if (id) await setDoc(doc(db, 'clinics', cId, 'shifts', id), sData, { merge: true });
-            }
-          }
-
-          let restoredExpenses = 0;
-          const scExpenses = backupData.expenses || backupData.expenseList;
-          if (Array.isArray(scExpenses)) {
-            for (const exp of scExpenses) {
-              const { id, ...expData } = exp;
-              if (id) {
-                await setDoc(doc(db, 'clinics', cId, 'expenses', id), expData, { merge: true });
-                restoredExpenses++;
-              }
-            }
-          }
-
-          if (Array.isArray(backupData.inventory)) {
-            for (const inv of backupData.inventory) {
-              const { id, ...invData } = inv;
-              if (id) await setDoc(doc(db, 'clinics', cId, 'inventory', id), invData, { merge: true });
-            }
-          }
-
-          if (Array.isArray(backupData.billing)) {
-            for (const inv of backupData.billing) {
-              const { id, ...invData } = inv;
-              if (id) await setDoc(doc(db, 'clinics', cId, 'billing', id), invData, { merge: true });
-            }
-          }
-
-          const scClosings = backupData.closings || backupData.dailyClosings;
-          if (Array.isArray(scClosings)) {
-            for (const closing of scClosings) {
-              const { id, ...closingData } = closing;
-              if (id) await setDoc(doc(db, 'clinics', cId, 'closings', id), closingData, { merge: true });
-            }
-          }
-
-          if (Array.isArray(backupData.laboratories)) {
-            for (const lab of backupData.laboratories) {
-              const { id, ...labData } = lab;
-              if (id) await setDoc(doc(db, 'clinics', cId, 'laboratories', id), labData, { merge: true });
-            }
-          }
-
-          const scLabOrders = backupData.lab_orders || backupData.labOrders;
-          if (Array.isArray(scLabOrders)) {
-            for (const order of scLabOrders) {
-              const { id, ...orderData } = order;
-              if (id) await setDoc(doc(db, 'clinics', cId, 'lab_orders', id), orderData, { merge: true });
-            }
-          }
-
-          const scLabWorkTypes = backupData.lab_work_types || backupData.labWorkTypes;
-          if (Array.isArray(scLabWorkTypes)) {
-            for (const wt of scLabWorkTypes) {
-              const { id, ...wtData } = wt;
-              if (id) await setDoc(doc(db, 'clinics', cId, 'lab_work_types', id), wtData, { merge: true });
-            }
-          }
-
-          dialogs.alert(`تمت استعادة ملف العيادة بالكامل بنجاح! تم استرجاع (${restoredPatients}) مريض، (${restoredRecords}) جلسة علاجية، و(${restoredExpenses}) بند مصروفات مع كافة الفواتير والمواعيد.`, { severity: 'success' });
-          onRefreshClinics();
-          return;
-        }
+      if(parsed){
+        const full=Array.isArray(parsed.clinics)||parsed.backupScope==='FULL_SYSTEM_BACKUP';
+        const cId=parsed.clinicId||parsed.clinicInfo?.id;
+        if(!full&&!cId)throw new Error('Clinic id missing / رقم العيادة غير موجود');
+        const result=await backupRequest({action:full?'restore_system':'restore_clinic',clinicId:cId,backup:parsed});
+        dialogs.alert('تمت استعادة النسخة مع السجل المالي. Backup restored with financial history.'+(result.warnings?.length?'\n'+result.warnings.join('\n'):''),{severity:result.warnings?.length?'warning':'success'});
+        onRefreshClinics();return;
       }
 
       throw new Error('صيغة الملف غير متوافقة أو الملف تالف.');

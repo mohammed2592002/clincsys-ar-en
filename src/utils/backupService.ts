@@ -1,5 +1,5 @@
+import {backupRequest,backupSqlPayload,decodeBackupText} from './backupTransport';
 import { systemSettingsSql } from './systemSettingsSql';
-import { db, getDocsSmart as getDocs, collection } from '../dbClient';
 import { safeStorage } from './storage';
 import JSZip from 'jszip';
 
@@ -31,10 +31,10 @@ export async function readBackupFile(file: File): Promise<{ text: string; filena
       throw new Error('لم يتم العثور على ملف بيانات صالح داخل الأرشيف المضغوط (ZIP).');
     }
     const text = await candidate.async('string');
-    return { text, filename: candidate.name };
+    return { text:decodeBackupText(text), filename: candidate.name };
   } else {
     const text = await file.text();
-    return { text, filename: file.name };
+    return { text:decodeBackupText(text), filename: file.name };
   }
 }
 
@@ -52,78 +52,20 @@ export async function exportClinicBackup(
     .replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, '_');
   const dateStr = getLocalTodayStr();
 
-  // 1. Fetch Patients & Sub-records for THIS clinic ONLY
-  const patientsSnap = await getDocs(collection(db, 'clinics', clinicId, 'patients'));
-  const patientsData = await Promise.all(
-    patientsSnap.docs.map(async (docSnap) => {
-      const patientId = docSnap.id;
-      const pData = { id: patientId, ...docSnap.data() } as any;
-
-      try {
-        const recordsSnap = await getDocs(collection(db, 'clinics', clinicId, 'patients', patientId, 'records'));
-        pData.records = recordsSnap.docs.map((r) => ({ id: r.id, ...r.data() }));
-      } catch (e) {
-        pData.records = pData.records || [];
-      }
-
-      try {
-        const teethSnap = await getDocs(collection(db, 'clinics', clinicId, 'patients', patientId, 'teeth'));
-        pData.teeth = teethSnap.docs.map((t) => ({ id: t.id, ...t.data() }));
-      } catch (e) {
-        pData.teeth = pData.teeth || [];
-      }
-
-      try {
-        const xraysSnap = await getDocs(collection(db, 'clinics', clinicId, 'patients', patientId, 'xrays'));
-        pData.xrays = xraysSnap.docs.map((x) => ({ id: x.id, ...x.data() }));
-      } catch (e) {
-        pData.xrays = pData.xrays || [];
-      }
-
-      return pData;
-    })
-  );
-
-  // 2. Fetch Appointments for THIS clinic ONLY
-  const appointmentsSnap = await getDocs(collection(db, 'clinics', clinicId, 'appointments'));
-  const appointmentsData = appointmentsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-
-  // 3. Fetch Prescriptions for THIS clinic ONLY
-  const prescriptionsSnap = await getDocs(collection(db, 'clinics', clinicId, 'prescriptions'));
-  const prescriptionsData = prescriptionsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-
-  // 4. Fetch custom medications, categories & shifts for THIS clinic ONLY
-  const customMedSnap = await getDocs(collection(db, 'clinics', clinicId, 'custom_medications'));
-  const customMedData = customMedSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-
-  const customCatSnap = await getDocs(collection(db, 'clinics', clinicId, 'custom_categories'));
-  const customCatData = customCatSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-
-  const shiftsSnap = await getDocs(collection(db, 'clinics', clinicId, 'shifts'));
-  const shiftsData = shiftsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-
-  // 5. Fetch additional platform data for THIS clinic ONLY
-  const expensesSnap = await getDocs(collection(db, 'clinics', clinicId, 'expenses'));
-  const expensesData = expensesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-
-  const inventorySnap = await getDocs(collection(db, 'clinics', clinicId, 'inventory'));
-  const inventoryData = inventorySnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-
-  const billingSnap = await getDocs(collection(db, 'clinics', clinicId, 'billing'));
-  const billingData = billingSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-
-  const closingsSnap = await getDocs(collection(db, 'clinics', clinicId, 'closings'));
-  const closingsData = closingsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-
-  const laboratoriesSnap = await getDocs(collection(db, 'clinics', clinicId, 'laboratories'));
-  const laboratoriesData = laboratoriesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-
-  const labOrdersSnap = await getDocs(collection(db, 'clinics', clinicId, 'lab_orders'));
-  const labOrdersData = labOrdersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-
-  const labWorkTypesSnap = await getDocs(collection(db, 'clinics', clinicId, 'lab_work_types'));
-  const labWorkTypesData = labWorkTypesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as any));
-
+  const snapshot=await backupRequest({action:'export_clinic',clinicId});
+  const patientsData=snapshot.data.patients;
+  const appointmentsData=snapshot.data.appointments;
+  const prescriptionsData=snapshot.data.prescriptions;
+  const customMedData=snapshot.data.custom_medications;
+  const customCatData=snapshot.data.custom_categories;
+  const shiftsData=snapshot.data.shifts;
+  const expensesData=snapshot.data.expenses;
+  const inventoryData=snapshot.data.inventory;
+  const billingData=snapshot.data.billing;
+  const closingsData=snapshot.data.closings;
+  const laboratoriesData=snapshot.data.laboratories;
+  const labOrdersData=snapshot.data.lab_orders;
+  const labWorkTypesData=snapshot.data.lab_work_types;
   let filename = '';
   let mime = 'application/json';
 
@@ -313,7 +255,7 @@ export async function exportClinicBackup(
 
     sqlContent += `\n-- Inserting Expenses Data (${expensesData.length})\n`;
     expensesData.forEach((exp) => {
-      sqlContent += `INSERT INTO expenses (expense_id, title, amount, category, payment_method, expense_date, type, notes) VALUES (${escapeSQLVal(exp.id)}, ${escapeSQLVal(exp.title)}, ${Number(exp.amount) || 0}, ${escapeSQLVal(exp.category)}, ${escapeSQLVal(exp.paymentMethod || 'كاش')}, ${escapeSQLVal(exp.date)}, ${escapeSQLVal(exp.type || 'shift')}, ${escapeSQLVal(exp.notes)});\n`;
+      sqlContent += `INSERT INTO expenses (expense_id, title, amount, category, payment_method, expense_date, type, notes) VALUES (${escapeSQLVal(exp.id)}, ${escapeSQLVal(exp.title)}, ${Number(exp.amount) || 0}, ${escapeSQLVal(exp.category)}, ${escapeSQLVal(exp.paymentMethod || '')}, ${escapeSQLVal(exp.date)}, ${escapeSQLVal(exp.type || 'shift')}, ${escapeSQLVal(exp.notes)});\n`;
     });
 
     sqlContent += `\n-- Inserting Shifts Data (${shiftsData.length})\n`;
@@ -350,6 +292,7 @@ export async function exportClinicBackup(
     }
 
     filename = `CMS_ClinicBackup_${cleanName}_${dateStr}.sql`;
+    sqlContent += backupSqlPayload(snapshot);
     const blob = new Blob([sqlContent], { type: 'text/plain;charset=utf-8;' });
     triggerDownload(blob, filename);
 
@@ -362,29 +305,7 @@ export async function exportClinicBackup(
   }
 
   // TYPE 2, 3 & 4: ZIP Compressed (.zip), Database File (.db) or JSON (.json)
-  const exportObject = {
-    platform: 'Clinic SaaS System',
-    fileType: 'CLINIC_DATABASE_BACKUP',
-    exportTimestamp: new Date().toISOString(),
-    clinicId: clinicId,
-    clinicName: clinicObj?.name || clinicObj?.nameAr || clinicObj?.nameEn,
-    clinicInfo: clinicObj,
-    data: {
-      patients: patientsData,
-      appointments: appointmentsData,
-      prescriptions: prescriptionsData,
-      custom_medications: customMedData,
-      custom_categories: customCatData,
-      shifts: shiftsData,
-      expenses: expensesData,
-      inventory: inventoryData,
-      billing: billingData,
-      closings: closingsData,
-      laboratories: laboratoriesData,
-      lab_orders: labOrdersData,
-      lab_work_types: labWorkTypesData,
-    },
-  };
+  const exportObject = snapshot;
 
   const jsonStr = JSON.stringify(exportObject, null, 2);
 
@@ -421,79 +342,8 @@ export async function exportFullSystemBackup(
   targetFormat: 'zip' | 'json' | 'db' | 'sql' = 'zip'
 ): Promise<{ success: boolean; filename: string; totalClinics: number; message: string }> {
   const dateStr = getLocalTodayStr();
-  const clinicsSnap = await getDocs(collection(db, 'clinics'));
-
-  const allClinicsData = await Promise.all(
-    clinicsSnap.docs.map(async (clinicDoc) => {
-      const cId = clinicDoc.id;
-      const cData = { id: cId, ...clinicDoc.data() } as any;
-
-      const patientsSnap = await getDocs(collection(db, 'clinics', cId, 'patients'));
-      const patientsData = await Promise.all(
-        patientsSnap.docs.map(async (pDoc) => {
-          const pData = { id: pDoc.id, ...pDoc.data() } as any;
-          const recsSnap = await getDocs(collection(db, 'clinics', cId, 'patients', pDoc.id, 'records'));
-          const recsData = recsSnap.docs.map((r) => ({ id: r.id, ...r.data() }));
-          const teethSnap = await getDocs(collection(db, 'clinics', cId, 'patients', pDoc.id, 'teeth'));
-          const teethData = teethSnap.docs.map((t) => ({ id: t.id, ...t.data() }));
-          const xraysSnap = await getDocs(collection(db, 'clinics', cId, 'patients', pDoc.id, 'xrays'));
-          const xraysData = xraysSnap.docs.map((x) => ({ id: x.id, ...x.data() }));
-          return { ...pData, records: recsData, teeth: teethData, xrays: xraysData };
-        })
-      );
-
-      const appointmentsSnap = await getDocs(collection(db, 'clinics', cId, 'appointments'));
-      const prescriptionsSnap = await getDocs(collection(db, 'clinics', cId, 'prescriptions'));
-      const customMedSnap = await getDocs(collection(db, 'clinics', cId, 'custom_medications'));
-      const customCatSnap = await getDocs(collection(db, 'clinics', cId, 'custom_categories'));
-      const shiftsSnap = await getDocs(collection(db, 'clinics', cId, 'shifts'));
-      const expensesSnap = await getDocs(collection(db, 'clinics', cId, 'expenses'));
-      const inventorySnap = await getDocs(collection(db, 'clinics', cId, 'inventory'));
-      const billingSnap = await getDocs(collection(db, 'clinics', cId, 'billing'));
-      const closingsSnap = await getDocs(collection(db, 'clinics', cId, 'closings'));
-      const laboratoriesSnap = await getDocs(collection(db, 'clinics', cId, 'laboratories'));
-      const labOrdersSnap = await getDocs(collection(db, 'clinics', cId, 'lab_orders'));
-      const labWorkTypesSnap = await getDocs(collection(db, 'clinics', cId, 'lab_work_types'));
-
-      return {
-        clinicInfo: cData,
-        patients: patientsData,
-        appointments: appointmentsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        prescriptions: prescriptionsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        customMedications: customMedSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        customCategories: customCatSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        shifts: shiftsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        expenses: expensesSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        inventory: inventorySnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        billing: billingSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        dailyClosings: closingsSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        laboratories: laboratoriesSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        labOrders: labOrdersSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-        labWorkTypes: labWorkTypesSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
-      };
-    })
-  );
-
-  const renewalsSnap = await getDocs(collection(db, 'renewals'));
-  const renewalsData = renewalsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-  const broadcastsSnap = await getDocs(collection(db, 'broadcasts'));
-  const broadcastsData = broadcastsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-  const systemSettingsSnap = await getDocs(collection(db, 'system_settings'));
-  const systemSettingsData = systemSettingsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-  const fullSystemData = {
-    platform: 'CrownDent Multi-Tenant System Master',
-    backupScope: 'FULL_SYSTEM_BACKUP',
-    backupTimestamp: new Date().toISOString(),
-    totalClinicsCount: allClinicsData.length,
-    renewalsLog: renewalsData,
-    broadcasts: broadcastsData,
-    systemSettings: systemSettingsData,
-    clinics: allClinicsData,
-  };
-
+  const fullSystemData=await backupRequest({action:'export_system'});
+  const allClinicsData=fullSystemData.clinics;
   if (targetFormat === 'sql') {
     const filename = `CMS_FULL_SYSTEM_BACKUP_${dateStr}.sql`;
     let sqlStr = `-- FULL SYSTEM MASTER ANSI SQL DUMP\n`;
@@ -545,7 +395,7 @@ export async function exportFullSystemBackup(
 
       if (Array.isArray(c.expenses)) {
         c.expenses.forEach((exp: any) => {
-          sqlStr += `INSERT INTO system_expenses VALUES (${escapeSQLVal(exp.id)}, ${escapeSQLVal(info.id)}, ${escapeSQLVal(exp.title)}, ${Number(exp.amount) || 0}, ${escapeSQLVal(exp.category)}, ${escapeSQLVal(exp.paymentMethod || 'كاش')}, ${escapeSQLVal(exp.date)}, ${escapeSQLVal(exp.type || 'shift')});\n`;
+          sqlStr += `INSERT INTO system_expenses VALUES (${escapeSQLVal(exp.id)}, ${escapeSQLVal(info.id)}, ${escapeSQLVal(exp.title)}, ${Number(exp.amount) || 0}, ${escapeSQLVal(exp.category)}, ${escapeSQLVal(exp.paymentMethod || '')}, ${escapeSQLVal(exp.date)}, ${escapeSQLVal(exp.type || 'shift')});\n`;
         });
       }
 
@@ -589,6 +439,7 @@ export async function exportFullSystemBackup(
 
     sqlStr += systemSettingsSql(fullSystemData.systemSettings);
 
+    sqlStr += backupSqlPayload(fullSystemData);
     const blob = new Blob([sqlStr], { type: 'text/plain;charset=utf-8;' });
     triggerDownload(blob, filename);
 
@@ -673,10 +524,9 @@ export async function checkAndRunAutoBackup(
 
   if (lastDate !== todayStr || force) {
     console.log('Automated daily backup triggered for clinic:', clinicId, 'Date:', todayStr);
-    safeStorage.setItem(`auto_backup_last_date_${clinicId}`, todayStr);
-
     try {
       const res = await exportClinicBackup(clinicId, clinicObj, fmt, true);
+      safeStorage.setItem(`auto_backup_last_date_${clinicId}`, todayStr);
       return { triggered: true, date: todayStr, format: fmt, filename: res.filename };
     } catch (err) {
       console.error('Auto backup failed:', err);

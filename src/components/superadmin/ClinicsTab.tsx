@@ -1,5 +1,6 @@
+import {backupRequest} from '../../utils/backupTransport';
 import React, { useState, useMemo } from 'react';
-import { db, doc, collection, setDoc, deleteDoc, updateDoc, getDocsSmart as getDocs } from '../../dbClient';
+import { db, doc, setDoc, deleteDoc, updateDoc } from '../../dbClient';
 import { Clinic } from '../../types';
 import { useDialogs } from '../DialogContext';
 import { 
@@ -228,74 +229,7 @@ export default function ClinicsTab({
     setDownloadingClinicId(clinic.id);
     try {
       const cId = clinic.id;
-      const [
-        patientsSnap,
-        appointmentsSnap,
-        prescriptionsSnap,
-        customMedSnap,
-        customCatSnap,
-        shiftsSnap,
-        expensesSnap,
-        inventorySnap,
-        billingSnap,
-        closingsSnap,
-        labsSnap,
-        labOrdersSnap,
-        labWorkTypesSnap
-      ] = await Promise.all([
-        getDocs(collection(db, 'clinics', cId, 'patients')),
-        getDocs(collection(db, 'clinics', cId, 'appointments')),
-        getDocs(collection(db, 'clinics', cId, 'prescriptions')),
-        getDocs(collection(db, 'clinics', cId, 'custom_medications')),
-        getDocs(collection(db, 'clinics', cId, 'custom_categories')),
-        getDocs(collection(db, 'clinics', cId, 'shifts')),
-        getDocs(collection(db, 'clinics', cId, 'expenses')),
-        getDocs(collection(db, 'clinics', cId, 'inventory')),
-        getDocs(collection(db, 'clinics', cId, 'billing')),
-        getDocs(collection(db, 'clinics', cId, 'closings')),
-        getDocs(collection(db, 'clinics', cId, 'laboratories')),
-        getDocs(collection(db, 'clinics', cId, 'lab_orders')),
-        getDocs(collection(db, 'clinics', cId, 'lab_work_types'))
-      ]);
-
-      const patientsData = await Promise.all(
-        patientsSnap.docs.map(async (pDoc) => {
-          const pData = { id: pDoc.id, ...pDoc.data() } as any;
-          const [recsSnap, teethSnap, xraysSnap] = await Promise.all([
-            getDocs(collection(db, 'clinics', cId, 'patients', pDoc.id, 'records')),
-            getDocs(collection(db, 'clinics', cId, 'patients', pDoc.id, 'teeth')),
-            getDocs(collection(db, 'clinics', cId, 'patients', pDoc.id, 'xrays'))
-          ]);
-          return {
-            ...pData,
-            records: recsSnap.docs.map(r => ({ id: r.id, ...r.data() })),
-            teeth: teethSnap.docs.map(t => ({ id: t.id, ...t.data() })),
-            xrays: xraysSnap.docs.map(x => ({ id: x.id, ...x.data() }))
-          };
-        })
-      );
-
-      const clinicBackup = {
-        platform: 'CrownDent SaaS Single Clinic Backup',
-        clinicId: cId,
-        clinicInfo: clinic,
-        backupTimestamp: new Date().toISOString(),
-        data: {
-          patients: patientsData,
-          appointments: appointmentsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          prescriptions: prescriptionsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          customMedications: customMedSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          customCategories: customCatSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          shifts: shiftsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          expenses: expensesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          inventory: inventorySnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          billing: billingSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          dailyClosings: closingsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          laboratories: labsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          labOrders: labOrdersSnap.docs.map(d => ({ id: d.id, ...d.data() })),
-          labWorkTypes: labWorkTypesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-        }
-      };
+      const clinicBackup=await backupRequest({action:'export_clinic',clinicId:cId});
 
       const dateStr = new Date().toISOString().split('T')[0];
       const safeName = (clinic.name || 'Clinic').replace(/[^a-zA-Z0-9\u0600-\u06FF_-]/g, '_');
@@ -306,8 +240,7 @@ export default function ClinicsTab({
       a.download = `BACKUP_${safeName}_${dateStr}.json`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
 
       dialogs.alert(`تم استخراج وتنزيل النسخة الاحتياطية لعيادة "${clinic.name}" بنجاح!`, { severity: 'success' });
     } catch (err: any) {

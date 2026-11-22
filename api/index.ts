@@ -1,3 +1,4 @@
+import {createBackupService} from './backup';
 import { DEFAULT_PAYMENT_METHODS } from '../src/utils/paymentMethods';
 import {commandMessage} from '../src/utils/commandMessages';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -2402,6 +2403,8 @@ function parsePath(pathStr: string) {
 function financeSync(clinicId:string,event:any){const eventId=crypto.randomUUID();broadcastSync(clinicId,{...event,eventId});publishSyncEvent(clinicId,event.table,event.action,event.id,undefined,eventId).then(id=>{if(id)handledEvents.add(id);});}
 const finance = createFinanceService({db: dbClient, getAuth: getRequestAuth, broadcast: financeSync, mapColumns: mapDataToColumns});
 app.post('/api/finance', finance.handler);
+const backups=createBackupService({db:dbClient,getAuth:getRequestAuth,finance,mapColumns:mapDataToColumns,sanitizeClinic:sanitizeClinicRecord,secureClinic:secureClinicPayload,broadcast:financeSync});
+app.post('/api/backups',backups.handler);
 
 // Generic Database Queries Router
 // Clinic document writes share the finance lock, including legacy DB/batch paths.

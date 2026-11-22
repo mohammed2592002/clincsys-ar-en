@@ -5,6 +5,7 @@ interface PrintPreviewModalProps {
   onClose: () => void;
   title: string;
   htmlContent?: string;
+  language?: 'ar' | 'en';
   children?: React.ReactNode;
 }
 
@@ -13,6 +14,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   onClose,
   title,
   htmlContent,
+  language = 'ar',
   children
 }) => {
   const printIframeRef = useRef<HTMLIFrameElement>(null);
@@ -37,7 +39,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     const inner = contentRef.current?.innerHTML || '';
     return `
       <!DOCTYPE html>
-      <html lang="ar" dir="rtl">
+      <html lang="${language}" dir="${language === 'en' ? 'ltr' : 'rtl'}">
       <head>
         <meta charset="UTF-8">
         <title>${title}</title>
@@ -49,7 +51,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             background-color: #ffffff;
             color: #0f172a;
             margin: 20px;
-            direction: rtl;
+            direction: ${language === 'en' ? 'ltr' : 'rtl'};
           }
           @media print {
             @page {

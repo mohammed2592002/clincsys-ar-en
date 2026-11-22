@@ -1,3 +1,4 @@
+import {backupRequest,backupSqlPayload} from '../utils/backupTransport';
 import { getClinicPaymentMethods, paymentMethodLabel, samePaymentMethod } from '../utils/paymentMethods';
 import { ORTHODONTIC_CATALOG_VERSION } from '../utils/dentalServiceCatalog';
 import {configuredSocialLinks} from '../utils/supportLinks';
@@ -1255,66 +1256,20 @@ export default function ClinicSettings({
       const cleanName = (clinic.name || clinic.nameAr || clinic.nameEn || 'Clinic').replace(/[^a-zA-Z0-9\u0600-\u06FF]/g, '_');
       const dateStr = new Date().toISOString().split('T')[0];
 
-      // 1. Fetch patients and their subcollections (records, teeth, xrays) for THIS clinic ONLY
-      const patientsSnap = await getDocs(collection(db, 'clinics', clinicId, 'patients'));
-      const patientsData = await Promise.all(
-        patientsSnap.docs.map(async (patientDoc) => {
-          const pData = { id: patientDoc.id, ...patientDoc.data() } as any;
-          const [recordsSnap, teethSnap, xraysSnap] = await Promise.all([
-            getDocs(collection(db, 'clinics', clinicId, 'patients', patientDoc.id, 'records')),
-            getDocs(collection(db, 'clinics', clinicId, 'patients', patientDoc.id, 'teeth')),
-            getDocs(collection(db, 'clinics', clinicId, 'patients', patientDoc.id, 'xrays'))
-          ]);
-          return {
-            ...pData,
-            records: recordsSnap.docs.map(rDoc => ({ id: rDoc.id, ...rDoc.data() } as any)),
-            teeth: teethSnap.docs.map(tDoc => ({ id: tDoc.id, ...tDoc.data() } as any)),
-            xrays: xraysSnap.docs.map(xDoc => ({ id: xDoc.id, ...xDoc.data() } as any))
-          };
-        })
-      );
-
-      // 2. Fetch appointments for THIS clinic ONLY
-      const appointmentsSnap = await getDocs(collection(db, 'clinics', clinicId, 'appointments'));
-      const appointmentsData = appointmentsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
-      // 3. Fetch prescriptions for THIS clinic ONLY
-      const prescriptionsSnap = await getDocs(collection(db, 'clinics', clinicId, 'prescriptions'));
-      const prescriptionsData = prescriptionsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
-      // 4. Fetch custom medications, categories & shifts for THIS clinic ONLY
-      const customMedSnap = await getDocs(collection(db, 'clinics', clinicId, 'custom_medications'));
-      const customMedData = customMedSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
-      const customCatSnap = await getDocs(collection(db, 'clinics', clinicId, 'custom_categories'));
-      const customCatData = customCatSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
-      const shiftsSnap = await getDocs(collection(db, 'clinics', clinicId, 'shifts'));
-      const shiftsData = shiftsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
-      // 5. Fetch expenses for THIS clinic ONLY
-      const expensesSnap = await getDocs(collection(db, 'clinics', clinicId, 'expenses'));
-      const expensesData = expensesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
-      // 6. Fetch additional platform data for THIS clinic ONLY
-      const inventorySnap = await getDocs(collection(db, 'clinics', clinicId, 'inventory'));
-      const inventoryData = inventorySnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
-      const billingSnap = await getDocs(collection(db, 'clinics', clinicId, 'billing'));
-      const billingData = billingSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
-      const closingsSnap = await getDocs(collection(db, 'clinics', clinicId, 'closings'));
-      const closingsData = closingsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
-      const laboratoriesSnap = await getDocs(collection(db, 'clinics', clinicId, 'laboratories'));
-      const laboratoriesData = laboratoriesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
-      const labOrdersSnap = await getDocs(collection(db, 'clinics', clinicId, 'lab_orders'));
-      const labOrdersData = labOrdersSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
-      const labWorkTypesSnap = await getDocs(collection(db, 'clinics', clinicId, 'lab_work_types'));
-      const labWorkTypesData = labWorkTypesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-
+      const snapshot=await backupRequest({action:'export_clinic',clinicId});
+      const patientsData=snapshot.data.patients;
+      const appointmentsData=snapshot.data.appointments;
+      const prescriptionsData=snapshot.data.prescriptions;
+      const customMedData=snapshot.data.custom_medications;
+      const customCatData=snapshot.data.custom_categories;
+      const shiftsData=snapshot.data.shifts;
+      const expensesData=snapshot.data.expenses;
+      const inventoryData=snapshot.data.inventory;
+      const billingData=snapshot.data.billing;
+      const closingsData=snapshot.data.closings;
+      const laboratoriesData=snapshot.data.laboratories;
+      const labOrdersData=snapshot.data.lab_orders;
+      const labWorkTypesData=snapshot.data.lab_work_types;
       // TYPE 1: ANSI SQL File (.sql)
       if (targetFormat === 'sql') {
         const escapeSQLVal = (val: any): string => {
@@ -1501,6 +1456,7 @@ export default function ClinicSettings({
           sqlContent += `INSERT INTO lab_orders (order_id, lab_id, lab_name, patient_name, order_type, cost, paid, status, sent_date, delivery_date) VALUES (${escapeSQLVal(lo.id)}, ${escapeSQLVal(lo.labId)}, ${escapeSQLVal(lo.labName)}, ${escapeSQLVal(lo.patientName)}, ${escapeSQLVal(lo.type || lo.orderType)}, ${Number(lo.cost) || 0}, ${Number(lo.paid) || 0}, ${escapeSQLVal(lo.status)}, ${escapeSQLVal(lo.sentDate)}, ${escapeSQLVal(lo.deliveryDate)});\n`;
         });
 
+        sqlContent += backupSqlPayload(snapshot);
         const blob = new Blob([sqlContent], { type: 'text/plain;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1508,10 +1464,10 @@ export default function ClinicSettings({
         a.download = `CMS_ClinicBackup_${cleanName}_${dateStr}.sql`;
         document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
 
         setBackupRestoreStatus('تم تنزيل النسخة الاحتياطية بصيغة SQL (.sql) للعيادة بنجاح!');
+        if(isAuto){safeStorage.setItem(`auto_backup_last_date_${clinicId}`,getLocalTodayStr());setLastAutoBackupDate(getLocalTodayStr());}
         if (!isAuto) {
           dialogs.alert(`تم استخراج ملف استعلامات SQL بنجاح (.sql) ببيانات هذه العيادة فقط.`, { severity: 'success' });
         }
@@ -1519,29 +1475,7 @@ export default function ClinicSettings({
       }
 
       // JSON / DB / ZIP Payload Object
-      const exportObject = {
-        platform: 'Clinic SaaS System',
-        fileType: 'CLINIC_DATABASE_BACKUP',
-        exportTimestamp: new Date().toISOString(),
-        clinicId: clinicId,
-        clinicName: clinic.name || clinic.nameAr || clinic.nameEn,
-        clinicInfo: clinic,
-        data: {
-          patients: patientsData,
-          appointments: appointmentsData,
-          prescriptions: prescriptionsData,
-          custom_medications: customMedData,
-          custom_categories: customCatData,
-          shifts: shiftsData,
-          expenses: expensesData,
-          inventory: inventoryData,
-          billing: billingData,
-          closings: closingsData,
-          laboratories: laboratoriesData,
-          lab_orders: labOrdersData,
-          lab_work_types: labWorkTypesData
-        }
-      };
+      const exportObject = snapshot;
 
       const jsonStr = JSON.stringify(exportObject, null, 2);
 
@@ -1557,10 +1491,10 @@ export default function ClinicSettings({
         a.download = `CMS_ClinicBackup_${cleanName}_${dateStr}.zip`;
         document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
 
         setBackupRestoreStatus('تم تنزيل النسخة الاحتياطية المضغوطة (.zip) للعيادة بنجاح!');
+        if(isAuto){safeStorage.setItem(`auto_backup_last_date_${clinicId}`,getLocalTodayStr());setLastAutoBackupDate(getLocalTodayStr());}
         if (!isAuto) {
           dialogs.alert(`تم تحميل ملف أرشيف العيادة المضغوط (.zip) بنجاح فائق! تم تقليص حجم الملف بنسبة تصل إلى 85% مع حفظ كافة البيانات: (${patientsData.length}) مريض، (${appointmentsData.length}) موعد، (${prescriptionsData.length}) روشتة، (${inventoryData.length}) صنف مخزن، (${billingData.length}) فاتورة، و(${laboratoriesData.length}) معمل.`, { severity: 'success' });
         }
@@ -1576,10 +1510,10 @@ export default function ClinicSettings({
       a.download = `CMS_ClinicBackup_${cleanName}_${dateStr}.${ext}`;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
 
       setBackupRestoreStatus(`تم تنزيل النسخة الاحتياطية بصيغة (.${ext}) للعيادة بنجاح!`);
+      if(isAuto){safeStorage.setItem(`auto_backup_last_date_${clinicId}`,getLocalTodayStr());setLastAutoBackupDate(getLocalTodayStr());}
       if (!isAuto) {
         dialogs.alert(`تم تحميل ملف نسخة العيادة (.${ext}) بنجاح! يحتوي فقط على بيانات عيادتك: (${patientsData.length}) مريض، (${appointmentsData.length}) موعد، (${prescriptionsData.length}) روشتة، (${inventoryData.length}) صنف مخزن، (${billingData.length}) فاتورة، و(${laboratoriesData.length}) معمل.`, { severity: 'success' });
       }
@@ -1607,8 +1541,6 @@ export default function ClinicSettings({
 
       if (lastDate !== todayStr) {
         console.log('Automated daily backup triggered for clinic:', clinicId);
-        safeStorage.setItem(`auto_backup_last_date_${clinicId}`, todayStr);
-        setLastAutoBackupDate(todayStr);
         await handleExportBackup((fmt as 'zip' | 'sql' | 'json' | 'db') || 'zip', true);
       }
     };
@@ -1654,194 +1586,10 @@ export default function ClinicSettings({
       if (!content) throw new Error('الملف فارغ أو لا يمكن قراءته.');
       const parsed = JSON.parse(content);
       
-      const backupData = parsed.data || parsed;
-      if (!backupData.patients && !backupData.appointments && !backupData.prescriptions) {
-        throw new Error('صيغة ملف النسخة الاحتياطية غير متوافقة مع هذا النظام.');
-      }
-
-      // 1. Restore Clinic Info
-      if (parsed.clinicInfo) {
-        setBackupRestoreStatus('جاري استعادة هوية وبيانات العيادة...');
-        await setDoc(doc(db, 'clinics', clinicId), parsed.clinicInfo, { merge: true });
-      }
-
-      // 2. Restore Patients and Records
-      setBackupRestoreStatus('جاري استعادة سجلات المرضى والجلسات الطبية...');
-      let restoredPatients = 0;
-      let restoredRecords = 0;
-      if (Array.isArray(backupData.patients)) {
-        for (const p of backupData.patients) {
-          const { records, id, ...pDocData } = p;
-          const targetId = id || pDocData.phone || Math.random().toString(36).substring(2, 11);
-          await setDoc(doc(db, 'clinics', clinicId, 'patients', targetId), pDocData, { merge: true });
-          restoredPatients++;
-
-          if (Array.isArray(records)) {
-            for (const r of records) {
-              const { id: rId, ...rDocData } = r;
-              const recId = rId || Math.random().toString(36).substring(2, 11);
-              await setDoc(doc(db, 'clinics', clinicId, 'patients', targetId, 'records', recId), rDocData, { merge: true });
-              restoredRecords++;
-            }
-          }
-
-          if (Array.isArray(p.teeth)) {
-            for (const t of p.teeth) {
-              const { id: tId, ...tDocData } = t;
-              const toothId = tId || Math.random().toString(36).substring(2, 11);
-              await setDoc(doc(db, 'clinics', clinicId, 'patients', targetId, 'teeth', toothId), tDocData, { merge: true });
-            }
-          }
-
-          if (Array.isArray(p.xrays)) {
-            for (const x of p.xrays) {
-              const { id: xId, ...xDocData } = x;
-              const xrayId = xId || Math.random().toString(36).substring(2, 11);
-              await setDoc(doc(db, 'clinics', clinicId, 'patients', targetId, 'xrays', xrayId), xDocData, { merge: true });
-            }
-          }
-        }
-      }
-
-      // 3. Restore Appointments and Prescriptions
-      setBackupRestoreStatus('جاري استعادة المواعيد والروشتات الطبية...');
-      let restoredAppointments = 0;
-      if (Array.isArray(backupData.appointments)) {
-        for (const app of backupData.appointments) {
-          const { id, ...appDocData } = app;
-          if (id) {
-            await setDoc(doc(db, 'clinics', clinicId, 'appointments', id), appDocData, { merge: true });
-            restoredAppointments++;
-          }
-        }
-      }
-
-      if (Array.isArray(backupData.prescriptions)) {
-        for (const rx of backupData.prescriptions) {
-          const { id, ...rxData } = rx;
-          if (id) await setDoc(doc(db, 'clinics', clinicId, 'prescriptions', id), rxData, { merge: true });
-        }
-      }
-
-      // 4. Restore Custom Medications and Categories
-      setBackupRestoreStatus('جاري استعادة إعدادات الأدوية والأقسام المخصصة...');
-      const customMedsList = backupData.custom_medications || backupData.customMedications;
-      if (Array.isArray(customMedsList)) {
-        for (const med of customMedsList) {
-          const { id, ...medData } = med;
-          if (id) await setDoc(doc(db, 'clinics', clinicId, 'custom_medications', id), medData, { merge: true });
-        }
-      }
-
-      const customCatsList = backupData.custom_categories || backupData.customCategories;
-      if (Array.isArray(customCatsList)) {
-        for (const cat of customCatsList) {
-          const { id, ...catData } = cat;
-          if (id) await setDoc(doc(db, 'clinics', clinicId, 'custom_categories', id), catData, { merge: true });
-        }
-      }
-
-      // 5. Restore Shifts & Expenses
-      let restoredExpenses = 0;
-      if (Array.isArray(backupData.shifts)) {
-        for (const shift of backupData.shifts) {
-          const { id, ...shiftData } = shift;
-          if (id) await setDoc(doc(db, 'clinics', clinicId, 'shifts', id), shiftData, { merge: true });
-        }
-      }
-
-      const expensesList = backupData.expenses || backupData.expenseList;
-      if (Array.isArray(expensesList)) {
-        for (const exp of expensesList) {
-          const { id, ...expData } = exp;
-          if (id) {
-            await setDoc(doc(db, 'clinics', clinicId, 'expenses', id), expData, { merge: true });
-            restoredExpenses++;
-          }
-        }
-      }
-
-      // 6. Restore Inventory
-      setBackupRestoreStatus('جاري استعادة المخزن وجرد المواد والخدمات...');
-      let restoredInventory = 0;
-      if (Array.isArray(backupData.inventory)) {
-        for (const item of backupData.inventory) {
-          const { id, ...itemData } = item;
-          if (id) {
-            await setDoc(doc(db, 'clinics', clinicId, 'inventory', id), itemData, { merge: true });
-            restoredInventory++;
-          }
-        }
-      }
-
-      // 7. Restore Billing / Invoices
-      setBackupRestoreStatus('جاري استعادة الفواتير وحسابات العيادة...');
-      let restoredBilling = 0;
-      if (Array.isArray(backupData.billing)) {
-        for (const inv of backupData.billing) {
-          const { id, ...invData } = inv;
-          if (id) {
-            await setDoc(doc(db, 'clinics', clinicId, 'billing', id), invData, { merge: true });
-            restoredBilling++;
-          }
-        }
-      }
-
-      // 8. Restore Daily Closings
-      let restoredClosings = 0;
-      const closingsList = backupData.closings || backupData.dailyClosings;
-      if (Array.isArray(closingsList)) {
-        for (const closing of closingsList) {
-          const { id, ...closingData } = closing;
-          if (id) {
-            await setDoc(doc(db, 'clinics', clinicId, 'closings', id), closingData, { merge: true });
-            restoredClosings++;
-          }
-        }
-      }
-
-      // 9. Restore Laboratories, Orders and Work Types
-      setBackupRestoreStatus('جاري استعادة بيانات المعامل والطلبات المعملية...');
-      let restoredLaboratories = 0;
-      if (Array.isArray(backupData.laboratories)) {
-        for (const lab of backupData.laboratories) {
-          const { id, ...labData } = lab;
-          if (id) {
-            await setDoc(doc(db, 'clinics', clinicId, 'laboratories', id), labData, { merge: true });
-            restoredLaboratories++;
-          }
-        }
-      }
-
-      let restoredLabOrders = 0;
-      const labOrdersList = backupData.lab_orders || backupData.labOrders;
-      if (Array.isArray(labOrdersList)) {
-        for (const order of labOrdersList) {
-          const { id, ...orderData } = order;
-          if (id) {
-            await setDoc(doc(db, 'clinics', clinicId, 'lab_orders', id), orderData, { merge: true });
-            restoredLabOrders++;
-          }
-        }
-      }
-
-      const labWorkTypesList = backupData.lab_work_types || backupData.labWorkTypes;
-      if (Array.isArray(labWorkTypesList)) {
-        for (const wt of labWorkTypesList) {
-          const { id, ...wtData } = wt;
-          if (id) {
-            await setDoc(doc(db, 'clinics', clinicId, 'lab_work_types', id), wtData, { merge: true });
-          }
-        }
-      }
-
-      setBackupRestoreStatus('تم استعادة واسترجاع جميع البيانات بنجاح 100%!');
-      dialogs.alert(`تمت استعادة كافة البيانات والملفات الطبية والتشغيلية بنجاح تام! تم استرجاع: (${restoredPatients}) مريض، (${restoredRecords}) جلسة علاجية، (${restoredAppointments}) موعد، (${restoredExpenses}) بند مصروفات، (${restoredInventory}) صنف مخزن، (${restoredBilling}) فاتورة، (${restoredClosings}) إغلاق مالي، (${restoredLaboratories}) معمل، و(${restoredLabOrders}) طلب معملي.`, { severity: 'success' });
-      
-      // Trigger a refresh of the clinic data locally
-      if (parsed.clinicInfo) {
-        onClinicDataUpdated(parsed.clinicInfo);
-      }
+      const result=await backupRequest({action:'restore_clinic',clinicId,backup:parsed});
+      setBackupRestoreStatus(isEn ? 'Backup restored. Financial history preserved.' : 'تمت الاستعادة مع الحفاظ على السجل المالي.');
+      onClinicDataUpdated(result.clinicInfo);
+      dialogs.alert((isEn ? 'Backup restored successfully.' : 'تمت استعادة النسخة بنجاح.')+(result.warnings?.length?'\n'+result.warnings.join('\n'):''),{severity:result.warnings?.length?'warning':'success'});
     } catch (parseErr: any) {
       console.error('Import Restore Error:', parseErr);
       dialogs.alert('فشل قراءة الملف أو استعادة البيانات: ' + parseErr.toString(), { severity: 'error' });

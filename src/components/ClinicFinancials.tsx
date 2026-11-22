@@ -1110,19 +1110,20 @@ export default function ClinicFinancials({
       
       {/* Printable Invoice Modal */}
       <PrintPreviewModal
+        language={isEn ? 'en' : 'ar'}
         isOpen={!!printInvoiceData}
         onClose={() => setPrintInvoiceData(null)}
         title={isEn ? 'Treatment & Financial Invoice' : 'فاتورة علاج ومتابعة مالية'}
       >
         {printInvoiceData && (
-          <div className="bg-white text-slate-900 leading-relaxed text-right" dir="rtl">
+          <div className="bg-white text-slate-900 leading-relaxed text-start" dir={isEn ? 'ltr' : 'rtl'}>
             <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8">
               <div>
-                <h1 className="text-2xl font-black text-slate-900">{clinic.nameAr || clinic.name}</h1>
-                <p className="text-sm text-slate-600 mt-1">{clinic.doctorSpecialtyAr || 'طب وجراحة الأسنان وعلاجات التقويم والزراعة'}</p>
-                <p className="text-xs text-slate-500 mt-0.5">الدكتور: {clinic.doctorName || 'طبيب متخصص'}</p>
-                {clinic.doctorPhone && <p className="text-xs text-slate-500">هاتف: {clinic.doctorPhone}{clinic.additionalPhones && clinic.additionalPhones.length > 0 ? ` - ${clinic.additionalPhones.filter(Boolean).join(' - ')}` : ''}</p>}
-                {clinic.address && <p className="text-xs text-slate-500">العنوان: {clinic.address}</p>}
+                <h1 className="text-2xl font-black text-slate-900">{(isEn ? clinic.nameEn : clinic.nameAr) || clinic.name}</h1>
+                <p className="text-sm text-slate-600 mt-1">{(isEn ? clinic.doctorSpecialtyEn : clinic.doctorSpecialtyAr) || (isEn ? 'Dentistry, orthodontics and implants' : 'طب وجراحة الأسنان وعلاجات التقويم والزراعة')}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{isEn ? 'Doctor:' : 'الدكتور:'} {(isEn ? clinic.doctorNameEn || clinic.doctorName : clinic.doctorName) || (isEn ? 'Specialist' : 'طبيب متخصص')}</p>
+                {clinic.doctorPhone && <p className="text-xs text-slate-500">{isEn ? 'Phone:' : 'هاتف:'} {clinic.doctorPhone}{clinic.additionalPhones && clinic.additionalPhones.length > 0 ? ` - ${clinic.additionalPhones.filter(Boolean).join(' - ')}` : ''}</p>}
+                {clinic.address && <p className="text-xs text-slate-500">{isEn ? 'Address:' : 'العنوان:'} {clinic.address}</p>}
               </div>
               {clinic.logoUrl && clinic.logoUrl.trim() !== '' ? (
                 <img src={clinic.logoUrl} alt="Logo" className="w-32 h-24 object-contain object-left shrink-0" />
@@ -1132,26 +1133,26 @@ export default function ClinicFinancials({
             </div>
 
             <div className="text-center my-6">
-              <h2 className="text-xl font-black tracking-wide border-y border-slate-300 py-2.5">فاتورة علاج ومتابعة مالية</h2>
-              <p className="text-xs text-slate-400 mt-1">تاريخ طباعة الفاتورة: {new Date().toLocaleString('ar-EG')}</p>
+              <h2 className="text-xl font-black tracking-wide border-y border-slate-300 py-2.5">{isEn ? 'Treatment & Financial Invoice' : 'فاتورة علاج ومتابعة مالية'}</h2>
+              <p className="text-xs text-slate-400 mt-1">{isEn ? 'Invoice printed:' : 'تاريخ طباعة الفاتورة:'} {new Date().toLocaleString(isEn ? 'en-GB' : 'ar-EG')}</p>
             </div>
 
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-2 gap-y-3 gap-x-6 text-sm mb-6">
               <div>
-                <span className="font-bold text-slate-600">اسم المريض:</span>{' '}
+                <span className="font-bold text-slate-600">{isEn ? 'Patient name:' : 'اسم المريض:'}</span>{' '}
                 <span className="font-black text-slate-800">{printInvoiceData.patientName}</span>
               </div>
               <div>
-                <span className="font-bold text-slate-600">رقم الهاتف:</span>{' '}
-                <span className="font-mono text-slate-800">{printInvoiceData.patientPhone || 'غير مسجل'}</span>
+                <span className="font-bold text-slate-600">{isEn ? 'Phone number:' : 'رقم الهاتف:'}</span>{' '}
+                <span className="font-mono text-slate-800">{printInvoiceData.patientPhone || (isEn ? 'Not recorded' : 'غير مسجل')}</span>
               </div>
               <div>
-                <span className="font-bold text-slate-600">تاريخ الموعد:</span>{' '}
+                <span className="font-bold text-slate-600">{isEn ? 'Appointment date:' : 'تاريخ الموعد:'}</span>{' '}
                 <span className="font-mono text-slate-800">{printInvoiceData.date}</span>
               </div>
               <div>
-                <span className="font-bold text-slate-600">توقيت الجلسة:</span>{' '}
-                <span className="font-mono text-slate-800">{formatTimeTo12Hour(printInvoiceData.time)}</span>
+                <span className="font-bold text-slate-600">{isEn ? 'Appointment time:' : 'توقيت الجلسة:'}</span>{' '}
+                <span className="font-mono text-slate-800">{(isEn ? formatTimeTo12Hour(printInvoiceData.time).replace(/ص$/, 'AM').replace(/م$/, 'PM') : formatTimeTo12Hour(printInvoiceData.time))}</span>
               </div>
             </div>
 
@@ -1159,9 +1160,9 @@ export default function ClinicFinancials({
               <table className="w-full border-collapse border border-slate-300 text-sm">
                 <thead>
                   <tr className="bg-slate-100 text-slate-800">
-                    <th className="border border-slate-300 p-3 text-right">نوع الإجراء / العلاج الطبي</th>
-                    <th className="border border-slate-300 p-3 text-center">الحالة</th>
-                    <th className="border border-slate-300 p-3 text-left">التكلفة الكلية (ج.م)</th>
+                    <th className="border border-slate-300 p-3 text-start">{isEn ? 'Procedure / Treatment' : 'نوع الإجراء / العلاج الطبي'}</th>
+                    <th className="border border-slate-300 p-3 text-center">{isEn ? 'Status' : 'الحالة'}</th>
+                    <th className="border border-slate-300 p-3 text-end">{isEn ? 'Total cost (EGP)' : 'التكلفة الكلية (ج.م)'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1171,42 +1172,42 @@ export default function ClinicFinancials({
                         {proc.name} {proc.tooth ? `(${getToothInfo(proc.tooth).fullText})` : ''}
                       </td>
                       <td className="border border-slate-300 p-3 text-center">
-                        {printInvoiceData.status === 'completed' ? 'تم تقديم الخدمة' : 'موعد مجدول'}
+                        {printInvoiceData.status === 'completed' ? (isEn ? 'Completed' : 'تم تقديم الخدمة') : (isEn ? 'Scheduled' : 'موعد مجدول')}
                       </td>
-                      <td className="border border-slate-300 p-3 text-left font-mono font-bold">{proc.price.toLocaleString()} ج.م</td>
+                      <td className="border border-slate-300 p-3 text-end font-mono font-bold">{proc.price.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            <div className="w-80 mr-auto space-y-2 border-t border-slate-300 pt-4 text-sm">
+            <div className="w-80 ms-auto space-y-2 border-t border-slate-300 pt-4 text-sm">
               <div className="flex justify-between">
-                <span className="text-slate-600 font-bold">إجمالي تكلفة العلاج:</span>
-                <span className="font-bold font-mono text-slate-800">{printInvoiceData.price.toLocaleString()} ج.م</span>
+                <span className="text-slate-600 font-bold">{isEn ? 'Total treatment cost:' : 'إجمالي تكلفة العلاج:'}</span>
+                <span className="font-bold font-mono text-slate-800">{printInvoiceData.price.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
               </div>
               <div className="flex justify-between text-emerald-700 bg-emerald-50/50 p-1 px-2 rounded font-bold">
-                <span>إجمالي المسدد حتى الآن:</span>
-                <span className="font-black font-mono">{(printInvoiceData.paidAmount !== undefined ? printInvoiceData.paidAmount : printInvoiceData.price).toLocaleString()} ج.م</span>
+                <span>{isEn ? 'Paid to date:' : 'إجمالي المسدد حتى الآن:'}</span>
+                <span className="font-black font-mono">{(printInvoiceData.paidAmount !== undefined ? printInvoiceData.paidAmount : printInvoiceData.price).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
               </div>
               <div className="flex justify-between text-amber-700 bg-amber-50/50 p-1 px-2 rounded font-bold border-t border-dashed border-amber-200">
-                <span>المتبقي في الجلسات القادمة:</span>
-                <span className="font-black font-mono">{(printInvoiceData.remainingAmount !== undefined ? printInvoiceData.remainingAmount : 0).toLocaleString()} ج.م</span>
+                <span>{isEn ? 'Remaining balance:' : 'المتبقي في الجلسات القادمة:'}</span>
+                <span className="font-black font-mono">{(printInvoiceData.remainingAmount !== undefined ? printInvoiceData.remainingAmount : 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
               </div>
             </div>
 
-            <div className="border rounded-xl p-3 space-y-2 text-xs"><p className="font-bold">الإيصالات المؤكدة (وقت التحصيل بتوقيت القاهرة)</p>{financialReceipts.filter(r=>r.appointmentId===printInvoiceData.id).map(r=><div key={r.id} className="border-t pt-2"><p className="break-all">{r.receiptNumber||r.id} • {r.kind==='refund'?'استرداد':'تحصيل'} • {r.kind==='refund'?'-':''}{r.amount} ج.م</p><p>{r.createdAt?new Date(r.createdAt).toLocaleString('ar-EG',{timeZone:'Africa/Cairo'}):r.collectionDate} • {r.actorName||'سجل قديم'} • {r.actorRole||''}</p></div>)}</div>
+            <div className="border rounded-xl p-3 space-y-2 text-xs"><p className="font-bold">{isEn ? 'Confirmed receipts (Cairo collection time)' : 'الإيصالات المؤكدة (وقت التحصيل بتوقيت القاهرة)'}</p>{financialReceipts.filter(r=>r.appointmentId===printInvoiceData.id).map(r=><div key={r.id} className="border-t pt-2"><p className="break-all">{r.receiptNumber||r.id} • {r.kind==='refund'?(isEn?'Refund':'استرداد'):(isEn?'Collection':'تحصيل')} • {r.kind==='refund'?'-':''}{r.amount} {isEn ? 'EGP' : 'ج.م'}</p><p>{r.createdAt?new Date(r.createdAt).toLocaleString(isEn ? 'en-GB' : 'ar-EG',{timeZone:'Africa/Cairo'}):r.collectionDate} • {r.actorName||(isEn?'Legacy record':'سجل قديم')} • {r.actorRole||''}</p></div>)}</div>
             {printInvoiceData.notes && (
               <div className="mt-8 p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs">
-                <span className="font-bold text-slate-700 block mb-1">ملاحظات وسجل الدفعات:</span>
+                <span className="font-bold text-slate-700 block mb-1">{isEn ? 'Notes and payment history:' : 'ملاحظات وسجل الدفعات:'}</span>
                 <p className="whitespace-pre-line text-slate-600 leading-relaxed">{printInvoiceData.notes}</p>
               </div>
             )}
 
             <div className="mt-16 text-center border-t border-slate-200 pt-6 flex justify-between items-center text-xs text-slate-400">
-              <span>توقيع الحسابات / السكرتارية: .........................</span>
-              <span>توقيع طبيب العيادة الشريك: .........................</span>
-              <span>نظام إدارة العيادات السحابي الموحد</span>
+              <span>{isEn ? 'Accounts / Reception signature: .........................' : 'توقيع الحسابات / السكرتارية: .........................'}</span>
+              <span>{isEn ? 'Clinic doctor signature: .........................' : 'توقيع طبيب العيادة الشريك: .........................'}</span>
+              <span>{isEn ? 'Clinic Management System' : 'نظام إدارة العيادات السحابي الموحد'}</span>
             </div>
           </div>
         )}
@@ -1214,35 +1215,36 @@ export default function ClinicFinancials({
 
       {/* Printable Shift Closure Report Modal */}
       <PrintPreviewModal
+        language={isEn ? 'en' : 'ar'}
         isOpen={!!printShiftData}
         onClose={() => setPrintShiftData(null)}
-        title="تقرير إغلاق الوردية الشامل (الشيفت واليومية المالية)"
+        title={isEn ? 'Full Shift Closing Report' : 'تقرير إغلاق الوردية الشامل (الشيفت واليومية المالية)'}
       >
         {printShiftData && (
-          <div className="bg-white text-slate-900 leading-normal text-right text-xs p-1 font-sans" dir="rtl">
+          <div className="bg-white text-slate-900 leading-normal text-start text-xs p-1 font-sans" dir={isEn ? 'ltr' : 'rtl'}>
             
             {/* 1. Header Section */}
             <div className="flex justify-between items-start border-b-2 border-slate-900 pb-2 mb-2.5">
               <div className="space-y-0.5">
-                <h1 className="text-lg font-black text-slate-900">{clinic.nameAr || clinic.name}</h1>
+                <h1 className="text-lg font-black text-slate-900">{(isEn ? clinic.nameEn : clinic.nameAr) || clinic.name}</h1>
                 <p className="text-[10px] text-slate-600 font-bold">
-                  د. {clinic.doctorName || 'طبيب متخصص'} {clinic.doctorSpecialtyAr ? `• ${clinic.doctorSpecialtyAr}` : ''}
+                  {isEn ? 'Dr.' : 'د.'} {(isEn ? clinic.doctorNameEn || clinic.doctorName : clinic.doctorName) || (isEn ? 'Specialist' : 'طبيب متخصص')} {(isEn ? clinic.doctorSpecialtyEn : clinic.doctorSpecialtyAr) ? `• ${isEn ? clinic.doctorSpecialtyEn : clinic.doctorSpecialtyAr}` : ''}
                 </p>
                 {clinic.doctorPhone && (
                   <p className="text-[9px] text-slate-500 font-mono">
-                    هاتف: {clinic.doctorPhone}{clinic.additionalPhones && clinic.additionalPhones.length > 0 ? ` - ${clinic.additionalPhones.filter(Boolean).join(' - ')}` : ''}
+                    {isEn ? 'Phone:' : 'هاتف:'} {clinic.doctorPhone}{clinic.additionalPhones && clinic.additionalPhones.length > 0 ? ` - ${clinic.additionalPhones.filter(Boolean).join(' - ')}` : ''}
                   </p>
                 )}
-                {clinic.address && <p className="text-[9px] text-slate-500">العنوان: {clinic.address}</p>}
+                {clinic.address && <p className="text-[9px] text-slate-500">{isEn ? 'Address:' : 'العنوان:'} {clinic.address}</p>}
               </div>
 
-              <div className="text-left space-y-0.5">
+              <div className="text-end space-y-0.5">
                 <div className="inline-block bg-slate-900 text-white font-black text-[11px] px-2.5 py-0.5 rounded">
-                  تقرير إغلاق ومطابقة الوردية
+                  {isEn ? 'Shift Closing & Reconciliation Report' : 'تقرير إغلاق ومطابقة الوردية'}
                 </div>
-                <p className="text-[10px] text-slate-700 font-bold block mt-1">تاريخ اليومية: <span className="font-mono text-xs">{printShiftData.date}</span></p>
-                <p className="text-[9px] text-slate-500 block">توقيت الإغلاق: {printShiftData.closedAt ? new Date(printShiftData.closedAt).toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit', hour12: true }) : new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', hour12: true })}</p>
-                <p className="text-[9px] text-slate-600 font-bold block">الكاشير / المسؤول: {printShiftData.cashierName || printShiftData.closedBy || 'طاقم العيادة'}</p>
+                <p className="text-[10px] text-slate-700 font-bold block mt-1">{isEn ? 'Business date:' : 'تاريخ اليومية:'} <span className="font-mono text-xs">{printShiftData.date}</span></p>
+                <p className="text-[9px] text-slate-500 block">{isEn ? 'Closed at:' : 'توقيت الإغلاق:'} {printShiftData.closedAt ? new Date(printShiftData.closedAt).toLocaleString(isEn ? 'en-GB' : 'ar-EG', { hour: '2-digit', minute: '2-digit', hour12: true }) : new Date().toLocaleTimeString(isEn ? 'en-GB' : 'ar-EG', { hour: '2-digit', minute: '2-digit', hour12: true })}</p>
+                <p className="text-[9px] text-slate-600 font-bold block">{isEn ? 'Cashier / Operator:' : 'الكاشير / المسؤول:'} {printShiftData.cashierName || printShiftData.closedBy || (isEn ? 'Clinic staff' : 'طاقم العيادة')}</p>
               </div>
             </div>
 
@@ -1285,7 +1287,7 @@ export default function ClinicFinancials({
               <table className="w-full border-collapse border border-slate-300 text-[10px] text-center">
                 <thead>
                   <tr className="bg-slate-100 text-slate-800 font-bold">
-                    <th className="border border-slate-300 p-1 text-right">{isEn ? 'Payment Method' : 'طريقة الدفع'}</th>
+                    <th className="border border-slate-300 p-1 text-start">{isEn ? 'Payment Method' : 'طريقة الدفع'}</th>
                     <th className="border border-slate-300 p-1">{isEn ? 'Total In (Collected)' : 'إجمالي الوارد (المقبوض)'}</th>
                     <th className="border border-slate-300 p-1">{isEn ? 'Total Expenses (Deducted)' : 'إجمالي المصاريف (المخصومة)'}</th>
                     <th className="border border-slate-300 p-1">{isEn ? 'Net Collected' : 'الصافي المحصل'}</th>
@@ -1311,7 +1313,7 @@ export default function ClinicFinancials({
                     ) : method;
                     return (
                       <tr key={idx} data-testid="print-method-row" data-payment-method={method} data-revenue={rev} data-expense={exp} className={method === 'كاش' ? 'bg-amber-50/40 font-bold' : ''}>
-                        <td className="border border-slate-300 p-1 text-right font-bold text-slate-800">
+                        <td className="border border-slate-300 p-1 text-start font-bold text-slate-800">
                           {displayMethod} {method === 'كاش' ? '💵' : method === 'فيزا' ? '💳' : method === 'إنستاباي' ? '⚡' : '📱'}
                         </td>
                         <td className="border border-slate-300 p-1 font-mono text-emerald-700 font-bold">{rev.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
@@ -1323,7 +1325,7 @@ export default function ClinicFinancials({
                 </tbody>
                 <tfoot>
                   <tr className="bg-slate-200/80 font-black text-slate-900 border-t border-slate-400">
-                    <td className="border border-slate-300 p-1 text-right">{isEn ? 'Overall Shift Total' : 'الإجمالي الكلي للوردية'}</td>
+                    <td className="border border-slate-300 p-1 text-start">{isEn ? 'Overall Shift Total' : 'الإجمالي الكلي للوردية'}</td>
                     <td className="border border-slate-300 p-1 font-mono text-emerald-800">{(printShiftData.totalRevenue || printShiftData.expected || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
                     <td className="border border-slate-300 p-1 font-mono text-rose-800">-{((printShiftData.expensesTotal) || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
                     <td className="border border-slate-300 p-1 font-mono text-indigo-900">
@@ -1393,10 +1395,10 @@ export default function ClinicFinancials({
                 <table className="w-full border-collapse border border-slate-300 text-[10px]">
                   <thead>
                     <tr className="bg-rose-50 text-rose-900 font-bold">
-                      <th className="border border-slate-300 p-1 text-right">{isEn ? 'Expense Description' : 'بيان المصروف'}</th>
+                      <th className="border border-slate-300 p-1 text-start">{isEn ? 'Expense Description' : 'بيان المصروف'}</th>
                       <th className="border border-slate-300 p-1 text-center">{isEn ? 'Category' : 'الفئة'}</th>
                       <th className="border border-slate-300 p-1 text-center">{isEn ? 'Deduction Method' : 'طريقة الخصم'}</th>
-                      <th className="border border-slate-300 p-1 text-left">{isEn ? 'Amount' : 'المبلغ'}</th>
+                      <th className="border border-slate-300 p-1 text-end">{isEn ? 'Amount' : 'المبلغ'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1405,7 +1407,7 @@ export default function ClinicFinancials({
                         <td className="border border-slate-300 p-1 font-bold text-slate-800">{exp.title}</td>
                         <td className="border border-slate-300 p-1 text-center text-slate-600">{exp.category || (isEn ? 'General' : 'عام')}</td>
                         <td className="border border-slate-300 p-1 text-center font-bold text-slate-700">{paymentMethodLabel(exp.paymentMethod,isEn)}</td>
-                        <td className="border border-slate-300 p-1 text-left font-mono font-bold text-rose-700">-{exp.amount.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
+                        <td className="border border-slate-300 p-1 text-end font-mono font-bold text-rose-700">-{exp.amount.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1421,13 +1423,13 @@ export default function ClinicFinancials({
               <table className="w-full border-collapse border border-slate-300 text-[10px]">
                 <thead>
                   <tr className="bg-slate-100 text-slate-800 font-bold">
-                    <th className="border border-slate-300 p-1 text-right">{isEn ? 'Time' : 'الوقت'}</th>
-                    <th className="border border-slate-300 p-1 text-right">{isEn ? 'Patient Name' : 'اسم المريض'}</th>
-                    <th className="border border-slate-300 p-1 text-right">{isEn ? 'Treatment / Procedure' : 'نوع العلاج / الإجراء'}</th>
+                    <th className="border border-slate-300 p-1 text-start">{isEn ? 'Time' : 'الوقت'}</th>
+                    <th className="border border-slate-300 p-1 text-start">{isEn ? 'Patient Name' : 'اسم المريض'}</th>
+                    <th className="border border-slate-300 p-1 text-start">{isEn ? 'Treatment / Procedure' : 'نوع العلاج / الإجراء'}</th>
                     <th className="border border-slate-300 p-1 text-center">{isEn ? 'Payment Method' : 'طريقة الدفع'}</th>
-                    <th className="border border-slate-300 p-1 text-left">{isEn ? 'Total Cost' : 'التكلفة الإجمالية'}</th>
-                    <th className="border border-slate-300 p-1 text-left">{isEn ? 'Collected in Shift' : 'المحصل بالوردية'}</th>
-                    <th className="border border-slate-300 p-1 text-left">{isEn ? 'Remaining (Credit)' : 'المتبقي (آجل)'}</th>
+                    <th className="border border-slate-300 p-1 text-end">{isEn ? 'Total Cost' : 'التكلفة الإجمالية'}</th>
+                    <th className="border border-slate-300 p-1 text-end">{isEn ? 'Collected in Shift' : 'المحصل بالوردية'}</th>
+                    <th className="border border-slate-300 p-1 text-end">{isEn ? 'Remaining (Credit)' : 'المتبقي (آجل)'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1444,13 +1446,13 @@ export default function ClinicFinancials({
                     const isUnpaid = (paid || 0) === 0;
                     return (
                       <tr key={item.id || idx} className={isUnpaid ? 'bg-rose-100/80 text-rose-950 font-bold' : ''}>
-                        <td className="border border-slate-300 p-1 font-mono text-slate-600">{formatTimeTo12Hour(timeVal)}</td>
+                        <td className="border border-slate-300 p-1 font-mono text-slate-600">{(isEn ? formatTimeTo12Hour(timeVal).replace(/ص$/, 'AM').replace(/م$/, 'PM') : formatTimeTo12Hour(timeVal))}</td>
                         <td className="border border-slate-300 p-1 font-bold text-slate-800">{app.patientName} {isUnpaid ? (isEn ? '⚠️ (Unpaid)' : '⚠️ (لم يدفع)') : ''}</td>
                         <td className="border border-slate-300 p-1 text-slate-700">{app.treatmentType || (isEn ? 'Dental Treatment' : 'علاج أسنان')}{item.notes ? ` (${item.notes})` : ''}</td>
-                        <td className="border border-slate-300 p-1 text-center font-bold text-slate-700">{formatPaymentMethod(method)}</td>
-                        <td className="border border-slate-300 p-1 text-left font-mono text-slate-700">{(app.price || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
-                        <td className={`border border-slate-300 p-1 text-left font-mono font-bold ${isUnpaid ? 'text-rose-700' : 'text-emerald-700'}`}>{(paid || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
-                        <td className="border border-slate-300 p-1 text-left font-mono font-bold text-amber-700">{(remaining || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
+                        <td className="border border-slate-300 p-1 text-center font-bold text-slate-700">{paymentMethodLabel(formatPaymentMethod(method),isEn)}</td>
+                        <td className="border border-slate-300 p-1 text-end font-mono text-slate-700">{(app.price || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
+                        <td className={`border border-slate-300 p-1 text-end font-mono font-bold ${isUnpaid ? 'text-rose-700' : 'text-emerald-700'}`}>{(paid || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
+                        <td className="border border-slate-300 p-1 text-end font-mono font-bold text-amber-700">{(remaining || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</td>
                       </tr>
                     );
                   })}
@@ -1468,9 +1470,9 @@ export default function ClinicFinancials({
 
             {/* 8. Official Signatures Footer */}
             <div className="mt-3 pt-2 border-t border-slate-300 flex justify-between items-center text-[9px] text-slate-500 font-bold">
-              <span>توقيع مسؤول الكاشير / السكرتارية: .........................</span>
-              <span>توقيع طبيب / مدير العيادة: .........................</span>
-              <span>طبع بتاريخ: {new Date().toLocaleString('ar-EG')}</span>
+              <span>{isEn ? 'Cashier / Reception signature: .........................' : 'توقيع مسؤول الكاشير / السكرتارية: .........................'}</span>
+              <span>{isEn ? 'Doctor / Clinic manager signature: .........................' : 'توقيع طبيب / مدير العيادة: .........................'}</span>
+              <span>{isEn ? 'Printed:' : 'طبع بتاريخ:'} {new Date().toLocaleString(isEn ? 'en-GB' : 'ar-EG')}</span>
             </div>
           </div>
         )}
@@ -2262,17 +2264,17 @@ export default function ClinicFinancials({
 
               {/* Detailed Historical Shift Modal */}
               {selectedHistoryShift && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex justify-center items-center p-4 z-50 animate-fade-in" dir="rtl">
-                  <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto relative text-right">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex justify-center items-center p-4 z-50 animate-fade-in" dir={isEn ? 'ltr' : 'rtl'}>
+                  <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto relative text-start">
                     
                     {/* Header */}
                     <div className="flex justify-between items-start border-b border-slate-100 pb-3">
                       <div>
                         <h3 className="text-sm font-black text-slate-900 flex items-center gap-1.5">
-                          <span>📊</span> تقرير الإغلاق المالي التفصيلي
+                          <span>📊</span> {isEn ? 'Detailed Financial Closing Report' : 'تقرير الإغلاق المالي التفصيلي'}
                         </h3>
                         <p className="text-[11px] text-slate-400 mt-0.5">
-                          ليوم العمل التشغيلي: <span className="font-bold text-slate-600 font-mono">{selectedHistoryShift.date}</span>
+                          {isEn ? 'Business date:' : 'ليوم العمل التشغيلي:'} <span className="font-bold text-slate-600 font-mono">{selectedHistoryShift.date}</span>
                         </p>
                       </div>
                       <button
@@ -2285,15 +2287,15 @@ export default function ClinicFinancials({
                     </div>
 
                     {/* Stats Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 text-right">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 text-start">
                       <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                        <span className="text-[10px] text-slate-400 font-bold block">مغلق بواسطة:</span>
+                        <span className="text-[10px] text-slate-400 font-bold block">{isEn ? 'Closed by:' : 'مغلق بواسطة:'}</span>
                         <span className="text-xs font-bold text-slate-800 mt-1 block">{selectedHistoryShift.closedBy}</span>
                       </div>
                       <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                        <span className="text-[10px] text-slate-400 font-bold block">توقيت الإغلاق:</span>
+                        <span className="text-[10px] text-slate-400 font-bold block">{isEn ? 'Closed at:' : 'توقيت الإغلاق:'}</span>
                         <span className="text-[11px] font-bold text-slate-700 mt-1 block font-mono" dir="ltr">
-                          {new Date(selectedHistoryShift.closedAt).toLocaleString('ar-EG', {
+                          {new Date(selectedHistoryShift.closedAt).toLocaleString(isEn ? 'en-GB' : 'ar-EG', {
                             year: 'numeric',
                             month: 'numeric',
                             day: 'numeric',
@@ -2304,39 +2306,39 @@ export default function ClinicFinancials({
                         </span>
                       </div>
                       <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 col-span-2 sm:col-span-1">
-                        <span className="text-[10px] text-slate-400 font-bold block">المواعيد المكتملة:</span>
-                        <span className="text-xs font-bold text-slate-800 mt-1 block font-mono">{selectedHistoryShift.completedCount} موعد</span>
+                        <span className="text-[10px] text-slate-400 font-bold block">{isEn ? 'Completed appointments:' : 'المواعيد المكتملة:'}</span>
+                        <span className="text-xs font-bold text-slate-800 mt-1 block font-mono">{selectedHistoryShift.completedCount} {isEn ? 'appointments' : 'موعد'}</span>
                       </div>
                     </div>
 
                     {/* Cash Drawer Reconciliation Section */}
-                    <div className="bg-indigo-50/30 border border-indigo-100/80 p-4 rounded-2xl space-y-2.5 text-right">
+                    <div className="bg-indigo-50/30 border border-indigo-100/80 p-4 rounded-2xl space-y-2.5 text-start">
                       <h4 className="text-xs font-extrabold text-indigo-950 border-b border-indigo-100/50 pb-1.5 flex items-center gap-1">
-                        <span>💵</span> مطابقة الخزينة والنقد الفعلي (Cash Drawer)
+                        <span>💵</span> {isEn ? 'Cash Drawer Reconciliation' : 'مطابقة الخزينة والنقد الفعلي (Cash Drawer)'}
                       </h4>
                       <div className="space-y-1.5 text-xs">
                         <div className="flex justify-between">
-                          <span className="text-slate-500">عهدة افتتاح البداية (Start Cash):</span>
-                          <span className="font-bold font-mono text-slate-700">{(selectedHistoryShift.startCash || 0).toLocaleString()} ج.م</span>
+                          <span className="text-slate-500">{isEn ? 'Opening float:' : 'عهدة افتتاح البداية (Start Cash):'}</span>
+                          <span className="font-bold font-mono text-slate-700">{(selectedHistoryShift.startCash || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-500">كاش المقبوضات الجديد (Cash Revenue):</span>
-                          <span className="font-bold font-mono text-slate-700">{(selectedHistoryShift.cashRevenue || 0).toLocaleString()} ج.م</span>
+                          <span className="text-slate-500">{isEn ? 'Cash receipts:' : 'كاش المقبوضات الجديد (Cash Revenue):'}</span>
+                          <span className="font-bold font-mono text-slate-700">{(selectedHistoryShift.cashRevenue || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
                         </div>
                         <div className="flex justify-between text-rose-600">
                           <span>{isEn ? 'Cash expenses only:' : 'مصاريف الكاش فقط:'}</span>
-                          <span className="font-bold font-mono">-{((selectedHistoryShift.cashExpenses !== undefined ? selectedHistoryShift.cashExpenses : 0) || 0).toLocaleString()} ج.م</span>
+                          <span className="font-bold font-mono">-{((selectedHistoryShift.cashExpenses !== undefined ? selectedHistoryShift.cashExpenses : 0) || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
                         </div>
                         <div className="flex justify-between border-t border-indigo-100/50 pt-2 font-bold">
-                          <span className="text-indigo-900">الكاش المتوقع بالدرج (Expected):</span>
-                          <span className="font-mono text-indigo-950">{(selectedHistoryShift.expectedCash || 0).toLocaleString()} ج.م</span>
+                          <span className="text-indigo-900">{isEn ? 'Expected drawer cash:' : 'الكاش المتوقع بالدرج (Expected):'}</span>
+                          <span className="font-mono text-indigo-950">{(selectedHistoryShift.expectedCash || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
                         </div>
                         <div className="flex justify-between font-bold">
-                          <span className="text-slate-800">الكاش الفعلي المسجل (Actual):</span>
-                          <span className="font-mono text-slate-900 font-extrabold text-sm">{(selectedHistoryShift.actualCash || 0).toLocaleString()} ج.م</span>
+                          <span className="text-slate-800">{isEn ? 'Actual drawer cash:' : 'الكاش الفعلي المسجل (Actual):'}</span>
+                          <span className="font-mono text-slate-900 font-extrabold text-sm">{(selectedHistoryShift.actualCash || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
                         </div>
                         <div className="flex justify-between border-t border-dashed border-indigo-150 pt-2 font-black">
-                          <span className="text-slate-600">فارق العجز أو الزيادة:</span>
+                          <span className="text-slate-600">{isEn ? 'Surplus / Deficit:' : 'فارق العجز أو الزيادة:'}</span>
                           <span className={`font-mono text-sm flex items-center gap-1 ${
                             (selectedHistoryShift.discrepancy || 0) === 0 
                               ? 'text-emerald-600' 
@@ -2345,9 +2347,9 @@ export default function ClinicFinancials({
                                 : 'text-indigo-600'
                           }`}>
                             {(selectedHistoryShift.discrepancy || 0) === 0 ? (
-                              'متطابق تماماً (0)'
+                              (isEn ? 'Exact match (0)' : 'متطابق تماماً (0)')
                             ) : (
-                              `${(selectedHistoryShift.discrepancy || 0) > 0 ? 'زيادة بقيمة: +' : 'عجز بقيمة: '}${(selectedHistoryShift.discrepancy || 0).toLocaleString()} ج.م`
+                              `${(selectedHistoryShift.discrepancy || 0) > 0 ? (isEn ? 'Surplus: +' : 'زيادة بقيمة: +') : (isEn ? 'Deficit: ' : 'عجز بقيمة: ')}${(selectedHistoryShift.discrepancy || 0).toLocaleString()} ${isEn ? 'EGP' : 'ج.م'}`
                             )}
                           </span>
                         </div>
@@ -2355,7 +2357,7 @@ export default function ClinicFinancials({
                     </div>
 
                     {/* Electronic Income & Installments Breakdown */}
-                    <div className="bg-slate-50 border border-slate-150 p-4 rounded-2xl space-y-2.5 text-right">
+                    <div className="bg-slate-50 border border-slate-150 p-4 rounded-2xl space-y-2.5 text-start">
                       <h4 className="text-xs font-bold text-slate-800 border-b border-slate-200/60 pb-1.5 flex items-center gap-1">
                         <span>💳</span> {isEn ? 'Payment channels and remaining installments' : 'طرق الدفع والأقساط المتبقية'}
                       </h4>
@@ -2366,27 +2368,27 @@ export default function ClinicFinancials({
                           return <div key={method} data-testid="history-method-row" data-payment-method={method} className="flex justify-between gap-2"><span className="text-slate-500">{paymentMethodLabel(method,isEn)}</span><span className="font-bold font-mono text-slate-800">{revenue.toLocaleString()} / -{expense.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span></div>;
                         })}
                         <div className="flex justify-between bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200/60 font-bold text-amber-900">
-                          <span>الأقساط والمتبقي بالذمة لهذا اليوم:</span>
+                          <span>{isEn ? 'Outstanding installments for this day:' : 'الأقساط والمتبقي بالذمة لهذا اليوم:'}</span>
                           <span className="font-mono text-amber-700">
                             {(
                               selectedHistoryShift.remainingRevenue !== undefined
                                 ? selectedHistoryShift.remainingRevenue
                                 : appointments.filter(a => isAppointmentInShift(a, selectedHistoryShift) && a.status === 'completed').reduce((sum, app) => sum + (app.remainingAmount !== undefined ? app.remainingAmount : 0), 0)
-                            ).toLocaleString()} ج.م
+                            ).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}
                           </span>
                         </div>
-                        <div className="flex justify-between border-r-2 border-emerald-500 pr-2 font-bold col-span-2 mt-1">
-                          <span className="text-emerald-700">إجمالي الإيرادات الكلي المحصل (دون خصم أي مصروفات):</span>
-                          <span className="font-mono text-emerald-800">{(selectedHistoryShift.totalRevenue || 0).toLocaleString()} ج.م</span>
+                        <div className="flex justify-between border-s-2 border-emerald-500 ps-2 font-bold col-span-2 mt-1">
+                          <span className="text-emerald-700">{isEn ? 'Total collections (before expenses):' : 'إجمالي الإيرادات الكلي المحصل (دون خصم أي مصروفات):'}</span>
+                          <span className="font-mono text-emerald-800">{(selectedHistoryShift.totalRevenue || 0).toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Written Log / Notes */}
-                    <div className="space-y-1 text-right">
-                      <span className="text-[10px] text-slate-400 font-bold block">مذكرة اليومية وملاحظات التدقيق المكتوبة:</span>
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-[11px] leading-relaxed text-slate-600 font-medium whitespace-pre-wrap max-h-48 overflow-y-auto font-mono text-right" dir="rtl">
-                        {selectedHistoryShift.notes || 'لم يتم تدوين أي ملاحظات إضافية لهذه الوردية.'}
+                    <div className="space-y-1 text-start">
+                      <span className="text-[10px] text-slate-400 font-bold block">{isEn ? 'Shift notes and audit log:' : 'مذكرة اليومية وملاحظات التدقيق المكتوبة:'}</span>
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 text-[11px] leading-relaxed text-slate-600 font-medium whitespace-pre-wrap max-h-48 overflow-y-auto font-mono text-start" dir={isEn ? 'ltr' : 'rtl'}>
+                        {selectedHistoryShift.notes || (isEn ? 'No additional notes for this shift.' : 'لم يتم تدوين أي ملاحظات إضافية لهذه الوردية.')}
                       </div>
                     </div>
 
@@ -2400,14 +2402,14 @@ export default function ClinicFinancials({
                         className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition text-xs cursor-pointer text-center flex items-center justify-center gap-1.5 shadow-sm"
                       >
                         <Printer className="h-4 w-4" />
-                        <span>طباعة تقرير الوردية الشامل</span>
+                        <span>{isEn ? 'Print Full Shift Report' : 'طباعة تقرير الوردية الشامل'}</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setSelectedHistoryShift(null)}
                         className="py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition text-xs cursor-pointer text-center"
                       >
-                        إغلاق
+                        {isEn ? 'Close' : 'إغلاق'}
                       </button>
                     </div>
                   </div>
