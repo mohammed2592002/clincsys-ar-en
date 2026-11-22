@@ -41,6 +41,10 @@ const files = [
   { path: `${pub}/clinics/${clinicA.id}/xrays/aaa-f2.png`, mimeType: "image/png", data: "", clinicId: clinicA.id },
   // Owned by clinic A, but the stub is told to fail its first deletion attempt.
   { path: `${pub}/clinics/${clinicA.id}/xrays/aaa-fail-me.png`, mimeType: "image/png", data: "", clinicId: clinicA.id },
+  // Phantom row: well-formed and owned by clinic A, but the object does not
+  // exist in the bucket. A bare DeleteObject would 204 on it and fake success;
+  // the endpoint must report it honestly instead.
+  { path: `${pub}/clinics/${clinicA.id}/xrays/aaa-ghost.png`, mimeType: "image/png", data: "", clinicId: clinicA.id },
   // Tampered row: registered under clinic A but the key lives under clinic B's
   // prefix. Ownership must be rejected and this object must never be deleted.
   { path: `${pub}/clinics/${clinicB.id}/xrays/bbb-stolen.png`, mimeType: "image/png", data: "", clinicId: clinicA.id },

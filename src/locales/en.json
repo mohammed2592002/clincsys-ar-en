@@ -439,6 +439,7 @@
       "none": "This clinic has no files stored in cloud storage (R2).",
       "success": "Permanently deleted {{count}} files from cloud storage (R2).",
       "partial": "Deleted {{deleted}} of {{total}} files. {{failed}} files could not be deleted, please try again later.",
+      "missing": "Deleted {{deleted}} files. {{missing}} files registered for this clinic were not found in the cloud bucket - they may have been deleted earlier, or the server's storage settings do not point at the bucket they were uploaded to.",
       "error": "Failed to delete clinic images from cloud storage: {{message}}",
       "alertTitle": "Notice"
     }

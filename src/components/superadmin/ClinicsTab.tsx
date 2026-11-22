@@ -336,9 +336,15 @@ export default function ClinicsTab({
       });
       const result = await deleteRes.json().catch(() => ({}));
       if (!deleteRes.ok) throw new Error(result?.message || result?.error || 'delete_failed');
+      const missingCount = Number(result.missing || 0);
       if (result.failed > 0) {
         await dialogs.alert(
           t('superadmin.r2Cleanup.partial', { deleted: result.deleted, total: (result.deleted || 0) + (result.failed || 0), failed: result.failed }),
+          { severity: 'warning', title: t('superadmin.r2Cleanup.alertTitle') }
+        );
+      } else if (missingCount > 0) {
+        await dialogs.alert(
+          t('superadmin.r2Cleanup.missing', { deleted: result.deleted || 0, missing: missingCount }),
           { severity: 'warning', title: t('superadmin.r2Cleanup.alertTitle') }
         );
       } else {

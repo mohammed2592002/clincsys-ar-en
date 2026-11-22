@@ -13,7 +13,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import pg from 'pg';
 import compression from 'compression';
 import helmet from 'helmet';
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createLoginLockout, createRateLimiter, getClientIp, isApiWrite, apiUserKey, parseLockDurationsEnv } from './loginProtection';
 const { Pool } = pg;
@@ -4208,15 +4208,22 @@ app.post('/api/broadcasts', async (req, res) => {
 // and matches the standard key shape. The bucket is never listed by prefix, and
 // nothing outside those verified keys is touched. files table rows are kept on
 // purpose: this clears R2 storage only, database records are not modified.
-async function listClinicR2ObjectKeys(clinicId: string): Promise<{ keys: string[]; rejected: string[] }> {
+async function listClinicR2ObjectKeys(clinicId: string): Promise<{ keys: string[]; rejected: string[]; foreign: number }> {
   const { publicUrlBase } = getR2ClientConfig();
   const prefix = `${publicUrlBase}/`;
   const result = await dbClient.execute({ sql: 'SELECT path FROM files WHERE clinicId = ?', args: [clinicId] });
   const keys: string[] = [];
   const rejected: string[] = [];
+  let foreign = 0;
   for (const row of result.rows) {
     const storedPath = String(row.path || '');
-    if (!storedPath.startsWith(prefix)) continue; // local-disk fallback files are not R2 objects
+    if (!storedPath.startsWith(prefix)) {
+      // Local-disk fallback files and rows written under a different storage
+      // base URL are not deletable R2 objects of this bucket; count them so the
+      // count endpoint can report them instead of hiding the mismatch.
+      foreign++;
+      continue;
+    }
     const key = storedPath.slice(prefix.length);
     if (!R2_KEY_PATTERN.test(key) || !key.startsWith(`clinics/${clinicId}/`)) {
       rejected.push(key || storedPath);
@@ -4224,7 +4231,7 @@ async function listClinicR2ObjectKeys(clinicId: string): Promise<{ keys: string[
     }
     keys.push(key);
   }
-  return { keys, rejected };
+  return { keys, rejected, foreign };
 }
 
 function readSuperAdminClinicIdParam(req: express.Request): string | null {
@@ -4242,8 +4249,8 @@ app.get('/api/superadmin/clinics/:clinicId/r2-files', async (req, res) => {
   if (!clinicId) return res.status(400).json({ error: 'invalid_clinic' });
   if (!(await getExistingClinicData(clinicId))) return res.status(404).json({ error: 'clinic_not_found' });
   try {
-    const { keys, rejected } = await listClinicR2ObjectKeys(clinicId);
-    return res.json({ clinicId, count: keys.length, skipped: rejected.length });
+    const { keys, rejected, foreign } = await listClinicR2ObjectKeys(clinicId);
+    return res.json({ clinicId, count: keys.length, skipped: rejected.length + foreign });
   } catch (error: any) {
     console.error('[R2 Cleanup] Failed to count clinic files:', error);
     return res.status(500).json({ error: 'r2_files_count_failed' });
@@ -4266,18 +4273,44 @@ app.post('/api/superadmin/clinics/:clinicId/r2-files/delete', async (req, res) =
   try {
     const { keys, rejected } = await listClinicR2ObjectKeys(clinicId);
     let deleted = 0;
+    const missing: string[] = [];
     const failures: Array<{ key: string; error: string }> = rejected.map((key) => ({ key, error: 'ownership_unverified' }));
     for (const key of keys) {
       try {
+        // S3/R2 DeleteObject returns success even when the key does not exist,
+        // so a delete alone can fake success on a key/bucket mismatch. Verify
+        // against the S3 API (authoritative, not the cached public URL): the
+        // object must exist before, and must be gone after.
+        await client.send(new HeadObjectCommand({ Bucket: bucketName, Key: key }));
+      } catch (error: any) {
+        const status = error?.$metadata?.httpStatusCode;
+        if (status === 403) {
+          failures.push({ key, error: 'head_forbidden' });
+        } else {
+          // Absent from the configured bucket: already deleted, or this server
+          // points at a different bucket/endpoint than the uploads used.
+          missing.push(key);
+        }
+        continue;
+      }
+      try {
         await client.send(new DeleteObjectCommand({ Bucket: bucketName, Key: key }));
-        deleted++;
       } catch (error: any) {
         failures.push({ key, error: error?.message || String(error) });
+        continue;
+      }
+      try {
+        await client.send(new HeadObjectCommand({ Bucket: bucketName, Key: key }));
+        failures.push({ key, error: 'still_exists_after_delete' });
+        continue;
+      } catch {
+        // HeadObject throwing means the object is really gone.
+        deleted++;
       }
     }
     const failed = failures.length;
-    console.log(`[R2 Cleanup] clinic=${clinicId} requested=${keys.length + rejected.length} deleted=${deleted} failed=${failed}`);
-    return res.json({ success: failed === 0, clinicId, deleted, failed, failures: failures.slice(0, 10) });
+    console.log(`[R2 Cleanup] clinic=${clinicId} requested=${keys.length + rejected.length} deleted=${deleted} missing=${missing.length} failed=${failed}`);
+    return res.json({ success: failed === 0 && missing.length === 0, clinicId, deleted, missing: missing.length, failed, failures: failures.slice(0, 10), missingKeys: missing.slice(0, 10) });
   } catch (error: any) {
     console.error('[R2 Cleanup] Failed to delete clinic files:', error);
     return res.status(500).json({ error: 'r2_files_delete_failed', message: error?.message || 'Error deleting clinic files from R2' });
