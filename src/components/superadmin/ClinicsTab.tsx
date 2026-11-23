@@ -365,9 +365,11 @@ export default function ClinicsTab({
     if (!confirmed) return;
 
     try {
-      await deleteDoc(doc(db, 'clinics', clinic.id));
+      // Wait for the server delete before refreshing: a refresh that overtakes the
+      // delete re-reads the clinic and leaves a stale row until the next page load.
+      await deleteDoc(doc(db, 'clinics', clinic.id), { waitForServer: true });
       dialogs.alert('تم حذف العيادة نهائياً من المنظومة.', { severity: 'success' });
-      onRefreshClinics();
+      await onRefreshClinics();
     } catch (err: any) {
       dialogs.alert('فشل حذف العيادة: ' + err.toString(), { severity: 'error' });
     }

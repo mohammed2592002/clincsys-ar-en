@@ -910,7 +910,7 @@ export async function updateDoc(docRef: MockDocumentReference, data: any): Promi
   return { id };
 }
 
-export async function deleteDoc(docRef: MockDocumentReference): Promise<any> {
+export async function deleteDoc(docRef: MockDocumentReference, options?: { waitForServer?: boolean }): Promise<any> {
   clearQueryCache();
   const path = docRef.path;
   const id = docRef.id;
@@ -920,8 +920,9 @@ export async function deleteDoc(docRef: MockDocumentReference): Promise<any> {
   await removeLocalDoc(path, id);
   notifyLocalSync(collectionPath, 'delete', id);
 
-  // Asynchronously push to server without blocking UI
-  (async () => {
+  // Push to the server in the background; callers that must read the collection
+  // right after deleting pass waitForServer so their refresh cannot overtake the delete.
+  const serverPush = (async () => {
     try {
       const res = await fetchWithRetry('/api/db', {
         method: 'POST',
@@ -936,6 +937,9 @@ export async function deleteDoc(docRef: MockDocumentReference): Promise<any> {
       await addToSyncQueue({ action: 'deleteDoc', path: collectionPath, docId: id });
     }
   })();
+  if (options?.waitForServer) {
+    await serverPush;
+  }
 }
 
 let isSyncing = false;
