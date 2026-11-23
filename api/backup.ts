@@ -26,6 +26,36 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
             await db.execute({ sql: `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, args: vals });
         return full;
     }
+    // Batched reads/writes for restore on PostgreSQL; the local JSON emulator keeps
+    // the per-row put()/one() path because it only parses single-row statements.
+    async function readMany(table: string, ids: string[]) {
+        const found = new Map<string, any>();
+        for (let i = 0; i < ids.length; i += 500) {
+            const chunk = ids.slice(i, i + 500);
+            if (!chunk.length) continue;
+            const rows = (await db.execute({ sql: `SELECT * FROM ${table} WHERE id IN (${chunk.map(() => '?').join(',')})`, args: chunk })).rows;
+            for (const row of rows) found.set(String(row.id), unpack(row));
+        }
+        return found;
+    }
+    async function putMany(table: string, rows: any[], cid: string) {
+        // Same merge and column mapping as put(), grouped by column signature
+        // (patientId is only mapped for rows that have one) into multi-row upserts.
+        const groups = new Map<string, { cols: string[], vals: any[][] }>();
+        for (const row of rows) {
+            const { cols, vals } = mapColumns(table, row.id, row, cid, row.patientId, row.createdAt || new Date().toISOString());
+            const key = cols.join(',');
+            if (!groups.has(key)) groups.set(key, { cols, vals: [] });
+            groups.get(key)!.vals.push(vals);
+        }
+        for (const { cols, vals } of groups.values()) {
+            const updates = cols.filter(c => c !== 'id').map(c => `${c} = EXCLUDED.${c}`).join(', ');
+            for (let i = 0; i < vals.length; i += 500) {
+                const chunk = vals.slice(i, i + 500);
+                await db.execute({ sql: `INSERT INTO ${table} (${cols.join(', ')}) VALUES ${chunk.map(v => `(${v.map(() => '?').join(',')})`).join(', ')} ON CONFLICT (id) DO UPDATE SET ${updates}`, args: chunk.flat() });
+            }
+        }
+    }
     async function readFinance(cid: string) { return finance.exportState(cid); }
     // Single-clinic export with the exact legacy JSON shape, serialized from
     // keyset-batched reads so one backup never materializes the whole clinic.
@@ -225,12 +255,17 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
             // Preflight financial conflicts before writing. Restore is merge-only and
             // never rewinds already-recorded money or reopens an immutable closed shift.
             const protectedFields: any = { patients: ['loyaltyPoints'], appointments: ['paidAmount', 'payments', 'price', 'remainingAmount', 'discount'], expenses: ['amount', 'paymentMethod', 'shiftId', 'deletedAt'], lab_orders: ['paidAmount', 'paymentMethod', 'cost', 'status'], shifts: ['status', 'snapshot', 'startCash', 'expectedCash', 'actualCash', 'totalRevenue', 'cashRevenue', 'cardRevenue', 'instapayRevenue', 'walletRevenue', 'expensesTotal', 'cashExpenses', 'remainingRevenue', 'discrepancy', 'closedAt', 'closedBy', 'openedAt'], billing: ['paidAmount', 'remainingAmount', 'totalAmount'], closings: ['snapshot', 'totalIncome', 'totalExpenses'] };
+            const batched = !!db.getIsPostgres?.();
+            const existingByTable = new Map<string, Map<string, any>>();
+            if (batched)
+                for (const table of TABLES)
+                    existingByTable.set(table, await readMany(table, parsed.tables[table].map((row: any) => String(row.id))));
             for (const table of TABLES)
                 for (const row of parsed.tables[table]) {
                     const declaredClinic = row.clinicId ?? row.clinicid ?? row.clinic_id;
                     if (declaredClinic !== undefined && declaredClinic !== null && declaredClinic !== '' && String(declaredClinic) !== cid)
                         err('Backup record belongs to another clinic / السجل يخص عيادة أخرى', 403);
-                    const old = await one(table, row.id);
+                    const old = batched ? existingByTable.get(table)!.get(String(row.id)) : await one(table, row.id);
                     if (old && String(old.clinicId || old.clinicid) !== cid)
                         err('Backup record belongs to another clinic / السجل يخص عيادة أخرى', 403);
                     if (old)
@@ -241,19 +276,32 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
                         if (row[key] !== undefined && (!Number.isFinite(Number(row[key])) || Number(row[key]) < 0))
                             err('Invalid backup amount / مبلغ غير صالح');
                 }
+            const refRows = new Map<string, Map<string, any>>();
+            if (batched) {
+                const refIds = new Map<string, Set<string>>();
+                for (const request of Object.values(state.requests || {}) as any[]) {
+                    const ref = request?.recordRef;
+                    if (!ref || ref.table === 'clinics') continue;
+                    if (!refIds.has(ref.table)) refIds.set(ref.table, new Set());
+                    refIds.get(ref.table)!.add(String(ref.id));
+                }
+                for (const [table, ids] of refIds) refRows.set(table, await readMany(table, [...ids]));
+            }
             for (const request of Object.values(state.requests || {}) as any[]) {
                 const ref = request?.recordRef;
                 if (!ref) continue;
                 if (ref.table === 'clinics' && ref.id !== cid) err('Financial reference belongs to another clinic / مرجع مالي لعيادة أخرى', 403);
                 if (ref.table !== 'clinics') {
-                    const record = await one(ref.table, ref.id);
+                    const record = batched ? refRows.get(ref.table)?.get(String(ref.id)) : await one(ref.table, ref.id);
                     if (record && String(record.clinicId || record.clinicid) !== cid) err('Financial reference belongs to another clinic / مرجع مالي لعيادة أخرى', 403);
                 }
             }
             const incomingApps = new Set(parsed.tables.appointments.map((a: any) => a.id));
+            const missingAppIds: string[] = [...new Set<string>((state.receipts || []).filter((r: any) => r.appointmentId && !incomingApps.has(r.appointmentId)).map((r: any) => String(r.appointmentId)))];
+            const appRows = batched ? await readMany('appointments', missingAppIds) : null;
             for (const receipt of state.receipts || [])
                 if (receipt.appointmentId && !incomingApps.has(receipt.appointmentId)) {
-                    const app = await one('appointments', receipt.appointmentId);
+                    const app = batched ? appRows!.get(String(receipt.appointmentId)) : await one('appointments', receipt.appointmentId);
                     if (!app || String(app.clinicId || app.clinicid) !== cid)
                         err('Receipt appointment missing / موعد الإيصال غير موجود');
                 }
@@ -261,6 +309,7 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
             const counts: any = {};
             for (const table of TABLES) {
                 counts[table] = 0;
+                const prepared: any[] = [];
                 for (const raw of parsed.tables[table]) {
                     const row = { ...raw };
                     delete row.data;
@@ -269,9 +318,17 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
                         delete row.teeth;
                         delete row.xrays;
                     }
-                    await put(table, row.id, { ...row, clinicId: cid }, cid);
+                    if (!batched) {
+                        await put(table, row.id, { ...row, clinicId: cid }, cid);
+                    } else {
+                        const old = existingByTable.get(table)!.get(String(row.id));
+                        const full = { ...(old || {}), ...row, id: row.id, clinicId: cid };
+                        delete full.data;
+                        prepared.push(full);
+                    }
                     counts[table]++;
                 }
+                if (batched && prepared.length) await putMany(table, prepared, cid);
             }
             await finance.importState(cid,state);
             return { success: true, counts, clinicInfo: sanitizeClinic(info), credentialNotice, warnings: [...(parsed.state ? [] : ['Legacy backup has no financial event/request history. Existing history was kept; missing history cannot be recovered. / النسخة القديمة لا تحتوي على تاريخ الأحداث والطلبات المالية. تم الاحتفاظ بالتاريخ الحالي، ولا يمكن استعادة ما لم يكن محفوظا.']), ...(parsed.credentialVersion ? [] : ['Legacy backup has no guaranteed login hashes. Current logins were kept; missing passwords cannot be recovered from this file. / النسخة القديمة لا تضمن حفظ هاشات الدخول. تم الاحتفاظ بالحسابات الحالية، ولا يمكن استرجاع كلمات مرور غير محفوظة بالملف.'])] };
