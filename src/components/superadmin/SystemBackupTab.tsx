@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import React, { useState, useEffect, useRef } from 'react';
 import { Clinic } from '../../types';
 import { useDialogs } from '../DialogContext';
-import { downloadSystemBackupGz } from '../../utils/backupService';
+import { downloadSystemBackupGz, getSavedSystemBackup, clearSavedSystemBackup, fetchSystemBackupStatus, startNativeSystemBackupDownload, SystemBackupProgress, SavedSystemBackup } from '../../utils/backupService';
 import {
   Database,
   Download,
@@ -113,6 +113,15 @@ export default function SystemBackupTab({ onRefreshClinics }: SystemBackupTabPro
   // Export state
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupStatusText, setBackupStatusText] = useState('');
+  const [exportProgress, setExportProgress] = useState<SystemBackupProgress | null>(null);
+  const [readyBackup, setReadyBackup] = useState<SavedSystemBackup | null>(null);
+  const [, setClockTick] = useState(0);
+  const exportRunning = useRef(false);
+  const numLocale = i18n.language?.startsWith('ar') ? 'ar-EG' : 'en-US';
+  const fmtNum = (n: number | string) => String(n).replace(/\d/g, d => new Intl.NumberFormat(numLocale, { useGrouping: false }).format(Number(d)));
+  const fmtMb = (bytes: number) => t('superadmin.unifiedBackup.progressMb', { n: fmtNum((bytes / 1048576).toFixed(1)) });
+  const fmtClock = (ms: number) => { const sec = Math.max(0, Math.floor(ms / 1000)); return '\u200E' + Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + '\u200E'; };
+  const stageLabel = (p: SystemBackupProgress) => p.phase === 'starting' ? t('superadmin.unifiedBackup.stageDownload') : (p.stage === 'clinic' || p.stage === 'table') ? t('superadmin.unifiedBackup.stageClinic') : t('superadmin.unifiedBackup.stageStarting');
   const [lastFullBackup, setLastFullBackup] = useState<{ date: string; size: number } | null>(() => {
     try { return JSON.parse(localStorage.getItem('auto_backup_admin_last_full') || 'null'); } catch { return null; }
   });
@@ -144,12 +153,17 @@ export default function SystemBackupTab({ onRefreshClinics }: SystemBackupTabPro
     dialogs.alert(next ? t('superadmin.unifiedBackup.autoOnAlert') : t('superadmin.unifiedBackup.autoOffAlert'), { severity: 'success' });
   };
 
-  // Single full-system download, unified .json.gz format
-  const handleFullSystemBackup = async () => {
+  // Single full-system download, unified .json.gz format. The server prepares the
+  // file once (live progress below), then the browser downloads it natively.
+  const runSystemExport = async (resume?: SavedSystemBackup) => {
+    if (exportRunning.current) return;
+    exportRunning.current = true;
+    setReadyBackup(null);
     setBackupLoading(true);
     setBackupStatusText(t('superadmin.unifiedBackup.preparingDownload'));
+    setExportProgress({ phase: 'preparing', state: 'pending', bytes: 0, stage: '', elapsedMs: resume ? Date.now() - resume.startedAt : 0 });
     try {
-      const { fileName, size } = await downloadSystemBackupGz();
+      const { fileName, size } = await downloadSystemBackupGz(setExportProgress, resume);
       const record = { date: new Date().toISOString(), size };
       localStorage.setItem('auto_backup_admin_last_full', JSON.stringify(record));
       localStorage.setItem('auto_backup_admin_last_date', record.date.split('T')[0]);
@@ -158,12 +172,42 @@ export default function SystemBackupTab({ onRefreshClinics }: SystemBackupTabPro
       dialogs.alert(t('superadmin.unifiedBackup.exportSuccess', { name: fileName, size: fmtSize(size) }), { severity: 'success' });
     } catch (err: any) {
       console.error('Super Admin Backup Error:', err);
+      const saved = getSavedSystemBackup();
+      if (saved) setReadyBackup(saved);
       dialogs.alert(t('superadmin.unifiedBackup.exportError') + ' ' + (err.message || err.toString()), { severity: 'error' });
     } finally {
+      exportRunning.current = false;
       setBackupLoading(false);
       setBackupStatusText('');
+      setExportProgress(null);
     }
   };
+  const handleFullSystemBackup = () => runSystemExport();
+
+  // Re-attach after a reload, a screen lock that killed the page, or another tab:
+  // follow an export that is still preparing, or offer the file that is ready.
+  useEffect(() => {
+    const saved = getSavedSystemBackup();
+    if (!saved || exportRunning.current) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const job = await fetchSystemBackupStatus(saved.id);
+        if (cancelled || exportRunning.current) return;
+        if (!job || !['pending', 'generating', 'ready'].includes(job.state)) { clearSavedSystemBackup(); return; }
+        if (job.state === 'ready') setReadyBackup(saved);
+        else runSystemExport(saved);
+      } catch { /* server unreachable: keep the saved link for the next visit */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Tick every second so the elapsed time moves between 2-second status polls.
+  useEffect(() => {
+    if (!exportProgress) return;
+    const timer = setInterval(() => setClockTick(n => n + 1), 1000);
+    return () => clearInterval(timer);
+  }, [!!exportProgress]);
 
   // Step 1: select a .json.gz file and open the critical confirmation modal
   const acceptRestoreFile = (file: File | null | undefined) => {
@@ -282,9 +326,36 @@ export default function SystemBackupTab({ onRefreshClinics }: SystemBackupTabPro
         </span>
       </div>
 
-      {backupLoading && backupStatusText && (
-        <div className="bg-[#3C7F72]/5 p-4 rounded-2xl border border-[#3C7F72]/20 text-xs font-bold text-[#2E6156]">
-          {backupStatusText}
+      {exportProgress && (
+        <div id="system-backup-progress" className="bg-[#3C7F72]/5 p-4 rounded-2xl border border-[#3C7F72]/20 space-y-3" role="status" aria-live="polite">
+          <div className="flex items-center gap-2 text-xs font-bold text-[#2E6156]">
+            <span className="h-2 w-2 rounded-full bg-[#3C7F72] animate-pulse" />
+            {exportProgress.phase === 'starting' ? t('superadmin.unifiedBackup.progressStep2') : t('superadmin.unifiedBackup.progressStep1')}
+          </div>
+          <div className="h-2 rounded-full bg-[#3C7F72]/15 overflow-hidden">
+            {exportProgress.phase === 'starting'
+              ? <div className="h-full w-full bg-[#3C7F72]" />
+              : <div className="h-full w-2/5 rounded-full bg-gradient-to-r from-[#3C7F72] to-[#6aa89c] animate-[backupSlide_1.6s_ease-in-out_infinite_alternate]" />}
+          </div>
+          <style>{'@keyframes backupSlide{from{margin-inline-start:0}to{margin-inline-start:60%}}'}</style>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 text-slate-800">
+            <div><div className="text-sm font-bold tabular-nums">{fmtMb(exportProgress.bytes)}</div><div className="text-[11px] text-slate-500">{t('superadmin.unifiedBackup.progressWritten')}</div></div>
+            <div><div className="text-sm font-bold tabular-nums">{fmtClock(exportProgress.elapsedMs)}</div><div className="text-[11px] text-slate-500">{t('superadmin.unifiedBackup.progressElapsed')}</div></div>
+            <div><div className="text-sm font-bold">{stageLabel(exportProgress)}</div><div className="text-[11px] text-slate-500">{t('superadmin.unifiedBackup.progressStage')}</div></div>
+          </div>
+          <p className="text-[11.5px] leading-relaxed text-slate-500">{exportProgress.phase === 'starting' ? t('superadmin.unifiedBackup.progressNote2') : t('superadmin.unifiedBackup.progressNote')}</p>
+        </div>
+      )}
+
+      {readyBackup && !exportProgress && (
+        <div id="system-backup-ready" className="bg-[#3C7F72]/5 p-4 rounded-2xl border border-[#3C7F72]/20 space-y-3">
+          <div className="text-xs font-bold text-[#2E6156]">{t('superadmin.unifiedBackup.readyTitle')}</div>
+          <p className="text-[11.5px] leading-relaxed text-slate-500">{t('superadmin.unifiedBackup.readyNote')}</p>
+          <button
+            id="btn-download-ready-system-backup"
+            onClick={() => { startNativeSystemBackupDownload(readyBackup); clearSavedSystemBackup(); setReadyBackup(null); }}
+            className="w-full py-2.5 bg-[#3C7F72] hover:bg-[#2E6156] text-white font-bold rounded-xl text-xs cursor-pointer"
+          >{t('superadmin.unifiedBackup.readyBtn')}</button>
         </div>
       )}
 
@@ -324,7 +395,7 @@ export default function SystemBackupTab({ onRefreshClinics }: SystemBackupTabPro
             className="w-full py-3 bg-[#3C7F72] hover:bg-[#2E6156] text-white font-bold rounded-xl shadow-md transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 text-xs"
           >
             <Download className="h-4 w-4" />
-            {backupLoading ? t('superadmin.unifiedBackup.downloading') : t('superadmin.unifiedBackup.downloadFull')}
+            {exportProgress ? t('superadmin.unifiedBackup.preparingBtn', { time: fmtClock(exportProgress.elapsedMs) }) : backupLoading ? t('superadmin.unifiedBackup.downloading') : t('superadmin.unifiedBackup.downloadFull')}
           </button>
         </div>
 

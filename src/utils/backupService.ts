@@ -542,35 +542,61 @@ export async function checkAndRunAutoBackup(
 // natively with Content-Length and Range support: after a network switch the
 // browser (or its Resume button) continues from where it stopped, using the same
 // link, which stays valid for ttlSeconds. The page never fetches or buffers file bytes.
-export async function downloadSystemBackupGz(onProgress?: (info: {state: string; bytes: number}) => void): Promise<{fileName:string;size:number}> {
+export interface SystemBackupProgress {phase:'preparing'|'starting';state:string;bytes:number;stage:string;elapsedMs:number;}
+export interface SavedSystemBackup {id:string;downloadUrl:string;fileName:string;startedAt:number;ttlSeconds:number;}
+const SAVED_KEY='system_backup_export_v1';
+export function getSavedSystemBackup():SavedSystemBackup|null{
+  try{const v=JSON.parse(localStorage.getItem(SAVED_KEY)||'null');if(v&&v.id&&v.downloadUrl&&Date.now()-v.startedAt<(v.ttlSeconds||21600)*1000)return v;}catch{}
+  localStorage.removeItem(SAVED_KEY);return null;
+}
+export function clearSavedSystemBackup(){localStorage.removeItem(SAVED_KEY);}
+export async function fetchSystemBackupStatus(id:string):Promise<any|null>{
   const {authHeaders}=await import('../dbClient');
-  const response=await fetch('/api/system-backup/ticket',{method:'POST',headers:authHeaders()});
-  if(!response.ok){const data=await response.json().catch(()=>({}));throw Error(data.message||'Export unavailable');}
-  const ticket=await response.json();
-  const getJob=async()=>{
-    const status=await fetch('/api/system-backup/export-status/'+encodeURIComponent(ticket.id),{headers:authHeaders(),cache:'no-store'});
-    if(!status.ok)throw Error('Could not verify export status / تعذر التحقق من حالة التصدير');
-    return status.json();
-  };
+  const r=await fetch('/api/system-backup/export-status/'+encodeURIComponent(id),{headers:authHeaders(),cache:'no-store'});
+  if(r.status===404)return null;
+  if(!r.ok)throw Error('Could not verify export status / تعذر التحقق من حالة التصدير');
+  return r.json();
+}
+// Start the native browser download of an already-prepared file.
+export function startNativeSystemBackupDownload(saved:{downloadUrl:string;fileName:string}){
+  const frame=document.createElement('iframe');frame.name='backup-'+crypto.randomUUID();frame.hidden=true;frame.setAttribute('aria-hidden','true');document.body.appendChild(frame);
+  const a=document.createElement('a');a.href=saved.downloadUrl;a.target=frame.name;a.download=saved.fileName;a.rel='noreferrer';document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>frame.remove(),10000);
+}
+// Prepare (or re-attach to an export already running/ready), then download.
+// With `resume`, no new export is requested: the saved one is followed instead.
+export async function downloadSystemBackupGz(onProgress?: (info: SystemBackupProgress) => void, resume?: SavedSystemBackup, autoDownload = true): Promise<{fileName:string;size:number}> {
+  const {authHeaders}=await import('../dbClient');
+  let ticket:SavedSystemBackup;
+  if(resume)ticket=resume;
+  else{
+    const response=await fetch('/api/system-backup/ticket',{method:'POST',headers:authHeaders()});
+    if(!response.ok){const data=await response.json().catch(()=>({}));throw Error(data.message||'Export unavailable');}
+    const t=await response.json();
+    ticket={id:t.id,downloadUrl:t.downloadUrl,fileName:t.fileName,startedAt:Date.now(),ttlSeconds:t.ttlSeconds||21600};
+    localStorage.setItem(SAVED_KEY,JSON.stringify(ticket));
+  }
+  const report=(phase:'preparing'|'starting',job:any)=>onProgress?.({phase,state:job.state,bytes:job.bytes||0,stage:job.stage||'',elapsedMs:Date.now()-ticket.startedAt});
   let job:any;
   while(true){
-    await new Promise(r=>setTimeout(r,2000));
-    job=await getJob();
-    onProgress?.({state:job.state,bytes:job.bytes||0});
+    job=await fetchSystemBackupStatus(ticket.id);
+    if(!job){clearSavedSystemBackup();throw Error('Export expired. Retry / انتهت صلاحية التصدير، أعد المحاولة');}
+    report('preparing',job);
     if(job.state==='ready'||job.state==='completed')break;
-    if(job.state!=='pending'&&job.state!=='generating')throw Error('Export did not finish. Retry / لم يكتمل التصدير، أعد المحاولة');
+    if(job.state!=='pending'&&job.state!=='generating'){clearSavedSystemBackup();throw Error('Export did not finish. Retry / لم يكتمل التصدير، أعد المحاولة');}
+    await new Promise(r=>setTimeout(r,2000));
   }
-  const frame=document.createElement('iframe');frame.name='backup-'+crypto.randomUUID();frame.hidden=true;frame.setAttribute('aria-hidden','true');document.body.appendChild(frame);
-  const a=document.createElement('a');a.href=ticket.downloadUrl;a.target=frame.name;a.download=ticket.fileName;a.rel='noreferrer';document.body.appendChild(a);a.click();a.remove();
+  if(!autoDownload)return {fileName:ticket.fileName,size:job.size||job.bytes};
+  startNativeSystemBackupDownload(ticket);
   // The download started once the server sees the request (or has delivered it).
   const began=Date.now();
-  try {
-    while(true){
-      await new Promise(r=>setTimeout(r,1000));
-      job=await getJob();
-      if((job.downloads||0)>0||job.delivered)return {fileName:ticket.fileName,size:job.size||job.bytes};
-      if(job.state==='failed'||job.state==='expired')throw Error('Export did not finish. Retry / لم يكتمل التصدير، أعد المحاولة');
-      if(Date.now()-began>20000)throw Error('Download did not start. Allow downloads and retry / لم يبدأ التنزيل، اسمح بالتنزيلات وأعد المحاولة');
-    }
-  } finally {setTimeout(()=>frame.remove(),10000);}
+  while(true){
+    await new Promise(r=>setTimeout(r,1000));
+    job=await fetchSystemBackupStatus(ticket.id);
+    if(!job){clearSavedSystemBackup();throw Error('Export expired. Retry / انتهت صلاحية التصدير، أعد المحاولة');}
+    report('starting',job);
+    if((job.downloads||0)>0||job.delivered){clearSavedSystemBackup();return {fileName:ticket.fileName,size:job.size||job.bytes};}
+    if(job.state==='failed'||job.state==='expired'){clearSavedSystemBackup();throw Error('Export did not finish. Retry / لم يكتمل التصدير، أعد المحاولة');}
+    if(Date.now()-began>20000)throw Error('Download did not start. Allow downloads and retry / لم يبدأ التنزيل، اسمح بالتنزيلات وأعد المحاولة');
+  }
 }
