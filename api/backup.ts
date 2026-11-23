@@ -27,6 +27,74 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
         return full;
     }
     async function readFinance(cid: string) { return finance.exportState(cid); }
+    // Single-clinic export with the exact legacy JSON shape, serialized from
+    // keyset-batched reads so one backup never materializes the whole clinic.
+    async function streamClinicExport(cid: string, write: (chunk: string) => Promise<void>, check: () => void) {
+        await finance.ensureSchema();
+        await db.financeTransaction(cid, async () => {
+            const clinic = await one('clinics', cid);
+            if (!clinic)
+                err('Clinic not found / العيادة غير موجودة', 404);
+            await write('{"schemaVersion":3,"credentialSchemaVersion":' + CREDENTIAL_SCHEMA_VERSION + ',"fileType":"CLINIC_DATABASE_BACKUP","platform":"Clinic SaaS System","exportTimestamp":' + JSON.stringify(new Date().toISOString()) + ',"clinicId":' + JSON.stringify(cid) + ',"clinicName":' + JSON.stringify(clinic.name) + ',"clinicInfo":' + JSON.stringify(await clinicCredentialCopy(clinic, hashPassword)) + ',"data":{');
+            const BATCH = 1000;
+            let firstTable = true;
+            const batches = async (table: string, extra?: { column: string, ids: string[] }) => {
+                const out: any[] = [];
+                let last = '';
+                while (true) {
+                    check();
+                    const where = ['clinicId = ?', ...(last ? ['id > ?'] : []), ...(extra ? [`${extra.column} IN (${extra.ids.map(() => '?').join(',')})`] : [])];
+                    const args = [cid, ...(last ? [last] : []), ...(extra ? extra.ids : [])];
+                    const rows = (await db.execute({ sql: `SELECT * FROM ${table} WHERE ${where.join(' AND ')} ORDER BY id ASC LIMIT ${BATCH}`, args })).rows;
+                    out.push(...rows);
+                    if (rows.length < BATCH) break;
+                    last = rows[rows.length - 1].id;
+                }
+                return out;
+            };
+            for (const table of TABLES) {
+                check();
+                await write((firstTable ? '' : ',') + JSON.stringify(table) + ':[');
+                firstTable = false;
+                if (table !== 'patients') {
+                    let firstRow = true, last = '';
+                    while (true) {
+                        check();
+                        const rows = (await db.execute({ sql: `SELECT * FROM ${table} WHERE clinicId = ?${last ? ' AND id > ?' : ''} ORDER BY id ASC LIMIT ${BATCH}`, args: last ? [cid, last] : [cid] })).rows;
+                        for (const row of rows) { check(); await write((firstRow ? '' : ',') + JSON.stringify(unpack(row))); firstRow = false; }
+                        if (rows.length < BATCH) break;
+                        last = rows[rows.length - 1].id;
+                    }
+                } else {
+                    let firstRow = true, last = '';
+                    while (true) {
+                        check();
+                        const rows = (await db.execute({ sql: `SELECT * FROM patients WHERE clinicId = ?${last ? ' AND id > ?' : ''} ORDER BY id ASC LIMIT ${BATCH}`, args: last ? [cid, last] : [cid] })).rows;
+                        if (rows.length) {
+                            const ids = rows.map((row: any) => String(row.id));
+                            // Nested copies are redundant with the flat tables (which
+                            // normalize() treats as authoritative); kept for older readers.
+                            const nested: any = {};
+                            for (const nestedTable of ['records', 'teeth', 'xrays'])
+                                nested[nestedTable] = (await batches(nestedTable, { column: 'patientId', ids })).map(unpack);
+                            for (const row of rows) {
+                                check();
+                                const p = unpack(row);
+                                await write((firstRow ? '' : ',') + JSON.stringify({ ...p, ...Object.fromEntries(['records', 'teeth', 'xrays'].map(t => [t, nested[t].filter((r: any) => r.patientId === p.id)])) }));
+                                firstRow = false;
+                            }
+                        }
+                        if (rows.length < BATCH) break;
+                        last = rows[rows.length - 1].id;
+                    }
+                }
+                await write(']');
+            }
+            await write(',"finance_state":');
+            await finance.streamExport(cid, write, check);
+            await write('}}');
+        });
+    }
     async function exportClinic(cid: string) {
         await finance.ensureSchema();
         return db.financeTransaction(cid, async () => {
@@ -221,8 +289,30 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
             const cid = String(clinicId || auth.clinicId || '');
             if (auth.type !== 'admin' && (String(auth.clinicId) !== cid || !['export_clinic', 'restore_clinic'].includes(action)))
                 err('Forbidden / غير مصرح', 403);
-            if (action === 'export_clinic')
-                return res.json(await exportClinic(cid));
+            if (action === 'export_clinic') {
+                // Same JSON body as before, streamed so large clinics stay under the memory ceiling.
+                let started = false, pending: string[] = [], pendingBytes = 0;
+                const controller = new AbortController();
+                res.on('close', () => { if (!res.writableFinished) controller.abort(); });
+                const flush = async () => { if (!pending.length) return; const chunk = pending.join(''); pending = []; pendingBytes = 0; res.write(chunk); };
+                const write = async (chunk: string) => {
+                    if (!started) { started = true; res.setHeader('content-type', 'application/json; charset=utf-8'); res.setHeader('cache-control', 'no-store'); }
+                    const bytes = Buffer.byteLength(chunk);
+                    if (pendingBytes + bytes > EXPORT_WRITE_BYTES) await flush();
+                    if (bytes >= EXPORT_WRITE_BYTES) { res.write(chunk); return; }
+                    pending.push(chunk); pendingBytes += bytes;
+                };
+                const check = () => { checkExportMemory(); if (controller.signal.aborted) throw Object.assign(new Error('Export aborted'), { code: 'EXPORT_ABORTED' }); };
+                try {
+                    await streamClinicExport(cid, write, check);
+                    await flush();
+                    res.end();
+                    return;
+                } catch (e: any) {
+                    if (started) { res.end(); return; }
+                    throw e;
+                }
+            }
             if (action === 'restore_clinic') {
                 const result = await restoreClinic(cid, backup, auth);
                 for (const table of ['clinics', ...TABLES])
@@ -345,5 +435,5 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
         await write(',"systemSettings":');
         const settings=(await read('system_settings')).filter((r:any)=>r.id!=='auth_secret');await write(JSON.stringify(settings)+'}');await flush();
     }
-    return { handler, validateClinic: normalize, restoreClinic, streamSystemExport };
+    return { handler, validateClinic: normalize, restoreClinic, streamSystemExport, streamClinicExport, exportClinic };
 }
