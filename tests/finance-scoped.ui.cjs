@@ -29,9 +29,45 @@ await click(tabs[1]);
 assert.equal(requests.filter(b=>b.action==='view'&&b.scope==='revenues').length,2,'inactive tab cache invalidated by sync');
 await click(tabs[4]);const after=requests.length;
 await click(tabs[1]);await click(tabs[4]);assert.equal(requests.length,after,'freshly reloaded tabs cache again');
+
+// Payload reduction: the shift tab asks for zero appointment pages, and the
+// summary card still renders the complete-set remaining total from the server.
+await click(tabs[4]);
+const shiftViews=requests.filter(b=>b.action==='view'&&b.scope==='shift');
+assert(shiftViews.length>0&&shiftViews.every(b=>b.limit===0),'shift tab requests the light view (limit:0)');
+const uiShiftBody=shiftViews[shiftViews.length-1];
+const apiShift=await fetch(base+'/api/finance',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+login.token},body:JSON.stringify(uiShiftBody)}).then(r=>r.json());
+assert(apiShift.shiftTotals,'server returns complete-set shift totals for the UI shift');
+assert(apiShift.appointments.length<=apiShift.shiftTotals.completed+apiShift.shiftTotals.scheduled+apiShift.shiftTotals.cancelled,'light view rows are a small subset');
+await page.waitForFunction((en)=>document.body.innerText.includes(en?'Total Collected (All Methods)':'المحصل كله بكل الطرق'),{},lang==='en');
+await page.waitForFunction((label,value)=>{const spans=[...document.querySelectorAll('span')];const el=spans.find(s=>s.textContent.includes(label));return !!el&&el.closest('div').innerText.includes(value);},{},lang==='en'?'Installments & Due Balances':'الأقساط والمتبقي على المرضى',Number(apiShift.shiftTotals.remainingTotal).toLocaleString());
+
+// Settlement coalescing: a four-event burst triggers exactly one settlement read.
+const settleBefore=requests.filter(b=>b.action==='view'&&b.scope==='settlement').length;
+await page.evaluate(()=>{for(const table of ['patients','appointments','shifts','expenses'])window.dispatchEvent(new CustomEvent('clinic-sync',{detail:{table}}));});
+await sleep(600);
+assert.equal(requests.filter(b=>b.action==='view'&&b.scope==='settlement').length-settleBefore,1,'burst merges repeated settlement refreshes into one');
+
+// Installments: grouped server pagination drives the patient count card.
+await click(tabs[2]);
+await click(lang==='en'?'All':'الكل');
+await sleep(500);
+const apiInst=await fetch(base+'/api/finance',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+login.token},body:JSON.stringify({clinicId:login.clinic.id,action:'view',scope:'installments',from:'',to:'',limit:50,search:''})}).then(r=>r.json());
+assert(apiInst.installmentTotals&&typeof apiInst.installmentTotals.groupCount==='number','server returns installment group totals');
+const instRequests=requests.filter(b=>b.action==='view'&&b.scope==='installments');
+assert(instRequests.length>0&&instRequests.every(b=>typeof b.limit==='number'),'installments tab requests grouped pages');
+await page.waitForFunction((count,en)=>document.body.innerText.includes(en?count+' patients with due installments':count+' مرضى عليهم أقساط مستحقة'),{},String(apiInst.installmentTotals.groupCount),lang==='en');
+
+// Print report: the full appointment rows are fetched on demand only.
+await click(tabs[4]);
+const printViewsBefore=requests.filter(b=>b.action==='view'&&b.scope==='shift'&&b.includeAppointments===true).length;
+await click(lang==='en'?'Print Report':'طباعة التقرير');
+await sleep(700);
+assert.equal(requests.filter(b=>b.action==='view'&&b.scope==='shift'&&b.includeAppointments===true).length-printViewsBefore,1,'printing loads the full shift rows on demand');
+await page.waitForFunction(()=>document.body.innerText.includes('تفاصيل الحجوزات والمدفوعات')||document.body.innerText.includes('Shift Bookings & Patient Payments Details'));
 await page.screenshot({path:'/downloads/finance-cache-'+lang+'.png',fullPage:true});
 assert.deepEqual(errors,[]);
-console.log('PASS '+lang+': zero finance requests on repeated warm tabs; settlement cached; burst invalidation refreshes once; inactive views reload then cache; no page errors.');
+console.log('PASS '+lang+': warm tabs cached; light shift view with exact server totals; burst merges settlement to one read; installments grouped pagination drives the count card; print loads full rows on demand; no page errors.');
 await page.close();
 }
 }finally{await browser.close();}

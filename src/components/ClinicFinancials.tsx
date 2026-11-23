@@ -349,6 +349,20 @@ export default function ClinicFinancials({
   const [installmentsSearch, setInstallmentsSearch] = useState<string>('');
   const [installmentsFilterPeriod, setInstallmentsFilterPeriod] = useState<'today' | 'month' | 'all'>('today');
 
+  // Server-side totals and groups returned by the scoped finance views. When the
+  // server provides them, summary cards use the complete-set totals while only the
+  // requested page of rows travels over the network.
+  const [serverShiftTotals, setServerShiftTotals] = useState<{total:number;completed:number;scheduled:number;cancelled:number;remainingTotal:number} | null>(null);
+  const [serverInstallmentGroups, setServerInstallmentGroups] = useState<any[] | null>(null);
+  const [serverInstallmentTotals, setServerInstallmentTotals] = useState<{groupCount:number;totalRemaining:number;totalPaid:number;totalPrice:number} | null>(null);
+
+  // Debounce the installments search so each keystroke does not fire a server view request
+  const [installmentsSearchQuery, setInstallmentsSearchQuery] = useState<string>('');
+  useEffect(() => {
+    const t = setTimeout(() => setInstallmentsSearchQuery(installmentsSearch.trim()), 300);
+    return () => clearTimeout(t);
+  }, [installmentsSearch]);
+
   // Reset installments pagination on filter/search change
   useEffect(() => {
     setInstallmentsLimit(5);
@@ -434,6 +448,7 @@ export default function ClinicFinancials({
 
   // Group appointments with remainingAmount > 0 by patient
   const installmentPatients = React.useMemo(() => {
+    if (serverInstallmentGroups) return serverInstallmentGroups;
     const patientMap: { [patientIdOrPhone: string]: {
       patientId: string;
       patientName: string;
@@ -484,14 +499,16 @@ export default function ClinicFinancials({
     });
 
     return Object.values(patientMap).sort((a, b) => b.totalRemaining - a.totalRemaining);
-  }, [appointments, installmentsFilterPeriod]);
+  }, [appointments, installmentsFilterPeriod, serverInstallmentGroups]);
 
   const filteredInstallmentPatients = React.useMemo(() => {
+    // Server-grouped mode already applied the search and ordering over the full set.
+    if (serverInstallmentGroups) return installmentPatients;
     return installmentPatients.filter(p => 
       p.patientName.toLowerCase().includes(installmentsSearch.toLowerCase()) ||
       (p.patientPhone && p.patientPhone.includes(installmentsSearch))
     );
-  }, [installmentPatients, installmentsSearch]);
+  }, [installmentPatients, installmentsSearch, serverInstallmentGroups]);
 
   const visibleInstallmentPatients = React.useMemo(() => {
     return filteredInstallmentPatients.slice(0, installmentsLimit);
@@ -568,7 +585,7 @@ export default function ClinicFinancials({
       if(revenueFilterMode==='monthly')return {scope:'revenues',from:revenueMonthlyVal+'-01',to:revenueMonthlyVal+'-31'};
       return {scope:'revenues',from:revenueStartDate,to:revenueEndDate};
     }
-    if(activeTab==='installments')return {scope:'installments',from:installmentsFilterPeriod==='today'?getTodayStr():installmentsFilterPeriod==='month'?getTodayMonthStr()+'-01':'',to:installmentsFilterPeriod==='today'?getTodayStr():installmentsFilterPeriod==='month'?getTodayMonthStr()+'-31':''};
+    if(activeTab==='installments')return {scope:'installments',from:installmentsFilterPeriod==='today'?getTodayStr():installmentsFilterPeriod==='month'?getTodayMonthStr()+'-01':'',to:installmentsFilterPeriod==='today'?getTodayStr():installmentsFilterPeriod==='month'?getTodayMonthStr()+'-31':'',limit:installmentsLimit,search:installmentsSearchQuery};
     if(activeTab==='expenses'){
       let from='',to='';
       if(expenseFilterPeriod==='today')from=to=getTodayStr();
@@ -578,8 +595,10 @@ export default function ClinicFinancials({
       return {scope:'expenses',from,to};
     }
     if(activeTab==='shift_history'||activeTab==='returns')return {scope:'history'};
-    return {scope:'shift',shiftId:currentShift.id,date:currentShift.date};
-  },[activeTab,revenueFilterMode,revenueDailyDate,revenueWeeklyDate,revenueMonthlyVal,revenueStartDate,revenueEndDate,installmentsFilterPeriod,expenseFilterPeriod,expenseFilterSpecificDate,expenseFilterStartDate,expenseFilterEndDate,currentShift.id,currentShift.date]);
+    // The shift tab renders aggregates and the collections list only, so it asks
+    // for zero appointment pages; receipt-linked appointments still arrive in full.
+    return {scope:'shift',shiftId:currentShift.id,date:currentShift.date,limit:0};
+  },[activeTab,revenueFilterMode,revenueDailyDate,revenueWeeklyDate,revenueMonthlyVal,revenueStartDate,revenueEndDate,installmentsFilterPeriod,installmentsLimit,installmentsSearchQuery,expenseFilterPeriod,expenseFilterSpecificDate,expenseFilterStartDate,expenseFilterEndDate,currentShift.id,currentShift.date]);
   const financialViewRef=React.useRef(financialView);financialViewRef.current=financialView;
   const viewRequestSerial=React.useRef(0);
   const fetchAppointments = async (silent = false) => {
@@ -589,6 +608,7 @@ export default function ClinicFinancials({
       const ledger=await financeCommand(clinic.id,{action:'view',...financialViewRef.current});
       if(serial!==viewRequestSerial.current)return;
       setFinancialReceipts(ledger.receipts||[]);setExpenses(ledger.expenses||[]);setExpenseSummary(ledger.expenseSummary||null);
+      setServerShiftTotals(ledger.shiftTotals||null);setServerInstallmentGroups(ledger.installmentGroups||null);setServerInstallmentTotals(ledger.installmentTotals||null);
       const snap=(ledger.appointments||[]).map((data:any)=>({id:data.id,data:()=>data}));
       const list: Appointment[] = [];
       snap?.forEach((docSnap: any) => {
@@ -950,10 +970,12 @@ export default function ClinicFinancials({
 
   // Daily totals
   const dailyExpectedCash = Object.values(dynamicRevenues).reduce((sum: number, val: any) => sum + Number(val || 0), 0);
-  const dailyRemainingCash = dailyCompletedAppointments.reduce((sum, app) => sum + (app.remainingAmount !== undefined ? app.remainingAmount : 0), 0);
+  // Server totals cover the complete shift set even when the appointment rows
+  // themselves were not transferred (limit:0). Fallback keeps older servers exact.
+  const dailyRemainingCash = serverShiftTotals ? Number(serverShiftTotals.remainingTotal) || 0 : dailyCompletedAppointments.reduce((sum, app) => sum + (app.remainingAmount !== undefined ? app.remainingAmount : 0), 0);
   const dailyTotalCash = dailyExpectedCash + dailyRemainingCash;
-  const dailyScheduledCount = dailyAppointments.filter(app => app.status === 'scheduled').length;
-  const dailyCancelledCount = dailyAppointments.filter(app => app.status === 'cancelled').length;
+  const dailyScheduledCount = serverShiftTotals ? Number(serverShiftTotals.scheduled) || 0 : dailyAppointments.filter(app => app.status === 'scheduled').length;
+  const dailyCancelledCount = serverShiftTotals ? Number(serverShiftTotals.cancelled) || 0 : dailyAppointments.filter(app => app.status === 'cancelled').length;
 
   // Breakdown by payment method
   const getAmountForMethod = (revenues: Record<string, number>, canonicalName: 'كاش' | 'فيزا' | 'إنستاباي' | 'محفظة'): number => {
@@ -989,13 +1011,61 @@ export default function ClinicFinancials({
   };
 
   // Print Shift trigger (Active Shift)
-  const handlePrintShift = () => {
+  // The printed report lists every shift booking, so the complete appointment
+  // rows are fetched on demand here instead of riding every shift view request.
+  const handlePrintShift = async () => {
     const startCash = activeShift ? (Number(activeShift.startCash) || 0) : 0;
     const cashExpenses = dynamicExpenses['كاش'] || 0;
     const activeShiftExpensesTotal = activeShiftExpenses.reduce((sum, e) => sum + e.amount, 0);
     const expectedCashOnly = startCash + dailyCashAmount - cashExpenses;
     const actual = actualCashInput ? Number(actualCashInput) : expectedCashOnly;
     const closedByName = closedByInput.trim() || operatorName || (activeShift ? activeShift.cashierName : 'طاقم العيادة');
+
+    let appointmentsForPrint = dailyCompletedAppointments;
+    let paymentRecordsForPrint = activeShiftPaymentRecords;
+    if (serverShiftTotals) {
+      setLoading(true);
+      try {
+        const full = await financeCommand(clinic.id, {action:'view', scope:'shift', shiftId: currentShift.id, date: currentShift.date, includeAppointments: true});
+        const fullApps: Appointment[] = (full.appointments || []).map((data: any) => ({
+          ...data,
+          id: data.id,
+          patientId: data.patientId || '',
+          patientName: data.patientName || 'مريض غير معروف',
+          patientPhone: data.patientPhone || '',
+          date: data.date || '',
+          time: data.time || '',
+          treatmentType: data.treatmentType || '',
+          price: Number(data.price) || 0,
+          notes: cleanNotes(data.notes || ''),
+          status: data.status || 'scheduled',
+          paidAmount: data.paidAmount !== undefined ? Number(data.paidAmount) : undefined,
+          remainingAmount: data.remainingAmount !== undefined ? Number(data.remainingAmount) : undefined,
+          invoiceStatus: data.invoiceStatus,
+          financialNote: data.financialNote || '',
+          paymentMethod: data.paymentMethod || undefined,
+          toothNumber: data.toothNumber !== undefined ? Number(data.toothNumber) : undefined,
+          procedures: data.procedures || [],
+          payments: data.payments || []
+        }));
+        fullApps.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+        appointmentsForPrint = fullApps.filter(a => a.status === 'completed');
+        paymentRecordsForPrint = (full.receipts || []).filter((r: any) => r.shiftId === currentShift.id).map((r: any) => ({
+          id: r.id,
+          app: fullApps.find(a => a.id === r.appointmentId) || {patientName: r.patientName, price: 0, remainingAmount: 0},
+          amount: r.kind === 'refund' ? -r.amount : r.amount,
+          paymentMethod: r.paymentMethod,
+          date: r.collectionDate || r.date,
+          time: r.createdAt ? new Date(r.createdAt).toLocaleTimeString('en-GB', {timeZone: 'Africa/Cairo', hour: '2-digit', minute: '2-digit'}) : '',
+          notes: r.receiptNumber || r.notes
+        }));
+      } catch (e: any) {
+        setError(e.message);
+        setLoading(false);
+        return;
+      }
+      setLoading(false);
+    }
 
     setPrintShiftData({
       date: activeShiftDate,
@@ -1013,8 +1083,8 @@ export default function ClinicFinancials({
       expectedCash: expectedCashOnly,
       actual: actual,
       discrepancy: actual - expectedCashOnly,
-      appointments: dailyCompletedAppointments,
-      paymentRecords: activeShiftPaymentRecords,
+      appointments: appointmentsForPrint,
+      paymentRecords: paymentRecordsForPrint,
       notes: shiftNotes || (activeShift?.notes || ''),
       expensesTotal: activeShiftExpensesTotal,
       cashExpenses: cashExpenses,
@@ -2442,7 +2512,8 @@ export default function ClinicFinancials({
 
             {/* Stat cards */}
             {(() => {
-              const totalRemainingAll = filteredInstallmentPatients.reduce((s, p) => s + p.totalRemaining, 0);
+              const totalRemainingAll = serverInstallmentTotals ? serverInstallmentTotals.totalRemaining : filteredInstallmentPatients.reduce((s, p) => s + p.totalRemaining, 0);
+              const installmentPatientCount = serverInstallmentTotals ? serverInstallmentTotals.groupCount : filteredInstallmentPatients.length;
               const biggest = filteredInstallmentPatients.length > 0 ? filteredInstallmentPatients[0] : null;
               const oldestApp = biggest && biggest.appointments.length > 0
                 ? [...biggest.appointments].sort((a, b) => (a.date || '').localeCompare(b.date || ''))[0]
@@ -2456,8 +2527,8 @@ export default function ClinicFinancials({
                     </p>
                     <span className="text-xs text-orange-100/90 block mt-2">
                       {isEn
-                        ? `${filteredInstallmentPatients.length} patients with due installments for completed treatment sessions`
-                        : `${filteredInstallmentPatients.length} مرضى عليهم أقساط مستحقة لجلسات علاجية مكتملة`}
+                        ? `${installmentPatientCount} patients with due installments for completed treatment sessions`
+                        : `${installmentPatientCount} مرضى عليهم أقساط مستحقة لجلسات علاجية مكتملة`}
                     </span>
                   </div>
 
@@ -2603,10 +2674,10 @@ export default function ClinicFinancials({
                 })}
 
                 {/* Show More Pagination Bar */}
-                {filteredInstallmentPatients.length > installmentsLimit && (
+                {(serverInstallmentTotals ? serverInstallmentTotals.groupCount : filteredInstallmentPatients.length) > visibleInstallmentPatients.length && (
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-white rounded-2xl border border-slate-200 shadow-sm">
                     <span className="text-xs font-bold text-slate-500">
-                      {isEn ? `Showing ${Math.min(installmentsLimit, filteredInstallmentPatients.length)} of ${filteredInstallmentPatients.length} patients with dues` : <>يتم عرض <span className="font-mono font-black text-orange-600">{Math.min(installmentsLimit, filteredInstallmentPatients.length)}</span> من أصل <span className="font-mono font-black text-slate-800">{filteredInstallmentPatients.length}</span> مريض لديه مستحقات</>}
+                      {isEn ? `Showing ${visibleInstallmentPatients.length} of ${serverInstallmentTotals ? serverInstallmentTotals.groupCount : filteredInstallmentPatients.length} patients with dues` : <>يتم عرض <span className="font-mono font-black text-orange-600">{visibleInstallmentPatients.length}</span> من أصل <span className="font-mono font-black text-slate-800">{serverInstallmentTotals ? serverInstallmentTotals.groupCount : filteredInstallmentPatients.length}</span> مريض لديه مستحقات</>}
                     </span>
                     <button
                       type="button"

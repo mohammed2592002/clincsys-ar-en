@@ -1236,6 +1236,7 @@ export function createFinanceService(deps: any) {
           const from=String(body.from||''),to=String(body.to||'');
           if((from&&!/^\d{4}-\d{2}-\d{2}$/.test(from))||(to&&!/^\d{4}-\d{2}-\d{2}$/.test(to))) fail('Invalid financial date range',400);
           let selectedReceipts:any[]=[],events:any[]=[],expenses:any[]=[],apps:any[]=[];
+          let shiftTotals:any=undefined,installmentGroups:any=undefined,installmentTotals:any=undefined;
           const scope=String(body.scope||'');
           const range={from,to};
           if(scope==='patient') {
@@ -1255,6 +1256,29 @@ export function createFinanceService(deps: any) {
             const ids=new Set(selectedReceipts.map((r:any)=>r.appointmentId));
             const shift=shiftId==='preview'?{id:shiftId,date:body.date}:await get('shifts',shiftId,cid);
             apps=allApps.filter((a:any)=>appointmentInShift(a,shift||{id:shiftId,date:body.date})||ids.has(a.id));
+            // Totals are always computed over the complete matching set, so summary
+            // cards stay exact while the row list can be paginated or omitted.
+            shiftTotals={
+              total:apps.length,
+              completed:apps.filter((a:any)=>a.status==='completed').length,
+              scheduled:apps.filter((a:any)=>a.status==='scheduled').length,
+              cancelled:apps.filter((a:any)=>a.status==='cancelled').length,
+              remainingTotal:apps.filter((a:any)=>a.status==='completed').reduce((s:number,a:any)=>s+Number(a.remainingAmount??0),0)
+            };
+            // Light mode is strictly opt-in: a cached older client bundle must keep
+            // receiving the complete appointment list it expects.
+            if(body.limit!==undefined||body.offset!==undefined){
+              // Load-on-demand mode: rows are only serialized when a page is asked for.
+              // Appointments referenced by the shift's own receipts always travel in
+              // full so the collections list and invoices keep every field.
+              const limit=Math.max(0,Math.min(500,Number(body.limit??0)||0));
+              const offset=Math.max(0,Number(body.offset||0)||0);
+              const sorted=[...apps].sort((a:any,b:any)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.time||'').localeCompare(String(a.time||'')));
+              const merged=new Map<string,any>();
+              for(const a of sorted.slice(offset,offset+limit))merged.set(a.id,a);
+              for(const a of apps)if(ids.has(a.id))merged.set(a.id,a);
+              apps=[...merged.values()];
+            }
           } else if(scope==='settlement') {
             selectedReceipts=(await store.selectProjection(cid,'receipts')).filter((r:any)=>!r.shiftId&&r.date===body.date&&Number(r.amount)>0);
             expenses=(await store.selectProjection(cid,'expenses',{date:body.date})).filter((e:any)=>e.type==='shift'&&!e.shiftId);
@@ -1268,13 +1292,41 @@ export function createFinanceService(deps: any) {
             expenses=await store.selectProjection(cid,'expenses',range);
           } else if(scope==='installments') {
             apps=(await store.selectProjection(cid,'appointments',range)).filter((a:any)=>a.status==='completed'&&Number(a.remainingAmount??0)>0);
+            if(body.limit!==undefined||body.offset!==undefined||body.search!==undefined){
+              // Patient-grouped, server-side paginated mode: grouping, ordering and
+              // search mirror the tab exactly, and grand totals cover the full set.
+              const search=String(body.search||'').toLowerCase();
+              const sorted=[...apps].sort((a:any,b:any)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.time||'').localeCompare(String(a.time||'')));
+              const patientMap=new Map<string,any>();
+              for(const app of sorted){
+                const remaining=Number(app.remainingAmount??0);
+                const key=app.patientId||app.patientPhone||app.patientName;
+                const paid=app.paidAmount!==undefined?Number(app.paidAmount):Number(app.price)||0;
+                if(!patientMap.has(key))patientMap.set(key,{patientId:app.patientId,patientName:app.patientName,patientPhone:app.patientPhone,totalRemaining:0,totalPaid:0,totalPrice:0,appointments:[]});
+                const g=patientMap.get(key);
+                g.totalRemaining+=remaining;g.totalPaid+=paid;g.totalPrice+=Number(app.price)||0;g.appointments.push(app);
+              }
+              let groups=[...patientMap.values()].sort((a:any,b:any)=>b.totalRemaining-a.totalRemaining);
+              if(search)groups=groups.filter((g:any)=>String(g.patientName||'').toLowerCase().includes(search)||(g.patientPhone&&String(g.patientPhone).includes(search)));
+              installmentTotals={groupCount:groups.length,totalRemaining:groups.reduce((s:number,g:any)=>s+g.totalRemaining,0),totalPaid:groups.reduce((s:number,g:any)=>s+g.totalPaid,0),totalPrice:groups.reduce((s:number,g:any)=>s+g.totalPrice,0)};
+              const limit=Math.max(1,Math.min(500,Number(body.limit??50)||50));
+              const offset=Math.max(0,Number(body.offset||0)||0);
+              installmentGroups=groups.slice(offset,offset+limit);
+              // Rows travel once, inside their group; the flat list stays empty in
+              // this opt-in mode so paged responses do not duplicate every row.
+              apps=[];
+            }
           } else if(scope!=='history') fail('Unknown financial view',400);
           const summary=projection.expenseSummary;
           const today=day(new Date().toISOString());
           const expenseSummary={allTotal:summary.allTotal,todayTotal:summary.byDate[today]||0,monthTotal:summary.byMonth[today.slice(0,7)]||0,categoryTotals:summary.categoryTotals};
           // Row envelopes duplicate parsed payloads and must not cross the view boundary.
           const viewPayload=(row:any)=>{const {data,...value}=row;return value;};
-          return {receipts:selectedReceipts,events,expenses:expenses.map(viewPayload),appointments:apps.map(viewPayload),expenseSummary};
+          const result:any={receipts:selectedReceipts,events,expenses:expenses.map(viewPayload),appointments:apps.map(viewPayload),expenseSummary};
+          if(shiftTotals)result.shiftTotals=shiftTotals;
+          if(installmentGroups)result.installmentGroups=installmentGroups.map((g:any)=>({...g,appointments:g.appointments.map(viewPayload)}));
+          if(installmentTotals)result.installmentTotals=installmentTotals;
+          return result;
         });
         return res.json(result);
       }

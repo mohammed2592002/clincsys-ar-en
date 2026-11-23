@@ -44,10 +44,18 @@ export default function LegacySettlement({
       }
     };
     load();
-    window.addEventListener("clinic-sync", load);
+    // A single financial write broadcasts several sync events; settle them into
+    // one reload per burst instead of one settlement request per event.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onSync = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(load, 80);
+    };
+    window.addEventListener("clinic-sync", onSync);
     return () => {
       live = false;
-      window.removeEventListener("clinic-sync", load);
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("clinic-sync", onSync);
     };
   }, [clinicId, shift.id, shift.date]);
   const assign = async (item: any) => {
