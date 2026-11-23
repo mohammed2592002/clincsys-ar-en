@@ -1794,6 +1794,11 @@ async function runMigrations() {
                 } catch (e) {}
               }
             }
+            // The renewals log pages by renewedAt; json_extract is volatile, so the
+            // ordering expression is the immutable jsonb form the index can match.
+            try {
+              await dbClient.execute(`CREATE INDEX IF NOT EXISTS idx_renewals_renewedat_id ON renewals (COALESCE(data::jsonb->>'renewedAt','') DESC, id DESC)`);
+            } catch (e) {}
           }
         }
       },
@@ -2545,7 +2550,7 @@ app.get('/api/patients/search',async(req,res)=>{
   if(!auth)return res.status(401).json({error:'authentication_required'});
   if(!cid||(auth.type!=='admin'&&auth.clinicId!==cid))return res.status(403).json({error:'forbidden'});
   const term=String(req.query.q||'').trim().slice(0,120).replace(/[%_\\]/g,'').trim();
-  const size=Math.min(100,Math.max(1,Number(req.query.limit)||15));
+  const size=Math.min(500,Math.max(1,Number(req.query.limit)||15));
   const offset=Math.min(1000000,Math.max(0,Math.floor(Number(req.query.offset)||0)));
   if(term.length<3)return res.json({items:[],total:0});
   const fields=req.query.scope==='booking'?['name','phone']:['name','phone','governorate','cityOrDistrict','area','address','occupation'];

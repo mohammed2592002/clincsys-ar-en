@@ -22,7 +22,8 @@ export function installRenewalsLog(app:Express, deps:Dependencies) {
         const args=q?[q]:[];
         const amount="COALESCE(json_extract(data, '$.amount'),'')";
         const summary=await deps.db.execute({sql:`SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN ${amount} ~ '^[-]{0,1}[0-9]+([.][0-9]+){0,1}([eE][+-]{0,1}[0-9]+){0,1}$' THEN (${amount})::numeric ELSE 0 END),0) AS revenue FROM renewals${where}`,args});
-        const page=await deps.db.execute({sql:`SELECT id,data FROM renewals${where} ORDER BY COALESCE(json_extract(data, '$.renewedAt'),'') DESC, id DESC LIMIT ${limit} OFFSET ${offset}`,args});
+        // Immutable jsonb expression so the idx_renewals_renewedat_id index serves the sort.
+        const page=await deps.db.execute({sql:`SELECT id,data FROM renewals${where} ORDER BY COALESCE(data::jsonb->>'renewedAt','') DESC, id DESC LIMIT ${limit} OFFSET ${offset}`,args});
         const total=Number(summary.rows[0]?.total||0),totalRevenue=Number(summary.rows[0]?.revenue||0);
         return res.json({items:page.rows.map(record),total,totalRevenue,offset,limit,hasMore:offset+page.rows.length<total});
       }
