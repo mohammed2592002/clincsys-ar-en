@@ -26,11 +26,19 @@ const fs = require('node:fs');
       await page.waitForFunction(t => [...document.querySelectorAll('button')].some(b => b.getClientRects().length && b.textContent.includes(t)),{},text);
       await page.evaluate(t => [...document.querySelectorAll('button')].find(b => b.getClientRects().length && b.textContent.includes(t)).click(),text);
     }
+    // Sidebar section navigation: each section renders on its own.
+    async function section(label) {
+      await click(label);
+      await page.waitForFunction(t => {
+        const active = [...document.querySelectorAll('aside nav button')].find(b => b.textContent.includes(t));
+        return active && active.className.includes('bg-emerald-50');
+      },{},label);
+    }
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.includes('المتابعة بوضع المحاكاة المحلي')));
     await click('المتابعة بوضع المحاكاة المحلي');
     await page.waitForFunction(() => !document.body.innerText.includes('لم يتم الحصول على الداتا بيز'));
     await click('الموقع التعريفي');
-    await page.waitForFunction(() => [...document.querySelectorAll('label')].some(l => l.textContent === 'المميزات (سطر لكل ميزة)'));
+    await page.waitForFunction(() => [...document.querySelectorAll('label')].some(l => l.textContent === 'الوصف تحت العنوان'));
     const copy = {};
     async function typeField(label,value,index=0) {
       await page.evaluate((label,index) => {
@@ -50,29 +58,37 @@ const fs = require('node:fs');
       }
       assert.equal(await page.$eval('[data-whitespace-test]',el => el.value),value,label+' keeps every typed character');
     }
+    // [section sidebar label, field label, copy key, index among same-label fields]
     const fields = [
-      ['الوصف تحت العنوان','heroSubtitle',0],['وصف: المميزات','featuresSubtitle',0],
-      ['وصف: الأسعار','pricingSubtitle',0],['وصف الـ CTA','ctaSubtitle',0],
-      ['سطر الحقوق في الفوتر','footerCopyright',0],['وصف قصير','planDesc',0],
-      ['الوصف','featureDesc',0],['الوصف','stepDesc',12],
+      ['القسم الرئيسي (الهيرو)','الوصف تحت العنوان','heroSubtitle',0],
+      ['الهيدر والأقسام والفوتر','وصف: المميزات','featuresSubtitle',0],
+      ['الهيدر والأقسام والفوتر','وصف: الأسعار','pricingSubtitle',0],
+      ['الهيدر والأقسام والفوتر','وصف الـ CTA','ctaSubtitle',0],
+      ['الهيدر والأقسام والفوتر','سطر الحقوق في الفوتر','footerCopyright',0],
+      ['خطط الأسعار','وصف قصير','planDesc',0],
+      ['بطاقات المميزات','الوصف','featureDesc',0],
+      ['شريط الإحصائيات','الوصف','statLabel',0],
+      ['خطوات البداية (3)','الوصف','stepDesc',0],
+      ['قسم «عارف الإحساس ده؟»','المشكلة 1','pain1',0],
     ];
-    // There are eight feature descriptions and four stats labels before steps.
-    assert.equal(await page.evaluate(() => [...document.querySelectorAll('label')].filter(l => l.textContent === 'الوصف').length),15);
     for(const lang of ['ar','en']) {
       if(lang === 'en') await click('English');
       copy[lang] = {};
-      for(const [label,key,index] of fields) {
+      let currentSection = '';
+      for(const [sec,label,key,index] of fields) {
+        if(sec !== currentSection) { await section(sec); currentSection = sec; }
         const value = lang === 'ar' ? `  ${key}  مساحة   محفوظة\n\nسطر  جديد  ` : `  ${key}  extra   spaces\n\nA  new line  `;
         copy[lang][key] = value;
         await typeField(label,value,index);
       }
+      await section('خطط الأسعار');
       const features = lang === 'ar' ? '  ملفات   المرضى  \n\nمواعيد  وتقارير\nسطر أخير  \n' : '  Patient   files  \n\nBooking  reports\nLast line  \n';
       copy[lang].features=features;
       await typeField('المميزات (سطر لكل ميزة)',features);
       await page.$eval('[data-whitespace-test]',el=>{el.scrollTop=0;el.scrollIntoView({block:'center',behavior:'instant'});});
       await page.screenshot({path:`/downloads/website-whitespace-${mode}-${lang}-editor.png`});
     }
-    await click('حفظ التعديلات');
+    await click('حفظ محتوى الموقع');
     await page.waitForFunction(() => document.body.innerText.includes('تم حفظ محتوى الموقع'));
     await click('حسناً');
     const stored = await fetch(base+'/api/db',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+auth.token},body:JSON.stringify({action:'getDoc',path:'system_settings/landing_page',id:'landing_page'})}).then(r=>r.json());
@@ -80,7 +96,9 @@ const fs = require('node:fs');
     const data=stored.data || stored;
     for(const lang of ['ar','en']) {
       assert.equal(data[lang].heroSubtitle,copy[lang].heroSubtitle);
+      assert.equal(data[lang].painsKicker === undefined || typeof data[lang].painsKicker === 'string', true);
       assert.deepEqual(data.plans[0][lang].features,copy[lang].features.split('\n'));
+      assert.equal(data.pains[0][lang].text,copy[lang].pain1);
     }
     // A fresh unauthenticated visitor reads persisted content from the real API.
     const context = await browser.createBrowserContext();
@@ -94,7 +112,8 @@ const fs = require('node:fs');
         if(key === 'features') continue;
         await visitor.waitForFunction(v=>[...document.querySelectorAll('span')].some(el=>el.textContent===v),{},value);
         const result=await visitor.evaluate(value => {
-          const el=[...document.querySelectorAll('span')].find(el=>el.textContent===value);
+          const matches=[...document.querySelectorAll('span')].filter(el=>el.textContent===value);
+          const el=matches[matches.length-1];
           const style=getComputedStyle(el);
           const r=document.createRange();r.selectNodeContents(el);
           return {whiteSpace:style.whiteSpace,lines:r.getClientRects().length,overflowWrap:style.overflowWrap};
@@ -120,10 +139,12 @@ const fs = require('node:fs');
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.includes('المتابعة بوضع المحاكاة المحلي')));
     await click('المتابعة بوضع المحاكاة المحلي');
     await click('الموقع التعريفي');
+    await section('خطط الأسعار');
     await page.waitForFunction(v => [...document.querySelectorAll('textarea')].some(el=>el.value===v),{},copy.ar.features);
     await click('English');
+    await section('خطط الأسعار');
     await page.waitForFunction(v => [...document.querySelectorAll('textarea')].some(el=>el.value===v),{},copy.en.features);
     assert.deepEqual(errors,[]);
-    console.log(`PASS ${mode}: keyboard typing, API persistence, reload, AR/EN public rendering, blank/trailing lines, spaces, descriptions and mobile layout`);
+    console.log(`PASS ${mode}: keyboard typing, API persistence, reload, AR/EN public rendering, blank/trailing lines, spaces, pains section, descriptions and mobile layout`);
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

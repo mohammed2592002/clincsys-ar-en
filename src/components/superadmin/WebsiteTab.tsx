@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import {
-  LandingSiteContent, LandingTexts, LandingFeature, LandingPlan,
+  LandingSiteContent, LandingTexts, LandingFeature, LandingPlan, LandingPain,
   LANDING_ICON_OPTIONS
 } from '../../types';
 import { useDialogs } from '../DialogContext';
@@ -8,7 +8,7 @@ import { uploadFileToR2 } from '../../utils/r2Upload';
 import {
   Save, Plus, Trash2, Image as ImageIcon, Upload, Loader2,
   Type, Phone, LayoutGrid, ListOrdered, CreditCard, BarChart3, ExternalLink,
-  Sparkles, Compass, Clock
+  Sparkles, Compass, Clock, MessageSquare, Camera
 } from 'lucide-react';
 
 type EditLang = 'ar' | 'en';
@@ -85,7 +85,7 @@ function ImageField({ label, value, onChange, uploading, setUploading }: {
   );
 }
 
-type SectionKey = 'identity' | 'hero' | 'images' | 'contact' | 'headerSections' | 'features' | 'stats' | 'steps' | 'plans';
+type SectionKey = 'identity' | 'hero' | 'images' | 'shots' | 'pains' | 'contact' | 'headerSections' | 'features' | 'stats' | 'steps' | 'plans';
 
 interface SectionMeta {
   key: SectionKey;
@@ -100,6 +100,8 @@ const SECTIONS: SectionMeta[] = [
   { key: 'identity', label: 'الهوية واللوجو', icon: Type, hint: 'اسم البراند ولوجو الموقع — بيظهروا في الهيدر والفوتر.' },
   { key: 'hero', label: 'القسم الرئيسي (الهيرو)', icon: Sparkles, hint: 'محتوى أول ما يشوفه الزائر في الصفحة الرئيسية — التعديلات تظهر فوراً بعد الحفظ.' },
   { key: 'images', label: 'صور الصفحة', icon: ImageIcon, hint: 'صور حقيقية من النظام بتظهر في الصفحة التعريفية — ارفع أي صورة جديدة أو حط رابط مباشر.', sharedOnly: true },
+  { key: 'shots', label: 'تعليقات الصور والملاحظات', icon: Camera, hint: 'الكلام المكتوب بخط اليد جنب كل صورة، وملاحظة الأوفلاين، وشارة الخطة المميزة.' },
+  { key: 'pains', label: 'قسم «عارف الإحساس ده؟»', icon: MessageSquare, hint: 'القسم اللي بيكلم الدكتور عن مشاكله اليومية قبل ما نتكلم عن المميزات.' },
   { key: 'contact', label: 'أرقام وروابط التواصل', icon: Phone, hint: 'رقم الواتساب هو اللي بيفتح لما الزائر يدوس على زر التجربة المجانية أو أزرار الخطط.', sharedOnly: true },
   { key: 'headerSections', label: 'الهيدر والأقسام والفوتر', icon: Compass, hint: 'روابط الهيدر وعناوين الأقسام ونص الـ CTA وسطور الفوتر.' },
   { key: 'features', label: 'بطاقات المميزات', icon: LayoutGrid, hint: 'أضف أو احذف أو عدل أي ميزة. الأيقونة تتختار من القايمة.' },
@@ -145,7 +147,7 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
   const ph = (key: keyof LandingTexts) => en ? `العربي: ${content.ar[key] || ''}` : undefined;
 
   // ---- generic list item text helpers (features / stats / steps / plans) ----
-  const setListText = (listKey: 'features' | 'stats' | 'steps' | 'plans', id: string, field: string, v: any) => {
+  const setListText = (listKey: 'features' | 'stats' | 'steps' | 'plans' | 'pains', id: string, field: string, v: any) => {
     setContent(prev => ({
       ...prev,
       [listKey]: (prev[listKey] as any[]).map(item => {
@@ -223,6 +225,62 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
             <ImageField label="الصورة الرئيسية (بجانب العنوان)" value={content.heroImageUrl} onChange={v => setShared('heroImageUrl', v)} uploading={uploading} setUploading={setUploading} />
             <ImageField label="صورة مخطط الأسنان" value={content.chartImageUrl} onChange={v => setShared('chartImageUrl', v)} uploading={uploading} setUploading={setUploading} />
             <ImageField label="صورة الحسابات" value={content.financeImageUrl} onChange={v => setShared('financeImageUrl', v)} uploading={uploading} setUploading={setUploading} />
+          </div>
+        );
+
+      case 'shots':
+        return (
+          <div className="grid md:grid-cols-2 gap-4">
+            <Field label="تعليق الصورة الرئيسية (بخط اليد)" value={textOf('heroImageCaption')} onChange={v => setText('heroImageCaption', v)} placeholder={ph('heroImageCaption')} dir={dir} />
+            <Field label="تعليق صورة مخطط الأسنان (بخط اليد)" value={textOf('chartImageCaption')} onChange={v => setText('chartImageCaption', v)} placeholder={ph('chartImageCaption')} dir={dir} />
+            <Field label="تعليق صورة الحسابات (بخط اليد)" value={textOf('financeImageCaption')} onChange={v => setText('financeImageCaption', v)} placeholder={ph('financeImageCaption')} dir={dir} />
+            <Field label="شارة الخطة المميزة (مثال: الأكثر اختياراً)" value={textOf('planPopularTag')} onChange={v => setText('planPopularTag', v)} placeholder={ph('planPopularTag')} dir={dir} />
+            <div className="md:col-span-2">
+              <Area label="ملاحظة الأوفلاين (المربع الملوّن تحت ميزة الأوفلاين)" value={textOf('offlineNote')} onChange={v => setText('offlineNote', v)} placeholder={ph('offlineNote')} dir={dir} rows={3} />
+            </div>
+          </div>
+        );
+
+      case 'pains':
+        return (
+          <div className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              <Field label="العنوان الصغير" value={textOf('painsKicker')} onChange={v => setText('painsKicker', v)} placeholder={ph('painsKicker')} dir={dir} />
+              <Field label="العنوان الكبير" value={textOf('painsTitle')} onChange={v => setText('painsTitle', v)} placeholder={ph('painsTitle')} dir={dir} />
+            </div>
+            <div className="space-y-3">
+              {content.pains.map((p: LandingPain, i: number) => (
+                <div key={p.id} className="grid md:grid-cols-[1fr_auto] gap-3 items-end border border-slate-100 rounded-xl p-3 bg-slate-50/50">
+                  <Area label={`المشكلة ${i + 1}`} value={itemText(p, 'text')} onChange={v => setListText('pains', p.id, 'text', v)} placeholder={en ? `العربي: ${p.ar.text}` : undefined} dir={dir} />
+                  {!en && (
+                    <button
+                      onClick={() => setContent(prev => ({ ...prev, pains: prev.pains.filter(x => x.id !== p.id) }))}
+                      className="text-red-500 hover:bg-red-50 rounded-lg p-2.5"
+                      title="حذف المشكلة"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {!en && (
+                <button
+                  onClick={() => setContent(prev => ({
+                    ...prev,
+                    pains: [...prev.pains, { id: 'pn_' + Date.now(), ar: { text: '' }, en: { text: '' } }]
+                  }))}
+                  className="flex items-center gap-2 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 text-xs font-bold hover:bg-emerald-100"
+                >
+                  <Plus className="h-4 w-4" />
+                  إضافة مشكلة جديدة
+                </button>
+              )}
+            </div>
+            <div className="grid md:grid-cols-2 gap-4">
+              <Area label="جملة الختام (نص عادي)" value={textOf('painsResolve')} onChange={v => setText('painsResolve', v)} placeholder={ph('painsResolve')} dir={dir} />
+              <Area label="جملة الختام (الجزء العريض)" value={textOf('painsResolveStrong')} onChange={v => setText('painsResolveStrong', v)} placeholder={ph('painsResolveStrong')} dir={dir} />
+              <Field label="الملاحظة بخط اليد تحت الختام" value={textOf('painsNote')} onChange={v => setText('painsNote', v)} placeholder={ph('painsNote')} dir={dir} />
+            </div>
           </div>
         );
 

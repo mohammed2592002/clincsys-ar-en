@@ -1,73 +1,83 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { db, doc, getDocSmart } from '../dbClient';
 import {
-  LandingSiteContent, LandingTexts, LandingFeature, LandingStat, LandingStep, LandingPlan,
+  LandingSiteContent, LandingTexts, LandingFeature, LandingStat, LandingStep, LandingPlan, LandingPain,
   mergeLandingContent
 } from '../types';
-import {
-  Calendar, Image as ImageIcon, MessageCircle, Pill, Wallet, Building2,
-  Lock, Globe, Phone, Star, Users, Clock, Check, WifiOff, ArrowLeft, ArrowRight,
-  MessageSquare
-} from 'lucide-react';
+import './landing.css';
+
+// Load the landing display fonts once (Arabic + English + handwritten).
+const FONT_LINK_ID = 'landing-fonts';
+function ensureLandingFonts() {
+  if (document.getElementById(FONT_LINK_ID)) return;
+  const link = document.createElement('link');
+  link.id = FONT_LINK_ID;
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=Almarai:wght@400;700;800&family=El+Messiri:wght@500;600;700&family=Lemonada:wght@400;500;600&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Karla:wght@400;600;700;800&family=Caveat:wght@500;600&display=swap';
+  document.head.appendChild(link);
+}
 
 // Preserve editor copy without interpreting HTML or collapsing spaces/newlines.
-// A wrapper also lets flex rows wrap long text without pushing icons off screen.
 function Copy({ children }: { children: string }) {
-  return <span className="whitespace-break-spaces [overflow-wrap:anywhere] min-w-0">{children}</span>;
+  return <span className="lp-copy">{children}</span>;
 }
 
-// Fixed icon set the super admin can pick from for each feature card.
-function FeatureIcon({ name, className }: { name: string; className?: string }) {
-  const cls = className || 'h-6 w-6';
-  switch (name) {
-    case 'calendar': return <Calendar className={cls} />;
-    case 'image': return <ImageIcon className={cls} />;
-    case 'chat': return <MessageCircle className={cls} />;
-    case 'pill': return <Pill className={cls} />;
-    case 'wallet': return <Wallet className={cls} />;
-    case 'buildings': return <Building2 className={cls} />;
-    case 'lock': return <Lock className={cls} />;
-    case 'globe': return <Globe className={cls} />;
-    case 'phone': return <Phone className={cls} />;
-    case 'star': return <Star className={cls} />;
-    case 'users': return <Users className={cls} />;
-    case 'clock': return <Clock className={cls} />;
-    case 'offline': return <WifiOff className={cls} />;
-    case 'check': return <Check className={cls} />;
-    case 'tooth':
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cls}>
-          <path d="M12 4.5c-1.8 0-2.2-1-3.9-1C5.5 3.5 4 5.2 4 7.6c0 2.5 1.2 3.4 1.7 6 .4 2.4.9 5.9 2.3 5.9 1.5 0 1.3-3.2 2.2-5.3.4-1 .9-1.6 1.8-1.6s1.4.6 1.8 1.6c.9 2.1.7 5.3 2.2 5.3 1.4 0 1.9-3.5 2.3-5.9.5-2.6 1.7-3.5 1.7-6 0-2.4-1.5-4.1-4.1-4.1-1.7 0-2.1 1-3.9 1z"/>
-        </svg>
-      );
-    default: return <Check className={cls} />;
-  }
+// Hand-drawn check used next to hero points and plan features.
+function HandCheck() {
+  return (
+    <svg className="ck" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M3.5 11 C 6 13.5, 7 15, 8.5 16.5 C 11 12.5, 14 8, 17 4.5" fill="none" stroke="var(--accent)" strokeWidth="2.6" strokeLinecap="round" />
+    </svg>
+  );
 }
 
-function PulseLogo({ size = 44 }: { size?: number }) {
+// Loose hand-drawn underline for headlines.
+function HandUnderline({ light }: { light?: boolean }) {
+  return (
+    <svg viewBox="0 0 220 14" preserveAspectRatio="none" aria-hidden="true">
+      <path
+        d="M3 9 C 30 3, 55 12, 82 8 S 135 4, 162 9 S 205 12, 217 7"
+        fill="none"
+        stroke={light ? '#F2FAF6' : 'var(--accent)'}
+        strokeWidth="4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+// Hand-drawn arrow pointing at the hero screenshot note.
+function HandArrow() {
+  return (
+    <svg viewBox="0 0 60 60" aria-hidden="true">
+      <path d="M50 6 C 44 26, 34 40, 14 48 M 26 42 L 13 49 L 22 56" fill="none" stroke="var(--accent-deep)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function BrowserBar() {
+  return (
+    <div className="bar"><i></i><i></i><i></i></div>
+  );
+}
+
+function PulseLogo({ size = 42 }: { size?: number }) {
   return (
     <div
-      className="rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200"
-      style={{ width: size, height: size, background: 'linear-gradient(135deg,#3b82f6,#10b981)' }}
+      className="rounded-full flex items-center justify-center"
+      style={{ width: size, height: size, background: 'var(--ink)', border: '1px solid var(--line)' }}
     >
       <svg width={size * 0.58} height={size * 0.58} viewBox="0 0 24 24" fill="none">
-        <path d="M3 12h4l2.5-6 3.5 12 2.5-6H21" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M3 12h4l2.5-6 3.5 12 2.5-6H21" stroke="#F4FAF7" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </div>
   );
 }
 
-function BrowserFrame({ src, alt, tilt }: { src: string; alt: string; tilt?: string }) {
-  return (
-    <div className={`rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-blue-900/10 overflow-hidden ${tilt || ''}`}>
-      <div className="flex items-center gap-1.5 px-4 py-3 bg-slate-50 border-b border-slate-100">
-        <span className="w-2.5 h-2.5 rounded-full bg-red-300"></span>
-        <span className="w-2.5 h-2.5 rounded-full bg-amber-300"></span>
-        <span className="w-2.5 h-2.5 rounded-full bg-emerald-300"></span>
-      </div>
-      <img src={src} alt={alt} className="w-full block" loading="lazy" />
-    </div>
-  );
+const AR_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+function localizeDigits(s: string, isEn: boolean): string {
+  if (isEn) return s;
+  return s.replace(/\d/g, d => AR_DIGITS[Number(d)]);
 }
 
 interface LandingPageProps {
@@ -77,6 +87,8 @@ interface LandingPageProps {
 export default function LandingPage({ onLogin }: LandingPageProps) {
   const [content, setContent] = useState<LandingSiteContent>(() => mergeLandingContent(null));
   const [lang, setLang] = useState<'ar' | 'en'>('ar');
+
+  useEffect(() => { ensureLandingFonts(); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -122,223 +134,287 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
   const trialUrl = cleanPhone
     ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(T.trialWhatsappPrefill || '')}`
     : '#';
-  const Arrow = isEn ? ArrowRight : ArrowLeft;
 
   const scrollTo = (id: string) => (e: React.MouseEvent) => {
     e.preventDefault();
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Feature layout: first row of two, chart screenshot, middle rows of two,
+  // then the finance screenshot beside the offline feature (or the last one)
+  // with the offline note.
+  const feats = content.features;
+  const n = feats.length;
+  const firstRow = feats.slice(0, Math.min(2, n));
+  const hasLast = n >= 3;
+  const offlineIdx = feats.findIndex(f => f.icon === 'offline');
+  const splitIdx = hasLast ? (offlineIdx >= 2 ? offlineIdx : n - 1) : -1;
+  const lastFeat = splitIdx >= 0 ? feats[splitIdx] : null;
+  // Ordered render blocks after the first row: pairs of features, with the
+  // split showcase (finance screenshot + offline feature) where it belongs.
+  const blocks: Array<{ type: 'row'; items: { f: LandingFeature; idx: number }[] } | { type: 'split' }> = [];
+  {
+    let i = 2;
+    while (i < n) {
+      if (i === splitIdx) { blocks.push({ type: 'split' }); i++; continue; }
+      const items = [{ f: feats[i], idx: i }];
+      if (i + 1 < n && i + 1 !== splitIdx) { items.push({ f: feats[i + 1], idx: i + 1 }); i += 2; } else { i += 1; }
+      blocks.push({ type: 'row', items });
+    }
+    if (splitIdx === 2 && blocks[0]?.type !== 'split') blocks.unshift({ type: 'split' });
+  }
+
+  const featItem = (f: LandingFeature, idx: number, big = false) => {
+    const t = lt(f);
+    return (
+      <div className="fitem" key={f.id}>
+        <span className="fnum"><Copy>{localizeDigits(String(idx + 1).padStart(2, '0'), isEn)}</Copy></span>
+        <div>
+          <div className="fname" style={big ? { fontSize: 30 } : undefined}><Copy>{t.title}</Copy></div>
+          <div className="fdesc" style={big ? { fontSize: 16.5 } : undefined}><Copy>{t.desc}</Copy></div>
+          {big && T.offlineNote && (
+            <div className="offline-note"><Copy>{T.offlineNote}</Copy></div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div dir={dir} className="min-h-screen bg-[#f6faff] text-slate-900 font-sans">
+    <div dir={dir} className="lp-root">
       {/* ================= NAV ================= */}
-      <nav className="sticky top-0 z-40 bg-white/85 backdrop-blur-md border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-3 sm:px-5 py-3.5 flex items-center justify-between gap-2 sm:gap-4">
-          <div className="flex items-center gap-2 sm:gap-3">
+      <nav>
+        <div className="wrap nav-in">
+          <div className="brand">
             {content.logoUrl
-              ? <img src={content.logoUrl} alt={T.brandName} className="h-11 w-11 rounded-2xl object-cover shadow-lg shadow-blue-200" />
+              ? <img src={content.logoUrl} alt={T.brandName} />
               : <PulseLogo />}
-            <span className="font-black text-base sm:text-xl tracking-tight whitespace-break-spaces">
-              {T.brandName.includes('Dent')
-                ? <>{T.brandName.split('Dent')[0]}<span className="bg-gradient-to-l from-blue-600 to-emerald-500 bg-clip-text text-transparent">Dent</span>{T.brandName.split('Dent')[1]}</>
-                : T.brandName}
-            </span>
+            <span className="brand-en serif"><Copy>{T.brandName}</Copy></span>
           </div>
-          <div className="hidden md:flex items-center gap-7 font-semibold text-slate-600 text-[15px]">
-            <a href="#features" onClick={scrollTo('features')} className="hover:text-blue-700 transition-colors"><Copy>{T.navFeatures}</Copy></a>
-            <a href="#how" onClick={scrollTo('how')} className="hover:text-blue-700 transition-colors"><Copy>{T.navHow}</Copy></a>
-            <a href="#pricing" onClick={scrollTo('pricing')} className="hover:text-blue-700 transition-colors"><Copy>{T.navPricing}</Copy></a>
-            <a href="#contact" onClick={scrollTo('contact')} className="hover:text-blue-700 transition-colors"><Copy>{T.navContact}</Copy></a>
+          <div className="nav-links">
+            <a href="#features" onClick={scrollTo('features')}><Copy>{T.navFeatures}</Copy></a>
+            <a href="#how" onClick={scrollTo('how')}><Copy>{T.navHow}</Copy></a>
+            <a href="#pricing" onClick={scrollTo('pricing')}><Copy>{T.navPricing}</Copy></a>
+            <a href="#contact" onClick={scrollTo('contact')}><Copy>{T.navContact}</Copy></a>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              onClick={() => setLang(isEn ? 'ar' : 'en')}
-              className="border border-slate-200 bg-white text-slate-600 rounded-full px-3 sm:px-4 py-1.5 font-bold text-[12px] sm:text-[13px] hover:border-blue-300 transition-colors flex items-center gap-1.5"
-            >
-              <Globe className="h-3.5 w-3.5" />
+          <div className="nav-cta">
+            <button type="button" className="lang" onClick={() => setLang(isEn ? 'ar' : 'en')}>
               {isEn ? 'العربية' : 'English'}
             </button>
-            <button
-              onClick={onLogin}
-              className="bg-gradient-to-l from-blue-600 to-blue-700 text-white rounded-xl px-3 sm:px-6 py-2.5 font-extrabold text-[12px] sm:text-[15px] shrink-0 shadow-lg shadow-blue-600/30 hover:shadow-blue-600/45 hover:-translate-y-px transition-all flex items-center gap-2"
-            >
+            <button type="button" className="login" onClick={onLogin}>
               <Copy>{T.loginLabel}</Copy>
-              <Arrow className="h-4 w-4" />
             </button>
           </div>
         </div>
       </nav>
 
       {/* ================= HERO ================= */}
-      <header className="max-w-6xl mx-auto px-5 pt-14 sm:pt-20 pb-16 grid lg:grid-cols-2 gap-12 lg:gap-10 items-center">
-        <div>
-          {T.heroBadge && (
-            <div className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[13px] rounded-full px-4 py-1.5 mb-6">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <Copy>{T.heroBadge}</Copy>
-            </div>
-          )}
-          <h1 className="text-4xl sm:text-5xl font-black leading-[1.35] mb-5">
-            <Copy>{T.heroTitleA}</Copy>
-            {T.heroTitleB && (
-              <>
-                <br />
-                <span className="bg-gradient-to-l from-blue-600 to-emerald-500 bg-clip-text text-transparent"><Copy>{T.heroTitleB}</Copy></span>
-              </>
+      <header className="hero">
+        <div className="wrap hero-grid">
+          <div>
+            {T.heroBadge && (
+              <span className="badge"><i></i><Copy>{T.heroBadge}</Copy></span>
             )}
-          </h1>
-          <p className="text-slate-500 text-[16.5px] leading-8 mb-8 max-w-xl"><Copy>{T.heroSubtitle}</Copy></p>
-          <div className="flex flex-wrap items-center gap-3.5 mb-9">
-            <a
-              href={trialUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-gradient-to-l from-emerald-500 to-emerald-600 text-white rounded-2xl px-7 py-4 font-extrabold text-[16px] shadow-xl shadow-emerald-500/30 hover:shadow-emerald-500/45 hover:-translate-y-px transition-all flex items-center gap-2.5"
-            >
-              <MessageSquare className="h-5 w-5" />
-              <Copy>{T.trialButtonLabel}</Copy>
-            </a>
-            <a
-              href="#pricing"
-              onClick={scrollTo('pricing')}
-              className="bg-white text-blue-700 border-[1.5px] border-blue-200 rounded-2xl px-6 py-[15px] font-extrabold text-[15px] hover:border-blue-400 transition-colors"
-            >
-              <Copy>{T.pricingButtonLabel}</Copy>
-            </a>
+            <h1>
+              <Copy>{T.heroTitleA}</Copy>
+              {T.heroTitleB && (
+                <>
+                  <br />
+                  <span className="hl"><Copy>{T.heroTitleB}</Copy><HandUnderline /></span>
+                </>
+              )}
+            </h1>
+            <p className="hero-sub"><Copy>{T.heroSubtitle}</Copy></p>
+            <div className="hero-btns">
+              <a className="btn btn-primary" href={trialUrl} target="_blank" rel="noopener noreferrer">
+                <Copy>{T.trialButtonLabel}</Copy>
+              </a>
+              <a className="btn btn-ghost" href="#pricing" onClick={scrollTo('pricing')}>
+                <Copy>{T.pricingButtonLabel}</Copy>
+              </a>
+            </div>
+            <div className="hero-checks">
+              {[T.heroPoint1, T.heroPoint2, T.heroPoint3].filter(Boolean).map((p, i) => (
+                <span key={i}><HandCheck /><Copy>{p}</Copy></span>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-x-6 gap-y-2 text-slate-500 text-[13.5px] font-semibold">
-            {[T.heroPoint1, T.heroPoint2, T.heroPoint3].filter(Boolean).map((p, i) => (
-              <span key={i} className="flex items-center gap-1.5">
-                <Check className="h-4 w-4 text-emerald-500" strokeWidth={3} />
-                <Copy>{p}</Copy>
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="relative">
-          <div className="absolute -inset-6 bg-gradient-to-tl from-blue-100 via-transparent to-emerald-100 rounded-[2.5rem] blur-2xl opacity-70"></div>
-          <div className="relative lg:-rotate-1">
-            <BrowserFrame src={content.heroImageUrl} alt={T.featuresTitle} />
+          <div className="shot">
+            <div className="shot-back"></div>
+            <div className="frame">
+              <BrowserBar />
+              <img src={content.heroImageUrl} alt={T.featuresTitle} />
+            </div>
+            {T.heroImageCaption && (
+              <div className="note">
+                <span className="hand"><Copy>{T.heroImageCaption}</Copy></span>
+                <HandArrow />
+              </div>
+            )}
           </div>
         </div>
       </header>
 
       {/* ================= STATS ================= */}
       {content.stats.length > 0 && (
-        <div className="bg-gradient-to-l from-blue-900 via-blue-700 to-emerald-600 text-white">
-          <div className="max-w-6xl mx-auto px-5 py-7 grid grid-cols-2 md:grid-cols-4 gap-5">
+        <section className="stats">
+          <div className="stats-in">
             {content.stats.map((s: LandingStat) => {
               const t = lt(s);
               return (
-                <div key={s.id} className="text-center">
-                  <div className="font-black text-xl sm:text-2xl mb-1"><Copy>{t.value}</Copy></div>
-                  <div className="text-blue-100 text-[13px] font-semibold"><Copy>{t.label}</Copy></div>
+                <div className="stat" key={s.id}>
+                  <b><Copy>{t.value}</Copy></b>
+                  <Copy>{t.label}</Copy>
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
-
-      {/* ================= FEATURES ================= */}
-      <section id="features" className="max-w-6xl mx-auto px-5 pt-20">
-        <div className="text-center max-w-xl mx-auto mb-12">
-          <div className="text-blue-600 font-extrabold text-[13.5px] tracking-wide mb-2"><Copy>{T.featuresKicker}</Copy></div>
-          <h2 className="text-3xl sm:text-4xl font-black mb-3"><Copy>{T.featuresTitle}</Copy></h2>
-          <p className="text-slate-500 leading-7"><Copy>{T.featuresSubtitle}</Copy></p>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {content.features.map((f: LandingFeature, i: number) => {
-            const t = lt(f);
-            const green = i % 2 === 1;
-            return (
-              <div key={f.id} className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 hover:shadow-xl hover:shadow-blue-900/5 hover:-translate-y-0.5 transition-all">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${green ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-700'}`}>
-                  <FeatureIcon name={f.icon} />
-                </div>
-                <h3 className="font-extrabold text-[15.5px] mb-1.5"><Copy>{t.title}</Copy></h3>
-                <p className="text-slate-500 text-[13px] leading-6"><Copy>{t.desc}</Copy></p>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ================= REAL SCREENSHOTS ================= */}
-      {(content.chartImageUrl || content.financeImageUrl) && (
-        <section className="max-w-6xl mx-auto px-5 pt-16 grid md:grid-cols-2 gap-6">
-          {content.chartImageUrl && <div className="md:rotate-1"><BrowserFrame src={content.chartImageUrl} alt="" /></div>}
-          {content.financeImageUrl && <div className="md:-rotate-1 md:mt-10"><BrowserFrame src={content.financeImageUrl} alt="" /></div>}
         </section>
       )}
 
+      {/* ================= PAINS ================= */}
+      {(content.pains.length > 0 || T.painsTitle) && (
+        <section className="pains">
+          <div className="wrap">
+            {T.painsKicker && <span className="label"><Copy>{T.painsKicker}</Copy></span>}
+            <h2><Copy>{T.painsTitle}</Copy></h2>
+            <div className="pain-list">
+              {content.pains.map((p: LandingPain) => (
+                <div className="pain" key={p.id}><Copy>{lt(p).text}</Copy></div>
+              ))}
+            </div>
+            {(T.painsResolve || T.painsResolveStrong || T.painsNote) && (
+              <p className="resolve">
+                <Copy>{T.painsResolve}</Copy>{T.painsResolve && T.painsResolveStrong ? ' ' : ''}
+                {T.painsResolveStrong && <b><Copy>{T.painsResolveStrong}</Copy></b>}
+                {T.painsNote && (
+                  <>
+                    <br />
+                    <span className="hand"><Copy>{T.painsNote}</Copy></span>
+                  </>
+                )}
+              </p>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ================= FEATURES ================= */}
+      <section className="features" id="features">
+        <div className="wrap">
+          <div className="feat-head">
+            <div>
+              {T.featuresKicker && <span className="label"><Copy>{T.featuresKicker}</Copy></span>}
+              <h2><Copy>{T.featuresTitle}</Copy></h2>
+            </div>
+            <p><Copy>{T.featuresSubtitle}</Copy></p>
+          </div>
+
+          {firstRow.length > 0 && (
+            <div className="frow">
+              {firstRow.map((f, i) => featItem(f, i))}
+            </div>
+          )}
+
+          {content.chartImageUrl && (
+            <div className="showcase">
+              <div className="frame2">
+                <BrowserBar />
+                <img src={content.chartImageUrl} alt="" loading="lazy" />
+              </div>
+              {T.chartImageCaption && (
+                <div className="cap"><span className="hand"><Copy>{T.chartImageCaption}</Copy></span></div>
+              )}
+            </div>
+          )}
+
+          {blocks.map((b, bi) => b.type === 'row' ? (
+            <div className="frow" key={bi}>
+              {b.items.map(({ f, idx }) => featItem(f, idx))}
+            </div>
+          ) : (
+            <div className={`showcase${content.financeImageUrl ? ' split' : ''}`} key={bi}>
+              {content.financeImageUrl && (
+                <div>
+                  <div className="frame2">
+                    <BrowserBar />
+                    <img src={content.financeImageUrl} alt="" loading="lazy" />
+                  </div>
+                  {T.financeImageCaption && (
+                    <div className="cap"><span className="hand"><Copy>{T.financeImageCaption}</Copy></span></div>
+                  )}
+                </div>
+              )}
+              {lastFeat && featItem(lastFeat, splitIdx, true)}
+            </div>
+          ))}
+
+          {!hasLast && content.financeImageUrl && (
+            <div className="showcase">
+              <div className="frame2">
+                <BrowserBar />
+                <img src={content.financeImageUrl} alt="" loading="lazy" />
+              </div>
+              {T.financeImageCaption && (
+                <div className="cap"><span className="hand"><Copy>{T.financeImageCaption}</Copy></span></div>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* ================= STEPS ================= */}
       {content.steps.length > 0 && (
-        <section id="how" className="max-w-6xl mx-auto px-5 pt-20">
-          <div className="text-center max-w-xl mx-auto mb-12">
-            <div className="text-blue-600 font-extrabold text-[13.5px] tracking-wide mb-2"><Copy>{T.stepsKicker}</Copy></div>
-            <h2 className="text-3xl sm:text-4xl font-black"><Copy>{T.stepsTitle}</Copy></h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-5">
-            {content.steps.map((s: LandingStep, i: number) => {
-              const t = lt(s);
-              return (
-                <div key={s.id} className="bg-white border border-slate-200 rounded-2xl p-7">
-                  <div className="w-11 h-11 rounded-xl bg-gradient-to-bl from-blue-600 to-emerald-500 text-white font-black text-lg flex items-center justify-center mb-4 shadow-lg shadow-blue-600/25">
-                    {i + 1}
+        <section className="steps" id="how">
+          <div className="wrap">
+            {T.stepsKicker && <span className="label"><Copy>{T.stepsKicker}</Copy></span>}
+            <h2><Copy>{T.stepsTitle}</Copy></h2>
+            <div className="steps-grid">
+              {content.steps.map((s: LandingStep, i: number) => {
+                const t = lt(s);
+                return (
+                  <div className="step" key={s.id}>
+                    <b><Copy>{localizeDigits(String(i + 1), isEn)}</Copy></b>
+                    <h3><Copy>{t.title}</Copy></h3>
+                    <p><Copy>{t.desc}</Copy></p>
                   </div>
-                  <h3 className="font-extrabold text-[17px] mb-2"><Copy>{t.title}</Copy></h3>
-                  <p className="text-slate-500 text-[14px] leading-7"><Copy>{t.desc}</Copy></p>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </section>
       )}
 
       {/* ================= PRICING ================= */}
-      <section id="pricing" className="max-w-6xl mx-auto px-5 pt-20">
-        <div className="bg-gradient-to-b from-blue-50 to-transparent rounded-[2rem] px-4 sm:px-8 py-14">
-          <div className="text-center max-w-xl mx-auto mb-12">
-            <div className="text-blue-600 font-extrabold text-[13.5px] tracking-wide mb-2"><Copy>{T.pricingKicker}</Copy></div>
-            <h2 className="text-3xl sm:text-4xl font-black mb-3"><Copy>{T.pricingTitle}</Copy></h2>
-            <p className="text-slate-500 leading-7"><Copy>{T.pricingSubtitle}</Copy></p>
-          </div>
-          <div className={`grid gap-5 ${content.plans.length === 1 ? 'md:grid-cols-1 max-w-md mx-auto' : content.plans.length === 2 ? 'md:grid-cols-2 max-w-3xl mx-auto' : 'md:grid-cols-3'}`}>
+      <section className="pricing" id="pricing">
+        <div className="wrap center">
+          {T.pricingKicker && <span className="label" style={{ justifyContent: 'center' }}><Copy>{T.pricingKicker}</Copy></span>}
+          <h2><Copy>{T.pricingTitle}</Copy></h2>
+          <p className="sub"><Copy>{T.pricingSubtitle}</Copy></p>
+          <div className="plans">
             {content.plans.map((p: LandingPlan) => {
               const t = lt(p);
-              const feats: string[] = Array.isArray(t.features) ? t.features : [];
+              const pfeats: string[] = Array.isArray(t.features) ? t.features : [];
               return (
-                <div
-                  key={p.id}
-                  className={`relative bg-white rounded-3xl p-7 flex flex-col ${p.popular ? 'border-[2.5px] border-emerald-500 shadow-2xl shadow-emerald-500/15 md:-mt-4 md:mb-[-1rem]' : 'border border-slate-200 shadow-sm'}`}
-                >
-                  {p.popular && (
-                    <div className="absolute -top-3.5 start-1/2 -translate-x-1/2 rtl:translate-x-1/2 bg-gradient-to-l from-emerald-500 to-emerald-600 text-white font-extrabold text-[12.5px] px-5 py-1 rounded-full shadow-lg shadow-emerald-500/30 whitespace-nowrap flex items-center gap-1">
-                      <Star className="h-3 w-3" fill="currentColor" />
-                      {isEn ? 'Most popular' : 'الأكثر اختياراً'}
-                    </div>
+                <div className={`plan${p.popular ? ' hot' : ''}`} key={p.id}>
+                  {p.popular && T.planPopularTag && (
+                    <span className="flag"><Copy>{T.planPopularTag}</Copy></span>
                   )}
-                  <h3 className="font-extrabold text-lg"><Copy>{t.name}</Copy></h3>
-                  <p className="text-slate-400 text-[13px] mt-1 mb-5"><Copy>{t.desc}</Copy></p>
-                  <div className="flex items-baseline gap-2 mb-6">
-                    <span className="font-black text-[42px] leading-none"><Copy>{p.price}</Copy></span>
-                    <span className="text-slate-400 font-bold text-[13px]"><Copy>{t.period}</Copy></span>
+                  <h3><Copy>{t.name}</Copy></h3>
+                  <p className="for"><Copy>{t.desc}</Copy></p>
+                  <div className="price">
+                    <b><Copy>{p.price}</Copy></b>
+                    <span><Copy>{t.period}</Copy></span>
                   </div>
-                  <ul className="space-y-2.5 mb-7 flex-1">
-                    {feats.map((f, i) => (
-                      <li key={i} aria-hidden={f === '' ? true : undefined} className="flex items-start gap-2 text-[13.5px] min-h-[1.5em] font-semibold text-slate-600">
-                        {f !== '' && <Check className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" strokeWidth={3} />}
+                  <ul>
+                    {pfeats.map((f, i) => (
+                      <li key={i} aria-hidden={f === '' ? true : undefined}>
+                        {f !== '' && <HandCheck />}
                         <Copy>{f}</Copy>
                       </li>
                     ))}
                   </ul>
-                  <a
-                    href={trialUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`text-center rounded-xl py-3.5 font-extrabold text-[15px] transition-all ${p.popular ? 'bg-gradient-to-l from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/45' : 'border-[1.5px] border-blue-200 text-blue-700 hover:border-blue-400'}`}
-                  >
+                  <a className={`btn ${p.popular ? 'btn-primary' : 'btn-ghost'}`} href={trialUrl} target="_blank" rel="noopener noreferrer">
                     <Copy>{t.buttonLabel}</Copy>
                   </a>
                 </div>
@@ -349,53 +425,39 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
       </section>
 
       {/* ================= CTA ================= */}
-      <section className="max-w-6xl mx-auto px-5 pt-20 pb-4">
-        <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-l from-blue-900 via-blue-700 to-emerald-600 text-white text-center px-6 py-16">
-          <div className="absolute -top-24 -end-24 w-72 h-72 rounded-full bg-emerald-400/20 blur-3xl"></div>
-          <div className="absolute -bottom-24 -start-24 w-72 h-72 rounded-full bg-blue-400/20 blur-3xl"></div>
-          <h2 className="relative text-3xl sm:text-4xl font-black mb-4"><Copy>{T.ctaTitle}</Copy></h2>
-          <p className="relative text-blue-100 text-[16px] mb-9 max-w-lg mx-auto leading-7"><Copy>{T.ctaSubtitle}</Copy></p>
-          <div className="relative flex flex-wrap justify-center gap-3.5">
-            <a
-              href={trialUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-white text-blue-900 rounded-2xl px-8 py-4 font-black text-[16px] shadow-xl hover:-translate-y-px transition-all flex items-center gap-2.5"
-            >
-              <MessageSquare className="h-5 w-5" />
+      <section className="cta">
+        <div className="wrap">
+          <h2><Copy>{T.ctaTitle}</Copy><HandUnderline light /></h2>
+          <p><Copy>{T.ctaSubtitle}</Copy></p>
+          <div className="hero-btns">
+            <a className="btn btn-primary" href={trialUrl} target="_blank" rel="noopener noreferrer">
               <Copy>{T.ctaTrialLabel}</Copy>
             </a>
-            <button
-              onClick={onLogin}
-              className="border-2 border-white/50 text-white rounded-2xl px-7 py-[15px] font-extrabold text-[15.5px] hover:bg-white/10 transition-colors flex items-center gap-2"
-            >
+            <button type="button" className="btn btn-ghost" onClick={onLogin}>
               <Copy>{T.ctaLoginLabel}</Copy>
-              <Arrow className="h-4 w-4" />
             </button>
           </div>
         </div>
       </section>
 
       {/* ================= FOOTER ================= */}
-      <footer id="contact" className="border-t border-slate-200 bg-white mt-14">
-        <div className="max-w-6xl mx-auto px-5 py-10 flex flex-wrap items-center justify-between gap-6">
-          <div className="flex items-center gap-2.5">
+      <footer id="contact">
+        <div className="wrap foot">
+          <div className="brand">
             {content.logoUrl
-              ? <img src={content.logoUrl} alt={T.brandName} className="h-9 w-9 rounded-xl object-cover" />
-              : <PulseLogo size={36} />}
-            <span className="font-black text-[17px]"><Copy>{T.brandName}</Copy></span>
+              ? <img src={content.logoUrl} alt={T.brandName} />
+              : <PulseLogo size={34} />}
+            <span className="brand-en serif"><Copy>{T.brandName}</Copy></span>
           </div>
-          <div className="flex flex-wrap gap-x-6 gap-y-2 text-slate-500 font-semibold text-[13.5px]">
-            {content.whatsappCommunityUrl && (
-              <a href={content.whatsappCommunityUrl} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 transition-colors"><Copy>{T.footerCommunityLabel}</Copy></a>
-            )}
-            {content.facebookUrl && (
-              <a href={content.facebookUrl} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 transition-colors"><Copy>{T.footerFacebookLabel}</Copy></a>
-            )}
-            <span><Copy>{T.footerFaqLabel}</Copy></span>
-          </div>
+          {content.whatsappCommunityUrl && (
+            <a href={content.whatsappCommunityUrl} target="_blank" rel="noopener noreferrer"><Copy>{T.footerCommunityLabel}</Copy></a>
+          )}
+          {content.facebookUrl && (
+            <a href={content.facebookUrl} target="_blank" rel="noopener noreferrer"><Copy>{T.footerFacebookLabel}</Copy></a>
+          )}
+          <a href="#contact" onClick={(e) => e.preventDefault()}><Copy>{T.footerFaqLabel}</Copy></a>
+          <Copy>{T.footerCopyright}</Copy>
         </div>
-        <div className="text-center text-slate-400 text-[12.5px] font-semibold pb-7"><Copy>{T.footerCopyright}</Copy></div>
       </footer>
     </div>
   );

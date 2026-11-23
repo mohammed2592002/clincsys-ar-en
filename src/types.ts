@@ -559,6 +559,16 @@ export interface LandingTexts {
   heroPoint1: string;
   heroPoint2: string;
   heroPoint3: string;
+  heroImageCaption: string;
+  chartImageCaption: string;
+  financeImageCaption: string;
+  offlineNote: string;
+  planPopularTag: string;
+  painsKicker: string;
+  painsTitle: string;
+  painsResolve: string;
+  painsResolveStrong: string;
+  painsNote: string;
   featuresKicker: string;
   featuresTitle: string;
   featuresSubtitle: string;
@@ -597,6 +607,12 @@ export interface LandingStep {
   en?: { title?: string; desc?: string };
 }
 
+export interface LandingPain {
+  id: string;
+  ar: { text: string };
+  en?: { text?: string };
+}
+
 export interface LandingPlan {
   id: string;
   price: string;
@@ -619,6 +635,7 @@ export interface LandingSiteContent {
   stats: LandingStat[];
   steps: LandingStep[];
   plans: LandingPlan[];
+  pains: LandingPain[];
   updatedAt?: string;
 }
 
@@ -643,6 +660,16 @@ export const DEFAULT_LANDING_TEXTS_AR: LandingTexts = {
   heroPoint1: 'بدون تحميل برامج',
   heroPoint2: 'بيانات كل عيادة منفصلة ومشفّرة',
   heroPoint3: 'دعم مباشر على واتساب',
+  heroImageCaption: 'سجل مواعيد حقيقي، مش صورة تصميم',
+  chartImageCaption: 'خريطة الفم من جوه النظام — كل سن ليها إجراءاتها وسعرها',
+  financeImageCaption: 'تقفيل اليوم والوردية — من شاشة الإقفال نفسها',
+  offlineNote: 'العيادة ما بتقفش لما النت يقف. حجوزات وملفات وحسابات شغالة، والمزامنة بتحصل لوحدها أول ما الاتصال يرجع.',
+  planPopularTag: 'الأكثر اختياراً',
+  painsKicker: 'قبل أي كلام عن مميزات',
+  painsTitle: 'عارف الإحساس ده؟',
+  painsResolve: 'كل يوم من غير نظام فيه واحدة من دول على الأقل.',
+  painsResolveStrong: 'ودي بالظبط الحاجات اللي اتبنى عليها CoreDentSys.',
+  painsNote: '— مش شعارات، دي شغلانة كل يوم.',
   featuresKicker: 'المميزات',
   featuresTitle: 'كل اللي عيادتك محتاجاه',
   featuresSubtitle: 'من أول ما المريض يدخل لحد ما يدفع ويتابع، النظام مغطي كل خطوة في يومك.',
@@ -678,6 +705,16 @@ export const DEFAULT_LANDING_TEXTS_EN: LandingTexts = {
   heroPoint1: 'No software to install',
   heroPoint2: 'Every clinic\u2019s data is separate & encrypted',
   heroPoint3: 'Direct WhatsApp support',
+  heroImageCaption: 'a real booking screen, not a mockup',
+  chartImageCaption: 'the mouth chart from inside the app: every tooth has its procedures and its price',
+  financeImageCaption: 'daily and shift closing, from the actual screen',
+  offlineNote: 'The clinic does not stop when the internet does. Bookings, files and accounts keep working, and syncing happens on its own once the connection returns.',
+  planPopularTag: 'Most chosen',
+  painsKicker: 'Before any talk of features',
+  painsTitle: 'You know the feeling?',
+  painsResolve: 'Every day without a system has at least one of these in it.',
+  painsResolveStrong: 'These are exactly the things CoreDentSys was built to take off your plate.',
+  painsNote: 'Not slogans. Just the daily reality.',
   featuresKicker: 'Features',
   featuresTitle: 'Everything your clinic needs',
   featuresSubtitle: 'From the moment a patient walks in until they pay and follow up, the system covers every step of your day.',
@@ -722,6 +759,11 @@ export const DEFAULT_LANDING_CONTENT: LandingSiteContent = {
     { id: 's2', ar: { value: 'عربي + English', label: 'واجهة كاملة باللغتين RTL' }, en: { value: 'Arabic + English', label: 'Full RTL & LTR interface' } },
     { id: 's3', ar: { value: 'مشفّرة', label: 'بيانات كل عيادة منفصلة وآمنة' }, en: { value: 'Encrypted', label: 'Every clinic\u2019s data is separate & safe' } },
     { id: 's4', ar: { value: 'أي جهاز', label: 'موبايل وتابليت وكمبيوتر' }, en: { value: 'Any device', label: 'Phone, tablet and computer' } }
+  ],
+  pains: [
+    { id: 'pn1', ar: { text: 'الدفتر اتلخبط، واتنين مرضى محجوزين في نفس المعاد.' }, en: { text: 'The book is a mess, and two patients are booked into the same slot.' } },
+    { id: 'pn2', ar: { text: 'آخر اليوم، وانت لسه بتجمع حسابات الوردية على الآلة الحاسبة.' }, en: { text: 'End of the day, and you are still adding up the shift on a calculator.' } },
+    { id: 'pn3', ar: { text: 'مريض بيتصل يسأل على معاده… ومحدش في العيادة فاكره.' }, en: { text: 'A patient calls to ask about their appointment… and nobody in the clinic remembers it.' } }
   ],
   steps: [
     { id: 'st1', ar: { title: 'اطلب تجربتك المجانية', desc: 'كلّمنا على واتساب وهنجهزلك حساب تجريبي لعيادتك في دقايق — 7 أيام مجاناً.' }, en: { title: 'Request your free trial', desc: 'Message us on WhatsApp and we\u2019ll set up a trial account for your clinic in minutes — free for 7 days.' } },
@@ -782,5 +824,6 @@ export function mergeLandingContent(stored: any): LandingSiteContent {
   out.stats = mergeList(base.stats, stored.stats);
   out.steps = mergeList(base.steps, stored.steps);
   out.plans = mergeList(base.plans, stored.plans);
+  out.pains = mergeList(base.pains, stored.pains);
   return out as LandingSiteContent;
 }
