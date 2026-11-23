@@ -1,3 +1,4 @@
+import {installLegacyReadIndexes} from './readIndexes';
 import {createBackupService} from './backup';
 import { DEFAULT_PAYMENT_METHODS } from '../src/utils/paymentMethods';
 import {commandMessage} from '../src/utils/commandMessages';
@@ -1864,6 +1865,13 @@ async function runMigrations() {
             backfilled++;
           }
           console.log(`[Schema Migration] Backfilled clinicId on ${backfilled} files rows`);
+        }
+      },
+      {
+        id: '20261123_002_index_legacy_owner_reads',
+        up: async () => {
+          const count = await installLegacyReadIndexes(dbClient);
+          console.log(`[Schema Migration] Legacy owner-read index statements applied: ${count}`);
         }
       }
     ];
