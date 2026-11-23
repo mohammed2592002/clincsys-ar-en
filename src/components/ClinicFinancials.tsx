@@ -1006,7 +1006,23 @@ export default function ClinicFinancials({
   const handleQuickNurseCollect=async(app:Appointment)=>{setLoading(true);try{await financeCommand(clinic.id,{action:'collect',appointmentId:app.id,amount:Number(app.remainingAmount||0),paymentMethod:app.paymentMethod||getClinicPaymentMethods(clinic.paymentMethods)[0]||''});await fetchAppointments();}catch(e:any){setError(e.message);}finally{setLoading(false);}};
 
   // Print Invoice trigger
-  const handlePrintInvoice = (app: Appointment) => {
+  const handlePrintInvoice = async (app: Appointment) => {
+    // Light shift views carry trimmed collection rows; the invoice needs the
+    // complete appointment record, loaded here on demand.
+    if ((app as any).__trimmed) {
+      setLoading(true);
+      try {
+        const snap = await getDoc(doc(getAppointmentsRef(clinic.id), app.id), true);
+        const full: any = snap && snap.exists && snap.exists() ? snap.data() : null;
+        if (!full || !full.id) throw new Error(isEn ? 'Could not load the appointment record' : 'تعذر تحميل سجل الموعد');
+        setPrintInvoiceData(full);
+      } catch (e: any) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     setPrintInvoiceData(app);
   };
 

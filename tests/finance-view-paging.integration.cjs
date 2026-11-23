@@ -57,16 +57,25 @@ const sortView = list => [...list].sort((a, b) => String(b.date || '').localeCom
   assert.deepEqual(full.shiftTotals, ref, 'server totals match the complete set');
   assert.equal(ref.completed, 30); assert.equal(ref.scheduled, 6); assert.equal(ref.cancelled, 4);
 
-  // Light view: zero pages requested, receipt-linked appointments still complete.
+  // Light view: zero pages requested, receipt-linked appointments travel trimmed
+  // to the fields the collections list renders; the client loads a full row on
+  // demand for invoice printing.
   const light = await fin({action: 'view', scope: 'shift', shiftId: opening.id, date: today, limit: 0});
   assert.deepEqual(light.shiftTotals, ref, 'light view totals equal full-set totals');
   assert.equal(light.receipts.length, full.receipts.length, 'same receipts');
   assert.equal(light.appointments.length, 3, 'only receipt-linked appointment rows travel');
+  const trimmedFields = ['id', 'patientId', 'patientName', 'patientPhone', 'date', 'time', 'status', 'price', 'paidAmount', 'remainingAmount', 'paymentMethod', 'invoiceStatus', 'treatmentType', 'shiftId', '__trimmed'];
   for (const a of light.appointments) {
     assert(['pa0', 'pa1', 'pa2'].includes(a.id));
-    assert.equal(a.notes, 'ملاحظة ' + a.id.slice(2), 'receipt-linked rows keep every field');
+    assert.equal(a.__trimmed, true, 'light rows carry the trimmed marker');
+    for (const key of ['patientName', 'price', 'remainingAmount', 'treatmentType', 'date', 'time', 'status', 'paymentMethod']) assert(a[key] !== undefined, 'rendering field kept: ' + key);
+    assert(!Object.hasOwn(a, 'notes'), 'heavy fields stay behind the on-demand read');
     assert(!Object.hasOwn(a, 'data'), 'no serialized envelope duplication');
+    assert.deepEqual(Object.keys(a).sort(), trimmedFields.slice().sort(), 'trimmed row carries exactly the rendering fields');
   }
+  // The on-demand full-row read behind invoice printing returns every field.
+  const fullRow = await db('getDoc', 'appointments', 'pa0');
+  assert.equal(fullRow.notes, 'ملاحظة 0', 'full row read returns every field');
 
   // Paged view: page rows follow the same ordering as the client list, plus linked rows.
   const sorted = sortView(full.appointments);
@@ -75,6 +84,7 @@ const sortView = list => [...list].sort((a, b) => String(b.date || '').localeCom
   const pageIds = page.appointments.map(a => a.id);
   for (const a of sorted.slice(0, 5)) assert(pageIds.includes(a.id), 'page row present');
   for (const id of ['pa0', 'pa1', 'pa2']) assert(pageIds.includes(id), 'linked row present in paged mode');
+  for (const a of page.appointments) { assert(!a.__trimmed, 'paged mode keeps full rows'); assert(Object.hasOwn(a, 'notes'), 'paged rows keep every field'); }
   const page2 = await fin({action: 'view', scope: 'shift', shiftId: opening.id, date: today, limit: 5, offset: 5});
   for (const a of sorted.slice(5, 10)) assert(page2.appointments.map(x => x.id).includes(a.id), 'second page row present');
 

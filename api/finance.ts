@@ -1236,6 +1236,10 @@ export function createFinanceService(deps: any) {
           const from=String(body.from||''),to=String(body.to||'');
           if((from&&!/^\d{4}-\d{2}-\d{2}$/.test(from))||(to&&!/^\d{4}-\d{2}-\d{2}$/.test(to))) fail('Invalid financial date range',400);
           let selectedReceipts:any[]=[],events:any[]=[],expenses:any[]=[],apps:any[]=[];
+          // Light shift mode (limit:0) sends receipt-linked rows trimmed to the
+          // fields the collections list renders; the client loads the full row on
+          // demand (invoice print) via a single-document read, so no data is lost.
+          const trimShiftRow=(a:any)=>({id:a.id,patientId:a.patientId,patientName:a.patientName,patientPhone:a.patientPhone,date:a.date,time:a.time,status:a.status,price:a.price,paidAmount:a.paidAmount,remainingAmount:a.remainingAmount,paymentMethod:a.paymentMethod,invoiceStatus:a.invoiceStatus,treatmentType:a.treatmentType,shiftId:a.shiftId,__trimmed:true});
           let shiftTotals:any=undefined,installmentGroups:any=undefined,installmentTotals:any=undefined;
           const scope=String(body.scope||'');
           const range={from,to};
@@ -1269,14 +1273,12 @@ export function createFinanceService(deps: any) {
             // receiving the complete appointment list it expects.
             if(body.limit!==undefined||body.offset!==undefined){
               // Load-on-demand mode: rows are only serialized when a page is asked for.
-              // Appointments referenced by the shift's own receipts always travel in
-              // full so the collections list and invoices keep every field.
               const limit=Math.max(0,Math.min(500,Number(body.limit??0)||0));
               const offset=Math.max(0,Number(body.offset||0)||0);
               const sorted=[...apps].sort((a:any,b:any)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.time||'').localeCompare(String(a.time||'')));
               const merged=new Map<string,any>();
               for(const a of sorted.slice(offset,offset+limit))merged.set(a.id,a);
-              for(const a of apps)if(ids.has(a.id))merged.set(a.id,a);
+              for(const a of apps)if(ids.has(a.id))merged.set(a.id,limit===0?trimShiftRow(a):a);
               apps=[...merged.values()];
             }
           } else if(scope==='settlement') {
