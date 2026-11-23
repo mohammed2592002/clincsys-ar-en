@@ -48,25 +48,72 @@ export function installSystemBackup(app: any, deps: any) {
     return true;
   }
 
-  // Tickets are single-use, purpose-scoped, opaque and short-lived. Never
-  // put a reusable login token in download URLs or log either kind of token.
-  const tickets=new Map<string,{expires:number,job:string}>();
+  // Resumable download. The export is generated ONCE into a private temporary
+  // file (mode 0600, own 0700 directory), then served from that file with a
+  // correct Content-Length and HTTP Range support, so a dropped connection
+  // (e.g. cellular -> wifi) resumes instead of restarting. The download URL
+  // carries an opaque, purpose-scoped, random token (never a login token and
+  // never logged). It is reusable for retries/resume until the file expires.
+  // Lifetime rules: file kept READY_TTL after generation finishes; once one
+  // response has delivered the whole file the remaining life drops to
+  // DONE_GRACE (late resume/retry window); a failed generation deletes its
+  // partial file at once; a new export replaces the previous file; a sweep
+  // runs every minute; leftovers from a crashed process are removed at startup
+  // and at process exit. A file is never deleted while a response is reading it.
+  const READY_TTL=30*60*1000,DONE_GRACE=5*60*1000,PREFIX='system-export-artifact-';
+  const artifacts=new Map<string,any>(); // token -> job
   const exports=new Map<string,any>();
   let exportBusy=false;
-  const cleanup=()=>{const now=Date.now();for(const [key,t] of tickets)if(t.expires<now)tickets.delete(key);for(const [key,j] of exports)if(j.state!=='running'&&j.created<now-60*60*1000)exports.delete(key);};
+  const publicJob=(j:any)=>({id:j.id,state:j.state,created:j.created,bytes:j.bytes,size:j.size,stage:j.stage,expiresAt:j.expiresAt,downloads:j.downloads||0,delivered:!!j.delivered,elapsedMs:j.elapsedMs});
+  const removeArtifact=(j:any)=>{if(j.dir){try{fs.rmSync(j.dir,{recursive:true,force:true});}catch{}j.dir=null;j.file=null;}if(j.token){artifacts.delete(j.token);j.token=null;}};
+  const cleanup=()=>{const now=Date.now();
+    for(const [,j] of [...artifacts])if(j.expiresAt<now&&!(j.active>0)){removeArtifact(j);j.state='expired';}
+    for(const [key,j] of exports)if(!['pending','generating','running'].includes(j.state)&&j.created<now-60*60*1000)exports.delete(key);};
+  try{for(const d of fs.readdirSync(os.tmpdir()))if(d.startsWith(PREFIX))fs.rmSync(path.join(os.tmpdir(),d),{recursive:true,force:true});}catch{}
+  const sweep=setInterval(cleanup,60*1000);sweep.unref?.();
+  process.once('exit',()=>{for(const [,j] of artifacts)try{if(j.dir)fs.rmSync(j.dir,{recursive:true,force:true});}catch{}});
+  const fileName=()=>'CMS_FULL_SYSTEM_BACKUP_'+new Date().toISOString().split('T')[0]+'.json.gz';
+
+  async function generate(job:any){
+    const started=Date.now();const log=(stage:string)=>console.info('[system-export]',JSON.stringify({id:job.id,stage,bytes:job.bytes,elapsedMs:Date.now()-started}));
+    job.state='generating';
+    const source=new PassThrough({highWaterMark:64*1024});
+    const meter=new Transform({transform(chunk,_enc,cb){job.bytes+=chunk.length;cb(null,chunk);}});
+    const controller=new AbortController();
+    let transfer:Promise<void>|undefined;
+    try{
+      job.dir=fs.mkdtempSync(path.join(os.tmpdir(),PREFIX));fs.chmodSync(job.dir,0o700);
+      job.file=path.join(job.dir,'backup.json.gz');
+      const out=fs.createWriteStream(job.file,{mode:0o600});
+      transfer=pipeline(source,createGzip({level:1}),meter,out,{signal:controller.signal});transfer.catch(()=>{});
+      const write=async(chunk:string)=>{if(controller.signal.aborted||source.destroyed)throw Error('Export cancelled');if(!source.write(chunk))await once(source,'drain',{signal:controller.signal});};
+      log('started');
+      await deps.backups.streamSystemExport(write,{signal:controller.signal,stage:(stage:string)=>{job.stage=stage;if(stage==='clinic')log('clinic');}});
+      source.end();await transfer;
+      job.size=fs.statSync(job.file).size;job.expiresAt=Date.now()+READY_TTL;job.state='ready';log('completed');
+    }catch(e:any){
+      // Do not log database errors: they may contain a query or record values.
+      job.state='failed';job.error=e?.code==='ENOSPC'?'No disk space for the export / لا توجد مساحة كافية للتصدير':'Export failed / فشل التصدير';
+      log('failed');controller.abort();source.destroy();if(transfer)await transfer.catch(()=>{});removeArtifact(job);
+    }finally{job.elapsedMs=Date.now()-started;exportBusy=false;}
+  }
   app.post('/api/system-backup/ticket',async(req:any,res:any)=>{
     if(!await authorized(req,res))return;cleanup();
     if(exportBusy)return res.status(409).json({message:'A system export is already running / يوجد تصدير شامل قيد التشغيل'});
-    if(tickets.size>=100)return res.status(429).json({message:'Too many pending downloads'});
+    // Only the newest export is kept on disk (bounded temporary space).
+    for(const [,j] of [...artifacts])if(!(j.active>0)){removeArtifact(j);j.state='expired';}
+    exportBusy=true;
     const token=crypto.randomBytes(32).toString('hex'),id=crypto.randomUUID();
-    tickets.set(token,{expires:Date.now()+60000,job:id});exports.set(id,{id,state:'pending',created:Date.now(),bytes:0});
+    const job:any={id,token,state:'pending',created:Date.now(),bytes:0,expiresAt:Date.now()+READY_TTL,active:0,downloads:0,name:fileName()};
+    artifacts.set(token,job);exports.set(id,job);
+    void generate(job);
     res.setHeader('cache-control','no-store');
-    res.json({id,downloadUrl:'/api/system-backup/download/'+token,fileName:'CMS_FULL_SYSTEM_BACKUP_'+new Date().toISOString().split('T')[0]+'.json.gz'});
+    res.json({id,downloadUrl:'/api/system-backup/download/'+token,statusUrl:'/api/system-backup/export-status/'+id,fileName:job.name,ttlSeconds:READY_TTL/1000});
   });
   app.get('/api/system-backup/export-status/:id',async(req:any,res:any)=>{
     if(!await authorized(req,res))return;cleanup();const job=exports.get(req.params.id);
     if(!job)return res.status(404).json({message:'Export status expired'});
-    res.setHeader('cache-control','no-store');res.json(job);
+    res.setHeader('cache-control','no-store');res.json(publicJob(job));
   });
   async function sendExport(req:any,res:any,job:any) {
     if(exportBusy){job.state='failed';return res.status(409).json({message:'A system export is already running / يوجد تصدير شامل قيد التشغيل'});}
@@ -88,16 +135,33 @@ export function installSystemBackup(app: any, deps: any) {
       source.end();await transfer;job.state='completed';log('completed');
     }catch(e:any){
       job.state=controller.signal.aborted?'aborted':'failed';
-      // Do not log database errors: they may contain a query or record values.
       log(job.state);controller.abort();source.destroy();await transfer.catch(()=>{});
     }finally{res.off('close',cancel);job.elapsedMs=Date.now()-started;exportBusy=false;}
   }
-  app.get('/api/system-backup/download/:ticket',async(req:any,res:any)=>{
-    await getReady();cleanup();const ticket=tickets.get(req.params.ticket);tickets.delete(req.params.ticket);
-    if(!ticket||ticket.expires<Date.now())return res.status(403).json({message:'Download link expired or used'});
-    await sendExport(req,res,exports.get(ticket.job));
+  // Serves the stored file. Express/send implements Range, If-Range, 206/416 and
+  // Content-Length; the strong ETag lets Chrome resume an interrupted download.
+  app.get('/api/system-backup/download/:token',async(req:any,res:any)=>{
+    await getReady();cleanup();const job=artifacts.get(req.params.token);
+    if(!job||!job.file||job.state==='generating'||job.state==='pending'||job.expiresAt<Date.now()){
+      const generating=job&&(job.state==='generating'||job.state==='pending');
+      return res.status(generating?409:403).json({message:generating?'Export is still being prepared / التصدير قيد التجهيز':'Download link expired / انتهت صلاحية رابط التنزيل'});
+    }
+    job.active++;job.downloads++;let released=false;
+    const done=()=>{if(released)return;released=true;job.active--;};
+    res.on('close',done);
+    res.on('finish',()=>{
+      // A 200, or a 206 whose range reaches the last byte, delivered the end of the file.
+      const m=/bytes (\d+)-(\d+)\/(\d+)/.exec(String(res.getHeader('content-range')||''));
+      const full=res.statusCode===200||(res.statusCode===206&&m&&Number(m[2])===Number(m[3])-1&&Number(m[1])===0);
+      if(full&&job.state==='ready'){job.state='completed';job.delivered=true;job.expiresAt=Math.min(job.expiresAt,Date.now()+DONE_GRACE);}
+    });
+    res.setHeader('content-type','application/gzip');
+    res.setHeader('content-disposition',`attachment; filename="${job.name}"`);
+    res.setHeader('cache-control','no-store, no-transform');res.setHeader('referrer-policy','no-referrer');res.setHeader('x-content-type-options','nosniff');
+    res.setHeader('etag','"'+job.id+'"');
+    res.sendFile(job.file,{acceptRanges:true,etag:false,lastModified:false,cacheControl:false,dotfiles:'allow',headers:{}},(err:any)=>{done();if(err&&!res.headersSent)res.status(err.status||500).end();});
   });
-  // Keep the authenticated legacy route for older clients, with the same gate.
+  // Keep the authenticated legacy live-stream route for older clients, with the same gate.
   app.get('/api/system-backup/export',async(req:any,res:any)=>{
     if(!await authorized(req,res))return;cleanup();const id=crypto.randomUUID();
     const job={id,state:'pending',created:Date.now(),bytes:0};exports.set(id,job);await sendExport(req,res,job);

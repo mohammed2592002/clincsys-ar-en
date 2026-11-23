@@ -13,7 +13,7 @@ const assert=require('node:assert/strict');const fs=require('node:fs');const os=
   await click('النسخ الاحتياطي والاستعادة');await page.waitForFunction(()=>document.body.innerText.includes('.json.gz'));
   requests.length=0;for(const f of fs.readdirSync(dir))fs.unlinkSync(path.join(dir,f));const before=new Set();
   await click(lang==='ar'?'تنزيل النسخة الاحتياطية الشاملة':'Download the full system backup');
-  await page.waitForFunction(text=>document.body.innerText.includes(text),{timeout:15000},lang==='ar'?'اكتمل إرسال النسخة للمتصفح':'Backup sent to the browser');
+  await page.waitForFunction(text=>document.body.innerText.includes(text),{timeout:60000},lang==='ar'?'النسخة جاهزة وبدأ التنزيل':'Backup is ready and the download started');
   let file;for(let i=0;i<50;i++){file=fs.readdirSync(dir).find(f=>f.endsWith('.json.gz')&&!before.has(f));if(file)break;await sleep(100);}assert(file,'browser download manager saved a real attachment');
   const data=JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(dir,file))));assert.equal(data.backupScope,'FULL_SYSTEM_BACKUP');assert(data.superadminCredentials[0].password.startsWith('scrypt$'));assert(data.clinics.length>0);
   assert(requests.some(u=>u.includes('/api/system-backup/ticket')));assert(!requests.some(u=>u.includes('?token=')||u.includes(auth.token)));

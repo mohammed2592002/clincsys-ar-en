@@ -537,27 +537,40 @@ export async function checkAndRunAutoBackup(
   return { triggered: false, date: todayStr, format: fmt };
 }
 
-// Native attachment download: the page never fetches or buffers file bytes.
-// Completion means the server finished sending, not that the user saved it.
-export async function downloadSystemBackupGz(): Promise<{fileName:string;size:number}> {
+// Resumable native download. The server first builds the backup once into a
+// temporary private file (poll its status), then the browser downloads that file
+// natively with Content-Length and Range support: after a network switch the
+// browser (or its Resume button) continues from where it stopped, using the same
+// link, which stays valid for ttlSeconds. The page never fetches or buffers file bytes.
+export async function downloadSystemBackupGz(onProgress?: (info: {state: string; bytes: number}) => void): Promise<{fileName:string;size:number}> {
   const {authHeaders}=await import('../dbClient');
   const response=await fetch('/api/system-backup/ticket',{method:'POST',headers:authHeaders()});
   if(!response.ok){const data=await response.json().catch(()=>({}));throw Error(data.message||'Export unavailable');}
   const ticket=await response.json();
+  const getJob=async()=>{
+    const status=await fetch('/api/system-backup/export-status/'+encodeURIComponent(ticket.id),{headers:authHeaders(),cache:'no-store'});
+    if(!status.ok)throw Error('Could not verify export status / تعذر التحقق من حالة التصدير');
+    return status.json();
+  };
+  let job:any;
+  while(true){
+    await new Promise(r=>setTimeout(r,2000));
+    job=await getJob();
+    onProgress?.({state:job.state,bytes:job.bytes||0});
+    if(job.state==='ready'||job.state==='completed')break;
+    if(job.state!=='pending'&&job.state!=='generating')throw Error('Export did not finish. Retry / لم يكتمل التصدير، أعد المحاولة');
+  }
   const frame=document.createElement('iframe');frame.name='backup-'+crypto.randomUUID();frame.hidden=true;frame.setAttribute('aria-hidden','true');document.body.appendChild(frame);
   const a=document.createElement('a');a.href=ticket.downloadUrl;a.target=frame.name;a.download=ticket.fileName;a.rel='noreferrer';document.body.appendChild(a);a.click();a.remove();
-  let terminal=false;
+  // The download started once the server sees the request (or has delivered it).
+  const began=Date.now();
   try {
-    // Status requests are tiny and authorized. The browser download itself is
-    // independent from JS Blob storage and uses a one-use 60-second ticket.
     while(true){
-      await new Promise(r=>setTimeout(r,2000));
-      const status=await fetch('/api/system-backup/export-status/'+encodeURIComponent(ticket.id),{headers:authHeaders(),cache:'no-store'});
-      if(!status.ok)throw Error('Could not verify export status / تعذر التحقق من حالة التصدير');
-      const job=await status.json();
-      if(job.state==='completed'){terminal=true;return {fileName:ticket.fileName,size:job.bytes};}
-      if(job.state==='failed'||job.state==='aborted'){terminal=true;throw Error('Export did not finish. Check browser downloads and retry / لم يكتمل التصدير، راجع تنزيلات المتصفح وأعد المحاولة');}
-      if(job.state==='pending'&&Date.now()-job.created>65000)throw Error('Download did not start. Allow downloads and retry / لم يبدأ التنزيل، اسمح بالتنزيلات وأعد المحاولة');
+      await new Promise(r=>setTimeout(r,1000));
+      job=await getJob();
+      if((job.downloads||0)>0||job.delivered)return {fileName:ticket.fileName,size:job.size||job.bytes};
+      if(job.state==='failed'||job.state==='expired')throw Error('Export did not finish. Retry / لم يكتمل التصدير، أعد المحاولة');
+      if(Date.now()-began>20000)throw Error('Download did not start. Allow downloads and retry / لم يبدأ التنزيل، اسمح بالتنزيلات وأعد المحاولة');
     }
-  } finally {if(terminal)setTimeout(()=>frame.remove(),10000);}
+  } finally {setTimeout(()=>frame.remove(),10000);}
 }
