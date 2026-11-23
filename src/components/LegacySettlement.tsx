@@ -18,7 +18,7 @@ export default function LegacySettlement({
     let live = true;
     const load = async () => {
       try {
-        const r = await financeCommand(clinicId, { action: "read" });
+        const r = await financeCommand(clinicId, { action: "view", scope: "settlement", date: shift.date });
         const receipts = (r.receipts || [])
           .filter(
             (r: any) =>

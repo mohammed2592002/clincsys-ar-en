@@ -40,7 +40,7 @@ const db = {
         throw e;
     } }
 };
-const service = createBackupService({ db, getAuth: async () => ({ type: 'manager', clinicId: cid }), finance: { ensureSchema: async () => { }, validateClinicPaymentMethods: async () => { } }, sanitizeClinic: (x: any) => x, secureClinic: async (x: any) => x, mapColumns: (_table: string, id: string, data: any, clinicId: string) => ({ cols: ['id', 'clinicId', 'data'], vals: [id, clinicId, JSON.stringify(data)] }), broadcast: () => { throw Error('Failed restore must never broadcast success'); } });
+const service = createBackupService({ db, getAuth: async () => ({ type: 'manager', clinicId: cid }), finance: { exportState: async () => JSON.parse(records.finance_state[cid].data), importState:async (_cid:string,state:any)=>{records.finance_state[_cid]={id:_cid,data:JSON.stringify(state)};}, ensureSchema: async () => { }, validateClinicPaymentMethods: async () => { } }, sanitizeClinic: (x: any) => x, secureClinic: async (x: any) => x, mapColumns: (_table: string, id: string, data: any, clinicId: string) => ({ cols: ['id', 'clinicId', 'data'], vals: [id, clinicId, JSON.stringify(data)] }), broadcast: () => { throw Error('Failed restore must never broadcast success'); } });
 let status = 200, result: any;
 const response: any = { status(value: number) { status = value; return response; }, json(value: any) { result = value; return response; } };
 await service.handler({ body: { action: 'restore_clinic', clinicId: cid, backup: { clinicInfo: { name: 'Must roll back' }, data: { patients: [{ id: 'written_first', name: 'Temporary' }, { id: 'fault', name: 'Failure' }], appointments: [], finance_state: { version: 1, receipts: [], events: [], requests: {} } } } } }, response);

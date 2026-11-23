@@ -280,6 +280,7 @@ export default function ClinicFinancials({
 
   // Expenses state
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [expenseSummary,setExpenseSummary]=useState<any>(null);
   const [expenseTitle, setExpenseTitle] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseCategory, setExpenseCategory] = useState('مستلزمات طبية');
@@ -556,24 +557,39 @@ export default function ClinicFinancials({
     activeMethodsList?: string[];
   } | null>(null);
 
+  const [invoiceReceipts,setInvoiceReceipts]=useState<any[]>([]);
   const [financialReceipts,setFinancialReceipts] = useState<any[]>([]);
-  const fetchAppointments = async (silent = false) => {
-    if (!silent && appointments.length === 0 && (!sharedAppointments || sharedAppointments.length === 0)) {
-      setLoading(true);
+  useEffect(()=>{let live=true;if(printInvoiceData)financeCommand(clinic.id,{action:'view',scope:'patient',patientId:printInvoiceData.patientId,patientPhone:printInvoiceData.patientPhone,patientName:printInvoiceData.patientName}).then(result=>{if(live)setInvoiceReceipts(result.receipts||[]);}).catch(e=>setError(e.message));return()=>{live=false;};},[printInvoiceData?.id]);
+
+  const financialView=React.useMemo(()=>{
+    if(activeTab==='revenues'){
+      if(revenueFilterMode==='daily')return {scope:'revenues',from:revenueDailyDate,to:revenueDailyDate};
+      if(revenueFilterMode==='weekly'){const r=getWeekBounds(revenueWeeklyDate);return {scope:'revenues',from:r.startDateStr,to:r.endDateStr};}
+      if(revenueFilterMode==='monthly')return {scope:'revenues',from:revenueMonthlyVal+'-01',to:revenueMonthlyVal+'-31'};
+      return {scope:'revenues',from:revenueStartDate,to:revenueEndDate};
     }
-    setError(null);
+    if(activeTab==='installments')return {scope:'installments',from:installmentsFilterPeriod==='today'?getTodayStr():installmentsFilterPeriod==='month'?getTodayMonthStr()+'-01':'',to:installmentsFilterPeriod==='today'?getTodayStr():installmentsFilterPeriod==='month'?getTodayMonthStr()+'-31':''};
+    if(activeTab==='expenses'){
+      let from='',to='';
+      if(expenseFilterPeriod==='today')from=to=getTodayStr();
+      if(expenseFilterPeriod==='month'){from=getTodayMonthStr()+'-01';to=getTodayMonthStr()+'-31';}
+      if(expenseFilterPeriod==='custom_day')from=to=expenseFilterSpecificDate;
+      if(expenseFilterPeriod==='custom_range'){from=expenseFilterStartDate;to=expenseFilterEndDate;}
+      return {scope:'expenses',from,to};
+    }
+    if(activeTab==='shift_history'||activeTab==='returns')return {scope:'history'};
+    return {scope:'shift',shiftId:currentShift.id,date:currentShift.date};
+  },[activeTab,revenueFilterMode,revenueDailyDate,revenueWeeklyDate,revenueMonthlyVal,revenueStartDate,revenueEndDate,installmentsFilterPeriod,expenseFilterPeriod,expenseFilterSpecificDate,expenseFilterStartDate,expenseFilterEndDate,currentShift.id,currentShift.date]);
+  const financialViewRef=React.useRef(financialView);financialViewRef.current=financialView;
+  const viewRequestSerial=React.useRef(0);
+  const fetchAppointments = async (silent = false) => {
+    const serial=++viewRequestSerial.current;
+    if(!silent)setLoading(true);setError(null);
     try {
-      const ledger=await financeCommand(clinic.id,{action:'read'});
-      setFinancialReceipts(ledger.receipts||[]);
-      const ref = getAppointmentsRef(clinic.id);
-      let snap;
-      try {
-        // Financial reports must never read a stale cached list: always fetch fresh from the server
-        snap = await getDocs(ref, true);
-      } catch (err: any) {
-        handleDbError(err, OperationType.LIST, `clinics/${clinic.id}/appointments`);
-      }
-      
+      const ledger=await financeCommand(clinic.id,{action:'view',...financialViewRef.current});
+      if(serial!==viewRequestSerial.current)return;
+      setFinancialReceipts(ledger.receipts||[]);setExpenses(ledger.expenses||[]);setExpenseSummary(ledger.expenseSummary||null);
+      const snap=(ledger.appointments||[]).map((data:any)=>({id:data.id,data:()=>data}));
       const list: Appointment[] = [];
       snap?.forEach((docSnap: any) => {
         const data = docSnap.data();
@@ -653,7 +669,7 @@ export default function ClinicFinancials({
     }
   };
 
-  const fetchExpenses=async()=>{try{const ledger=await financeCommand(clinic.id,{action:'read'});setExpenses((ledger.expenses||[]).filter((e:any)=>!e.deletedAt));}catch(e:any){setError(e.message);}};
+  const fetchExpenses=async()=>{await fetchAppointments(true);};
 
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -738,10 +754,10 @@ export default function ClinicFinancials({
     const hasInitialData = (sharedAppointments && sharedAppointments.length > 0) || appointments.length > 0;
     Promise.allSettled([
       fetchAppointments(hasInitialData),
-      fetchShiftHistory(),
-      fetchExpenses()
+      ...(financialView.scope==='history'?[fetchShiftHistory()]:[])
     ]);
 
+    let syncRefreshTimer:ReturnType<typeof setTimeout>|undefined;
     const handleSync = (e: Event) => {
       const customEvent = e as CustomEvent;
       const { table } = customEvent.detail || {};
@@ -749,17 +765,15 @@ export default function ClinicFinancials({
       const relevantTables = ['shifts', 'appointments', 'records', 'patients', 'closings', 'billing', 'expenses'];
       if (!table || relevantTables.includes(table)) {
         console.log(`[ClinicFinancials] Instant financial/shift sync triggered for table: ${table}`);
-        Promise.allSettled([
-          fetchShiftHistory(),
-          fetchExpenses(),
-          fetchAppointments(true)
-        ]);
+        viewRequestSerial.current++;
+        if(syncRefreshTimer)clearTimeout(syncRefreshTimer);
+        syncRefreshTimer=setTimeout(()=>{void Promise.allSettled([...(financialViewRef.current.scope==='history'?[fetchShiftHistory()]:[]),fetchAppointments(true)]);},80);
       }
     };
 
     window.addEventListener('clinic-sync', handleSync);
-    return () => window.removeEventListener('clinic-sync', handleSync);
-  }, [clinic.id]);
+    return () => {if(syncRefreshTimer)clearTimeout(syncRefreshTimer);viewRequestSerial.current++;window.removeEventListener('clinic-sync', handleSync);};
+  }, [clinic.id,financialView]);
 
   useEffect(() => {
     if (activeShiftDate && onRefreshAppointments) {
@@ -1011,13 +1025,17 @@ export default function ClinicFinancials({
     });
   };
 
+  useEffect(()=>{let live=true;if(selectedHistoryShift&&!selectedHistoryShift.snapshot)financeCommand(clinic.id,{action:'view',scope:'legacy_history'}).then(result=>{if(live){setAppointments(result.appointments||[]);setExpenses(result.expenses||[]);}}).catch(e=>setError(e.message));return()=>{live=false;};},[selectedHistoryShift?.id]);
+
   // Print Shift trigger (Historical Archive Shift)
-  const handlePrintHistoryShift = (shift: any) => {
+  const handlePrintHistoryShift = async (shift: any) => {
     if(shift.snapshot) {
       const x=shift.snapshot;
       setPrintShiftData({...x,date:shift.date,openedAt:shift.openedAt,closedAt:shift.closedAt,cashierName:shift.cashierName,closedBy:shift.closedBy,startCash:shift.startCash,actual:shift.actualCash,expected:shift.expectedCash,discrepancy:shift.discrepancy,notes:shift.notes,revenuesMap:x.dynamicRevenues,expensesMap:x.dynamicExpenses,activeMethodsList:getPaymentReportMethods(clinic.paymentMethods,x.dynamicRevenues,x.dynamicExpenses),expensesList:x.expenses,paymentRecords:x.receipts.map((r:any)=>({id:r.id,app:x.appointments.find((a:any)=>a.id===r.appointmentId)||{patientName:r.patientName,price:0,remainingAmount:0},amount:r.kind==='refund'?-r.amount:r.amount,paymentMethod:r.paymentMethod,time:new Date(r.createdAt||r.date).toLocaleTimeString('en-GB',{timeZone:'Africa/Cairo',hour:'2-digit',minute:'2-digit'}),notes:r.notes}))});
       return;
     }
+    let appointments:Appointment[]=[],expenses:Expense[]=[];
+    try {const legacy=await financeCommand(clinic.id,{action:'view',scope:'legacy_history'});appointments=legacy.appointments||[];expenses=legacy.expenses||[];}catch(e:any){setError(e.message);return;}
     dialogs.alert(isEn?'Legacy archive has no immutable snapshot. Details may reflect later edits.':'هذه وردية قديمة بلا لقطة إقفال ثابتة. تفاصيلها قد تعكس تعديلات لاحقة.',{severity:'warning'});
 
     const revMap = shift.dynamicRevenues || {
@@ -1196,7 +1214,7 @@ export default function ClinicFinancials({
               </div>
             </div>
 
-            <div className="border rounded-xl p-3 space-y-2 text-xs"><p className="font-bold">{isEn ? 'Confirmed receipts (Cairo collection time)' : 'الإيصالات المؤكدة (وقت التحصيل بتوقيت القاهرة)'}</p>{financialReceipts.filter(r=>r.appointmentId===printInvoiceData.id).map(r=><div key={r.id} className="border-t pt-2"><p className="break-all">{r.receiptNumber||r.id} • {r.kind==='refund'?(isEn?'Refund':'استرداد'):(isEn?'Collection':'تحصيل')} • {r.kind==='refund'?'-':''}{r.amount} {isEn ? 'EGP' : 'ج.م'}</p><p>{r.createdAt?new Date(r.createdAt).toLocaleString(isEn ? 'en-GB' : 'ar-EG',{timeZone:'Africa/Cairo'}):r.collectionDate} • {r.actorName||(isEn?'Legacy record':'سجل قديم')} • {r.actorRole||''}</p></div>)}</div>
+            <div className="border rounded-xl p-3 space-y-2 text-xs"><p className="font-bold">{isEn ? 'Confirmed receipts (Cairo collection time)' : 'الإيصالات المؤكدة (وقت التحصيل بتوقيت القاهرة)'}</p>{invoiceReceipts.filter(r=>r.appointmentId===printInvoiceData.id).map(r=><div key={r.id} className="border-t pt-2"><p className="break-all">{r.receiptNumber||r.id} • {r.kind==='refund'?(isEn?'Refund':'استرداد'):(isEn?'Collection':'تحصيل')} • {r.kind==='refund'?'-':''}{r.amount} {isEn ? 'EGP' : 'ج.م'}</p><p>{r.createdAt?new Date(r.createdAt).toLocaleString(isEn ? 'en-GB' : 'ar-EG',{timeZone:'Africa/Cairo'}):r.collectionDate} • {r.actorName||(isEn?'Legacy record':'سجل قديم')} • {r.actorRole||''}</p></div>)}</div>
             {printInvoiceData.notes && (
               <div className="mt-8 p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs">
                 <span className="font-bold text-slate-700 block mb-1">{isEn ? 'Notes and payment history:' : 'ملاحظات وسجل الدفعات:'}</span>
@@ -2615,11 +2633,11 @@ export default function ClinicFinancials({
               const pad = (n: number) => String(n).padStart(2, '0');
               const todayStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
               const currentMonth = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-              const todayTotal = expenses.filter(e => e.date === todayStr).reduce((s, e) => s + e.amount, 0);
-              const monthTotal = expenses.filter(e => e.date && e.date.substring(0, 7) === currentMonth).reduce((s, e) => s + e.amount, 0);
-              const allTotal = expenses.reduce((s, e) => s + e.amount, 0);
-              const categoryTotals: Record<string, number> = {};
-              expenses.forEach(e => { categoryTotals[e.category] = (categoryTotals[e.category] || 0) + e.amount; });
+              const todayTotal = expenseSummary?.todayTotal ?? expenses.filter(e => e.date === todayStr).reduce((s, e) => s + e.amount, 0);
+              const monthTotal = expenseSummary?.monthTotal ?? expenses.filter(e => e.date && e.date.substring(0, 7) === currentMonth).reduce((s, e) => s + e.amount, 0);
+              const allTotal = expenseSummary?.allTotal ?? expenses.reduce((s, e) => s + e.amount, 0);
+              const categoryTotals: Record<string, number> = expenseSummary?.categoryTotals || {};
+              if(!expenseSummary)expenses.forEach(e => { categoryTotals[e.category] = (categoryTotals[e.category] || 0) + e.amount; });
               let topCat = '';
               let maxVal = 0;
               Object.entries(categoryTotals).forEach(([cat, val]) => { if (val > maxVal) { maxVal = val; topCat = cat; } });

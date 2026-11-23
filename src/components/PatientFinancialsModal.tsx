@@ -231,7 +231,7 @@ export default function PatientFinancialsModal({
     setLoading(true);
     setError(null);
     try {
-      const ledger=await financeCommand(clinicId,{action:'read'});setReceiptLedger(ledger.receipts||[]);
+      const ledger=await financeCommand(clinicId,{action:'view',scope:'patient',patientId,patientPhone,patientName});setReceiptLedger(ledger.receipts||[]);
       // Fetch clinic data for loyalty settings
       try {
         const clinicSnap = await getDocSmart(doc(db, 'clinics', clinicId));
@@ -242,35 +242,7 @@ export default function PatientFinancialsModal({
         console.warn("Could not fetch clinic doc:", cErr);
       }
 
-      const ref = getAppointmentsRef(clinicId);
-      let loadedApps: Appointment[] = [];
-
-      if (patientId) {
-        const q = query(ref, where("patientId", "==", patientId));
-        const snap = await getDocs(q);
-        snap.forEach(d => loadedApps.push({ id: d.id, ...d.data() } as Appointment));
-      }
-
-      // If no appointments found by ID (or if patientId was not provided), try by phone or exact name
-      if (loadedApps.length === 0 && patientPhone) {
-        const qPhone = query(ref, where("patientPhone", "==", patientPhone));
-        const snapPhone = await getDocs(qPhone);
-        snapPhone.forEach(d => {
-          if (!loadedApps.some(a => a.id === d.id)) {
-            loadedApps.push({ id: d.id, ...d.data() } as Appointment);
-          }
-        });
-      }
-
-      if (loadedApps.length === 0 && patientName) {
-        const qName = query(ref, where("patientName", "==", patientName));
-        const snapName = await getDocs(qName);
-        snapName.forEach(d => {
-          if (!loadedApps.some(a => a.id === d.id)) {
-            loadedApps.push({ id: d.id, ...d.data() } as Appointment);
-          }
-        });
-      }
+      const loadedApps: Appointment[] = ledger.appointments || [];
 
       // Sort by date descending and filter out cancelled appointments
       // Cancelled appointments keep their immutable payment history.

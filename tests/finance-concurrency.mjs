@@ -86,12 +86,12 @@ try {
     // Inject a failure after the appointment write to prove the state and payment
     // roll back together, the lock releases, and retrying the same key works.
     const execute2=db2.execute.bind(db2); let fail=true;
-    db2.execute=async input=>{if(fail && typeof input==='object' && input.sql.startsWith('UPDATE finance_state SET data')){fail=false;throw Error('injected save failure');}return execute2(input);};
+    db2.execute=async input=>{if(fail && typeof input==='object' && input.sql.startsWith('INSERT INTO finance_receipts')){fail=false;throw Error('injected save failure');}return execute2(input);};
     await assert.rejects(()=>pay(s2,'clinic-a','rollback-retry',40),/injected save failure/);
     await pay(s2,'clinic-a','rollback-retry',40);
     for(const [cid,total,count] of [['clinic-a',540,7],['clinic-b',100,1]]) {
       const app=JSON.parse((await pool.query('SELECT data FROM appointments WHERE id=$1',[cid+'-app'])).rows[0].data);
-      const state=JSON.parse((await pool.query('SELECT data FROM finance_state WHERE id=$1',[cid])).rows[0].data);
+      const state=await s1.exportState(cid);
       assert.equal(app.paidAmount,total);assert.equal(app.remainingAmount,1000-total);
       assert.equal(app.payments.length,count);assert.equal(state.receipts.length,count);
       assert.equal(new Set(state.receipts.map(x=>x.id)).size,count);

@@ -316,6 +316,18 @@ async function db(action, table, id, data, expected = 200) {
     },
     409,
   );
+  const fullLedger=await fin({action:'read'});
+  for(const scope of ['shift','revenues','expenses','history','installments','returns','settlement','patient']) {
+    const view=await fin({action:'view',scope,patientId:'p1',shiftId:opening.id,date:'2001-01-01',from:'2001-01-01',to:'2001-01-01'});
+    assert(Array.isArray(view.receipts)&&Array.isArray(view.appointments));
+    assert(!Object.hasOwn(view,'requests'));
+    if(scope==='revenues')assert(view.receipts.every(r=>(r.collectionDate||r.date)==='2001-01-01'));
+    if(scope==='history')assert.equal(view.receipts.length,0);
+    if(scope==='patient')assert(view.appointments.every(a=>a.patientId==='p1'));
+  }
+  await fin({action:'view',scope:'invalid'},400);
+  await fin({action:'view',scope:'revenues',from:'invalid'},400);
+  console.log('PASS scoped finance views: patient isolation, period filtering, history without receipts, validation, no requests payload');
   console.log(
     "PASS: concurrent collection; idempotent retry/signature conflict; overpay/stale write rejection; SQL whitelist; actual actor/current staff permissions; patient history deletion block; points/discount; explicit refund; cancellation without refund; atomic lab expense; close snapshot; closed immutability; old shift operational date vs Cairo collection day.",
   );

@@ -1,3 +1,4 @@
+import {createFinanceStore} from './financeStore';
 import { DEFAULT_PAYMENT_METHODS, getClinicPaymentMethods, normalizePaymentMethod, samePaymentMethod, paymentMethodKey, paymentMethodHistoryHasAmount, paymentMethodForReport } from '../src/utils/paymentMethods';
 import {sameValue, SERVER_METADATA} from '../src/utils/documentComparison';
 import { commandMessage } from "../src/utils/commandMessages";
@@ -51,18 +52,8 @@ const contentTables = [
 ];
 export function createFinanceService(deps: any) {
   const { db, getAuth, broadcast, mapColumns } = deps;
-  let ready: Promise<any> | null = null;
-  const ensure = () =>
-    (ready ||= db
-      .financeTransaction("__finance_schema__", () =>
-        db.execute(
-          "CREATE TABLE IF NOT EXISTS finance_state (id TEXT PRIMARY KEY, data TEXT, createdAt TEXT)",
-        ),
-      )
-      .catch((e: any) => {
-        ready = null;
-        throw e;
-      }));
+  const store = createFinanceStore(db);
+  const ensure = () => store.schema();
   const unpack = (r: any) => {
     let d: any = {};
     try {
@@ -132,34 +123,8 @@ export function createFinanceService(deps: any) {
     return full;
   }
   async function load(cid: string) {
-    const r = await db.execute({
-      sql: "SELECT * FROM finance_state WHERE id = ?",
-      args: [cid],
-    });
-    const raw = r.rows[0]?.data;
-    const s =
-      typeof raw === "object" && raw !== null
-        ? raw
-        : raw
-          ? JSON.parse(raw)
-          : {};
-    return { version: 1, receipts: [], events: [], requests: {}, ...s };
-  }
-  async function save(cid: string, s: any) {
-    const r = await db.execute({
-      sql: "SELECT id FROM finance_state WHERE id = ?",
-      args: [cid],
-    });
-    if (r.rows.length)
-      await db.execute({
-        sql: "UPDATE finance_state SET data = ? WHERE id = ?",
-        args: [JSON.stringify(s), cid],
-      });
-    else
-      await db.execute({
-        sql: "INSERT INTO finance_state (id,data,createdAt) VALUES (?,?,?)",
-        args: [cid, JSON.stringify(s), new Date().toISOString()],
-      });
+    const state = await store.load(cid);
+    return {version:1,receipts:[],events:[],requests:{},...state};
   }
   async function validateMethods(cid: string, previous: any, incoming: any, s: any) {
     if (!Array.isArray(incoming) || incoming.length > 100 ||
@@ -306,11 +271,12 @@ export function createFinanceService(deps: any) {
     s.events.push(ev);
     return ev;
   }
-  async function receiptProjection(cid: string, s: any) {
+  async function receiptProjection(cid: string, s: any, appointments?:any[]) {
     const out: any[] = [];
-    for (const a of await rows("appointments", cid))
+    const receiptIds=new Set(s.receipts.map((r:any)=>r.id));
+    for (const a of appointments || await rows("appointments", cid))
       for (const p of payments(a)) {
-        if (s.receipts.some((r: any) => r.id === p.id)) continue;
+        if (receiptIds.has(p.id)) continue;
         const ts =
           p.createdAt && Number.isFinite(Date.parse(p.createdAt))
             ? p.createdAt
@@ -341,6 +307,39 @@ export function createFinanceService(deps: any) {
         : r,
     );
   }
+  function normalizedShiftDate(value:any) {
+    const clean=String(value||'').split('T')[0].trim(),parts=clean.split('-');
+    if(parts.length===3){if(parts[0].length===4)return `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;if(parts[2].length===4)return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;}
+    return clean;
+  }
+  // Same explicit-ID, payment, legacy-date and timestamp precedence as the screen.
+  function appointmentInShift(app:any,shift:any) {
+    if(app.shiftId)return app.shiftId===shift.id;
+    const shiftDate=normalizedShiftDate(shift.date);
+    const timed=(value:any)=>{const ts=Date.parse(value),open=Date.parse(shift.openedAt);return Number.isFinite(ts)&&Number.isFinite(open)?ts>=open&&ts<=(shift.closedAt?Date.parse(shift.closedAt):Date.now()+120000):null;};
+    if(payments(app).some((p:any)=>{
+      if(p.shiftId)return p.shiftId===shift.id;
+      const date=normalizedShiftDate(p.date||(p.createdAt?String(p.createdAt).split('T')[0]:'')||app.date);
+      if(date&&shiftDate&&date!==shiftDate)return false;
+      const match=shift.openedAt?timed(p.createdAt||(p.legacy&&p.type==='initial'?(app.createdAt||new Date().toISOString()):app.updatedAt||app.createdAt)):null;
+      return match===null?date===shiftDate:match;
+    }))return true;
+    const date=normalizedShiftDate(app.date);if(date&&shiftDate&&date!==shiftDate)return false;
+    const match=shift.openedAt?timed(app.updatedAt||app.createdAt):null;
+    return match===null?date===shiftDate:match;
+  }
+  async function ensureProjection(cid:string) {
+    await store.migrate(cid);
+    const m=await store.projectionMeta(cid);if(m.projectionReady)return m;
+    const state=await store.readLedger(cid),apps=await rows('appointments',cid);
+    const receipts=await receiptProjection(cid,state,apps);
+    const expenses=(await rows('expenses',cid)).map((e:any)=>state.assignments?.['expense:'+e.id]?{...e,shiftId:state.assignments['expense:'+e.id].shiftId,manuallyAssigned:true}:e).filter((e:any)=>!e.deletedAt);
+    const events=state.events;
+    const summary={allTotal:0,byDate:{} as Record<string,number>,byMonth:{} as Record<string,number>,categoryTotals:{} as Record<string,number>};
+    for(const e of expenses){const amount=Number(e.amount||0);summary.allTotal+=amount;summary.byDate[e.date]=(summary.byDate[e.date]||0)+amount;const month=String(e.date||'').slice(0,7);summary.byMonth[month]=(summary.byMonth[month]||0)+amount;summary.categoryTotals[e.category]=(summary.categoryTotals[e.category]||0)+amount;}
+    await store.buildProjection(cid,{receipts,events,expenses,appointments:apps},summary);
+    return store.projectionMeta(cid);
+  }
   async function snapshot(cid: string, shift: any, s: any) {
     const apps = await rows("appointments", cid),
       allExpenses = (await rows("expenses", cid)).map((e: any) =>
@@ -352,11 +351,12 @@ export function createFinanceService(deps: any) {
         (e: any) =>
           !e.deletedAt && e.type === "shift" && e.shiftId === shift.id,
       );
-    const receipts = (await receiptProjection(cid, s)).filter(
+    const projectedReceipts=await receiptProjection(cid,s,apps);
+    const receipts = projectedReceipts.filter(
       (p: any) => p.shiftId === shift.id,
     );
     const ambiguous =
-      (await receiptProjection(cid, s)).some(
+      projectedReceipts.some(
         (p: any) =>
           !p.shiftId && p.date === shift.date && cents(p.amount || 0) > 0,
       ) ||
@@ -429,7 +429,7 @@ export function createFinanceService(deps: any) {
     await ensure();
     return db.financeTransaction(cid, async () => {
       const who = await actor(auth, cid, true),
-        s = await load(cid);
+        s = await store.loadCommand(cid,body);
       const resolveActiveMethod = (input: any) => {
         if (typeof input !== 'string' || !input.trim()) fail('اختر طريقة دفع من إعدادات العيادة', 400);
         if (method(input) === 'نقاط الولاء') fail('استخدم السداد بالنقاط للتحقق من المحفظة',400);
@@ -1172,7 +1172,7 @@ export function createFinanceService(deps: any) {
         action === "write"
           ? { signature, recordRef: { table: body.table, id: result.id } }
           : { signature, result };
-      await save(cid, s);
+      await store.saveCommand(cid, s);
       return result;
     });
   }
@@ -1216,8 +1216,8 @@ export function createFinanceService(deps: any) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail('تاريخ الملخص غير صالح', 400);
         await ensure();
         const methods = await db.financeTransaction(cid, async () => {
-          const state = await load(cid), totals: Record<string,number> = Object.create(null);
-          for (const receipt of await receiptProjection(cid, state)) {
+          await ensureProjection(cid);const totals: Record<string,number> = Object.create(null);
+          for (const receipt of await store.selectProjection(cid,'receipts',{date})) {
             if ((receipt.collectionDate || receipt.date) !== date) continue;
             const channel = paymentMethodForReport(receipt.paymentMethod,calendarActor.clinic.paymentMethods);
             if (channel === 'نقاط الولاء') continue;
@@ -1228,12 +1228,60 @@ export function createFinanceService(deps: any) {
         });
         return res.json({date,methods});
       }
+      if (req.body.action === 'view') {
+        await actor(auth,cid); permission(auth,'read'); await ensure();
+        const body=req.body;
+        const result=await db.financeTransaction(cid,async()=>{
+          const projection=await ensureProjection(cid);
+          const from=String(body.from||''),to=String(body.to||'');
+          if((from&&!/^\d{4}-\d{2}-\d{2}$/.test(from))||(to&&!/^\d{4}-\d{2}-\d{2}$/.test(to))) fail('Invalid financial date range',400);
+          let selectedReceipts:any[]=[],events:any[]=[],expenses:any[]=[],apps:any[]=[];
+          const scope=String(body.scope||'');
+          const range={from,to};
+          if(scope==='patient') {
+            // Appointment alias fallbacks preserve the old exact ID -> phone -> name precedence.
+            let selected=body.patientId?await store.selectProjection(cid,'appointments',{patientId:body.patientId}):[];
+            if(!selected.length&&body.patientPhone)selected=await store.selectProjection(cid,'appointments',{patientPhone:body.patientPhone});
+            if(!selected.length&&body.patientName)selected=await store.selectProjection(cid,'appointments',{patientName:body.patientName});
+            apps=selected;
+            selectedReceipts=await store.selectProjection(cid,'receipts',{appointmentIds:selected.map((a:any)=>a.id),includePatientId:body.patientId});
+          } else if(scope==='legacy_history') {
+            apps=await store.selectProjection(cid,'appointments');expenses=await store.selectProjection(cid,'expenses');
+          } else if(scope==='shift') {
+            const shiftId=String(body.shiftId||'');
+            selectedReceipts=await store.selectProjection(cid,'receipts',{shiftId});
+            expenses=await store.selectProjection(cid,'expenses',{shiftId});
+            const allApps=await store.selectProjection(cid,'appointments');
+            const ids=new Set(selectedReceipts.map((r:any)=>r.appointmentId));
+            const shift=shiftId==='preview'?{id:shiftId,date:body.date}:await get('shifts',shiftId,cid);
+            apps=allApps.filter((a:any)=>appointmentInShift(a,shift||{id:shiftId,date:body.date})||ids.has(a.id));
+          } else if(scope==='settlement') {
+            selectedReceipts=(await store.selectProjection(cid,'receipts')).filter((r:any)=>!r.shiftId&&r.date===body.date&&Number(r.amount)>0);
+            expenses=(await store.selectProjection(cid,'expenses',{date:body.date})).filter((e:any)=>e.type==='shift'&&!e.shiftId);
+          } else if(scope==='revenues') {
+            selectedReceipts=await store.selectProjection(cid,'receipts',range);
+            expenses=await store.selectProjection(cid,'expenses',range);
+          } else if(scope==='returns') {
+            events=await store.selectProjection(cid,'events',range);
+            if(body.includeRefundCandidates)selectedReceipts=await store.selectProjection(cid,'receipts');
+          } else if(scope==='expenses') {
+            expenses=await store.selectProjection(cid,'expenses',range);
+          } else if(scope==='installments') {
+            apps=(await store.selectProjection(cid,'appointments',range)).filter((a:any)=>a.status==='completed'&&Number(a.remainingAmount??0)>0);
+          } else if(scope!=='history') fail('Unknown financial view',400);
+          const summary=projection.expenseSummary;
+          const today=day(new Date().toISOString());
+          const expenseSummary={allTotal:summary.allTotal,todayTotal:summary.byDate[today]||0,monthTotal:summary.byMonth[today.slice(0,7)]||0,categoryTotals:summary.categoryTotals};
+          return {receipts:selectedReceipts,events,expenses,appointments:apps,expenseSummary};
+        });
+        return res.json(result);
+      }
       if (req.body.action === "read") {
         await actor(auth, cid);
         permission(auth, "read");
         await ensure();
         const result = await db.financeTransaction(cid, async () => {
-          const s = await load(cid);
+          const s = await store.readLedger(cid);
           return {
             events: s.events,
             receipts: await receiptProjection(cid, s),
@@ -1275,5 +1323,5 @@ export function createFinanceService(deps: any) {
       });
     }
   }
-  return { handler, run, validateClinicPaymentMethods, ensureSchema:ensure };
+  return { handler, run, validateClinicPaymentMethods, ensureSchema:ensure, exportState:store.load, importState:store.save, deleteState:store.remove };
 }

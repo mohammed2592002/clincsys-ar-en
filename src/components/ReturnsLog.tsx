@@ -30,29 +30,6 @@ export default function ReturnsLog({
     }).format(new Date());
   const [from, setFrom] = useState(today),
     [to, setTo] = useState(today);
-  useEffect(() => {
-    let live = true;
-    const load = async () => {
-      try {
-        const r = await financeCommand(clinicId, { action: "read" });
-        if (live) {
-          setEvents(r.events || []);
-          setReceipts(r.receipts || []);
-          setError("");
-        }
-      } catch (e: any) {
-        if (live) setError(e.message);
-      } finally {
-        if (live) setLoading(false);
-      }
-    };
-    load();
-    window.addEventListener("clinic-sync", load);
-    return () => {
-      live = false;
-      window.removeEventListener("clinic-sync", load);
-    };
-  }, [clinicId]);
   const labels: Record<string, string> = {
     legacy_assigned: isEn ? "Manual legacy assignment" : "تسوية ربط يدوية",
     refund: isEn ? "Refunded payment" : "دفعة مستردة",
@@ -72,6 +49,33 @@ export default function ReturnsLog({
     base.setUTCDate(base.getUTCDate() - offset);
     return { start: base.toISOString().slice(0, 10), end: d };
   }, [period, from, to]);
+  useEffect(() => {
+    let live = true,serial=0;
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const load = async () => {
+      const current=++serial;
+      try {
+        const r = await financeCommand(clinicId, { action: "view", scope: "returns", from:range.start, to:range.end, includeRefundCandidates:showRefund });
+        if (live&&current===serial) {
+          setEvents(r.events || []);
+          setReceipts(r.receipts || []);
+          setError("");
+        }
+      } catch (e: any) {
+        if (live&&current===serial) setError(e.message);
+      } finally {
+        if (live&&current===serial) setLoading(false);
+      }
+    };
+    load();
+    const refresh=()=>{serial++;if(timer)clearTimeout(timer);timer=setTimeout(load,80);};
+    window.addEventListener("clinic-sync", refresh);
+    return () => {
+      live = false;
+      if(timer)clearTimeout(timer);
+      window.removeEventListener("clinic-sync", refresh);
+    };
+  }, [clinicId,range.start,range.end,showRefund]);
   const filtered = events
     .filter((e) => {
       const d = new Intl.DateTimeFormat("en-CA", {

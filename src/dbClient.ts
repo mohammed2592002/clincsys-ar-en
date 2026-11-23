@@ -716,7 +716,20 @@ export async function resolveDurableCommand(id:string,choice:'server'|'local',re
 export async function exportCommandHistory(){const owner=commandOwner(getAuthToken());return (await listCommands(true)).filter(c=>c.owner===owner);}
 export function pendingMoneyAmount(c:DurableCommand){if(['collect','refund'].includes(c.body.action))return Number(c.body.amount||0);if(c.body.pendingMoneyAmount!==undefined)return Number(c.body.pendingMoneyAmount);if(c.body.table==='expenses')return Number(c.body.data?.amount||0);return 0;}
 export async function getPendingCommands(){const owner=commandOwner(getAuthToken());return (await listCommands()).filter(c=>c.owner===owner||(owner.startsWith('manager:')&&c.clinicId===owner.split(':')[1]));}
+const financeReadsInFlight = new Map<string,Promise<any>>();
 export async function financeCommand(clinicId:string,body:any):Promise<any>{
+ if(body.action==='view'){
+  const readKey=commandOwner(getAuthToken())+':'+clinicId+':'+JSON.stringify(body);
+  const pending=financeReadsInFlight.get(readKey);if(pending)return pending;
+  const request=(async()=>{
+   if(!isPageVisible())throw new DOMException('Page hidden','AbortError');
+   try{const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId,...body})});
+    if(!response.ok){const denied:any=commandError((await response.json()).message||'تعذر تحميل السجل');denied.authoritative=true;throw denied;}
+    const result=await response.json();await saveLocalDoc('finance-ledger',readKey,result);return result;
+   }catch(e:any){if(e.authoritative)throw e;const cached=await getLocalDoc('finance-ledger',readKey);if(cached)return {...cached,fromCache:true};throw e;}
+  })();financeReadsInFlight.set(readKey,request);try{return await request;}finally{financeReadsInFlight.delete(readKey);}
+ }
+
  const originatingScreen=getActiveRequestScreen();
  if(body.action==='read'||body.action==='calendar_summary'){if(!isPageVisible())throw new DOMException('Page hidden','AbortError');const ledgerKey=commandOwner(getAuthToken())+':'+clinicId+(body.action==='calendar_summary'?':calendar:'+body.date:'');try{const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId,...body})});if(!response.ok){const denied:any=commandError((await response.json()).message||'تعذر تحميل السجل');denied.authoritative=true;throw denied;}const result=await response.json();await saveLocalDoc('finance-ledger',ledgerKey,result);return result;}catch(e:any){if(e.authoritative)throw e;const cached=await getLocalDoc('finance-ledger',ledgerKey);if(cached)return {...cached,fromCache:true};throw e;}}
  const owner=commandOwner(getAuthToken());if(!owner)throw commandError('يلزم تسجيل الدخول قبل تسجيل طلب');

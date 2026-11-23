@@ -1947,6 +1947,8 @@ async function initDb() {
 
   // Execute Versioned Migration System
   await runMigrations();
+  // Create additive finance tables outside any request transaction.
+  await finance.ensureSchema();
 
   // Warm the auth secret so token verification is ready before first request
   try {
@@ -2518,6 +2520,7 @@ async function deleteClinicDatabase(finalId:string) {
         await dbClient.financeTransaction(finalId,async()=>{
           const cascadeTables=['users','patients','appointments','records','prescriptions','custom_medications','custom_categories','inventory','billing','closings','laboratories','lab_orders','lab_work_types','shifts','expenses','teeth','xrays','renewals','files'];
           for(const table of cascadeTables)await dbClient.execute({sql:`DELETE FROM ${table} WHERE clinicId = ?${table==='files'?'':" OR json_extract(data, '$.clinicId') = ? OR json_extract(data, '$.clinic_id') = ?"}`,args:table==='files'?[finalId]:[finalId,finalId,finalId]});
+          await finance.deleteState(finalId);
           await dbClient.execute({sql:'DELETE FROM finance_state WHERE id = ?',args:[finalId]});
           await dbClient.execute({sql:'DELETE FROM server_sync_events WHERE clinic_id = ?',args:[finalId]});
           await dbClient.execute({sql:'DELETE FROM clinics WHERE id = ?',args:[finalId]});

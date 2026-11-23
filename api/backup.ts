@@ -25,8 +25,7 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
             await db.execute({ sql: `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, args: vals });
         return full;
     }
-    async function readFinance(cid: string) { const row = await one('finance_state', cid); if (!row)
-        return { version: 1, receipts: [], events: [], requests: {} }; const { id, createdAt, createdat, ...state } = row; return state; }
+    async function readFinance(cid: string) { return finance.exportState(cid); }
     async function exportClinic(cid: string) {
         await finance.ensureSchema();
         return db.financeTransaction(cid, async () => {
@@ -205,12 +204,7 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
                     counts[table]++;
                 }
             }
-            // finance_state has a clinic-key primary key rather than a clinicId column.
-            const existing = (await db.execute({ sql: 'SELECT id FROM finance_state WHERE id = ?', args: [cid] })).rows.length;
-            if (existing)
-                await db.execute({ sql: 'UPDATE finance_state SET data = ? WHERE id = ?', args: [JSON.stringify(state), cid] });
-            else
-                await db.execute({ sql: 'INSERT INTO finance_state (id,data,createdAt) VALUES (?,?,?)', args: [cid, JSON.stringify(state), new Date().toISOString()] });
+            await finance.importState(cid,state);
             return { success: true, counts, clinicInfo: sanitizeClinic(info), credentialNotice, warnings: [...(parsed.state ? [] : ['Legacy backup has no financial event/request history. Existing history was kept; missing history cannot be recovered. / النسخة القديمة لا تحتوي على تاريخ الأحداث والطلبات المالية. تم الاحتفاظ بالتاريخ الحالي، ولا يمكن استعادة ما لم يكن محفوظا.']), ...(parsed.credentialVersion ? [] : ['Legacy backup has no guaranteed login hashes. Current logins were kept; missing passwords cannot be recovered from this file. / النسخة القديمة لا تضمن حفظ هاشات الدخول. تم الاحتفاظ بالحسابات الحالية، ولا يمكن استرجاع كلمات مرور غير محفوظة بالملف.'])] };
         });
     }
