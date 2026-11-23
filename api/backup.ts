@@ -302,5 +302,5 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
             res.status(e.status || 500).json({ message: e.message || 'Backup failed / فشل النسخ الاحتياطي' });
         }
     }
-    return { handler };
+    return { handler, validateClinic: normalize, restoreClinic };
 }
