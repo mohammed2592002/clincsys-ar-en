@@ -15,16 +15,25 @@ try{
  for(const table of tables)await db.exec(`CREATE TABLE ${table}(id text primary key,clinicId text,data text)`);
  const insert=async(table,id,cid,d)=>db.query(`INSERT INTO ${table} VALUES($1,$2,$3)`,[id,cid,JSON.stringify(d)]);
  await insert('clinics','syn_pg','syn_pg',{id:'syn_pg',name:'PG fixture'});await insert('clinics','syn_legacy','syn_legacy',{id:'syn_legacy',name:'PG legacy'});
- for(let i=0;i<251;i++)await insert('patients','syn_'+String(i).padStart(4,'0'),'syn_pg',{id:'syn_'+String(i).padStart(4,'0'),name:'fixture',clinicId:'syn_pg'});
- const receipts=Array.from({length:251},(_,i)=>({id:'syn_r'+i,amountCents:i,method:'cash',extra:'بيانات طبية تجريبية'}));
+ for(let i=0;i<2251;i++)await insert('patients','syn_'+String(i).padStart(4,'0'),'syn_pg',{id:'syn_'+String(i).padStart(4,'0'),name:'fixture',clinicId:'syn_pg'});
+ const receipts=Array.from({length:5251},(_,i)=>({id:'syn_r'+i,amountCents:i,method:'cash',extra:'بيانات طبية تجريبية'}));
  const state={version:1,receipts,events:[{id:'syn_e',type:'fixture'}],requests:{'test.map.key':{response:{ok:true}}},assignments:{'expense:one':'shift-one'},other:{preserve:true}};
  await store.save('syn_pg',state);
  const legacy={version:1,receipts:[],events:[],requests:{},unicode:'😀اختبار'.repeat(30000)};
  await db.query('INSERT INTO finance_state(id,data) VALUES($1,$2)',['syn_legacy',JSON.stringify(legacy)]);
+ // Equal ordinals must not skip or repeat entries at a page boundary.
+ await db.exec('UPDATE finance_receipts SET ordinal=7');
+ const expectedReceipts=(await db.query('SELECT data FROM finance_receipts ORDER BY ordinal,id')).rows.map(r=>JSON.parse(r.data));
  const finance={ensureSchema:store.schema,exportState:store.load,streamExport:store.streamExport};
  const service=createBackupService({db:driver,getAuth:async()=>({type:'admin'}),finance,hashPassword:async p=>p,defaultAdmin:null});
  sqls=[];let out='';await service.streamSystemExport(async chunk=>{out+=chunk;});const parsed=JSON.parse(out);
- const c=parsed.clinics.find(c=>c.clinicInfo.id==='syn_pg');assert.equal(c.patients.length,251);assert.deepEqual(c.finance_state,state);assert.deepEqual(parsed.clinics.find(c=>c.clinicInfo.id==='syn_legacy').finance_state,legacy);
- assert(sqls.filter(s=>s.startsWith('SELECT * FROM patients')).every(s=>s.includes('LIMIT 100')));assert(sqls.filter(s=>s.startsWith('SELECT * FROM finance_receipts')).every(s=>s.includes('LIMIT 100')));assert(sqls.some(s=>s.includes('substring(data from ? for 65536)')));
- console.log('PASS PostgreSQL engine bounded export: 251 patient/receipt rows over three pages; exact financial objects/maps; untouched legacy Unicode JSON streamed as 64K character slices; no migration or data loss.');
+ const c=parsed.clinics.find(c=>c.clinicInfo.id==='syn_pg');assert.equal(c.patients.length,2251);assert.deepEqual(c.finance_state,{...state,receipts:expectedReceipts});assert.deepEqual(parsed.clinics.find(c=>c.clinicInfo.id==='syn_legacy').finance_state,legacy);
+ assert(sqls.filter(s=>s.startsWith('SELECT * FROM patients')).every(s=>s.includes('LIMIT 1000')));assert(sqls.filter(s=>s.startsWith('SELECT * FROM finance_receipts')).every(s=>s.includes('LIMIT 5000')&&!s.includes('OFFSET')));assert(!sqls.some(s=>s.includes('substring(data')));assert.equal(sqls.filter(s=>s==='SELECT data FROM finance_state WHERE id = ?').length,1);
+ // Reject an oversized legacy allocation before retrieving its contents.
+ const guarded={...driver,execute:async q=>q.sql?.startsWith('SELECT octet_length')?{rows:[{bytes:67108865}]}:q.sql==='SELECT data FROM finance_state WHERE id = ?'?assert.fail('must preflight before full read'):driver.execute(q)};
+ const guardStore=createFinanceStore(guarded);
+ await assert.rejects(()=>guardStore.streamExport('syn_legacy',async()=>{},()=>{}),e=>e.code==='EXPORT_LEGACY_TOO_LARGE');
+ const memoryUsage=process.memoryUsage;
+ try{process.memoryUsage=()=>({...memoryUsage(),rss:1073741824});await assert.rejects(()=>service.streamSystemExport(async()=>{}),e=>e.code==='EXPORT_MEMORY_LIMIT');}finally{process.memoryUsage=memoryUsage;}
+ console.log('PASS PostgreSQL engine bounded export: 2251 patients and 5251 equal-ordinal receipts across multiple keyset pages; exact financial objects/maps; untouched legacy Unicode JSON streamed by a single read; no migration or data loss.');
 }finally{await db.close();await rm(file,{force:true});}

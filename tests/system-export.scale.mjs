@@ -6,12 +6,12 @@ try{
  const db={financeTransaction:async(_c,fn)=>fn(),execute:async({sql,args=[]})=>{
   if(sql==='SELECT * FROM clinics')return {rows:[{id:'syn_scale',data:JSON.stringify({id:'syn_scale',name:'synthetic scale'})}]};
   if(sql==='SELECT * FROM clinics WHERE id = ?')return {rows:[{id:'syn_scale',data:'{"id":"syn_scale","name":"synthetic scale"}'}]};
-  if(sql.startsWith('SELECT * FROM patients')){assert(sql.includes('LIMIT 100'));const last=args.length>1?Number(args[1].slice(4))+1:0;const rows=Array.from({length:Math.max(0,Math.min(100,n-last))},(_,i)=>{const id='syn_'+String(last+i).padStart(9,'0');return {id,data:JSON.stringify({id,clinicId:'syn_scale',name:'synthetic',padding})};});maxBatch=Math.max(maxBatch,rows.length);patients+=rows.length;return {rows};}
+  if(sql.startsWith('SELECT * FROM patients')){assert(sql.includes('LIMIT 1000'));const last=args.length>1?Number(args[1].slice(4))+1:0;const rows=Array.from({length:Math.max(0,Math.min(1000,n-last))},(_,i)=>{const id='syn_'+String(last+i).padStart(9,'0');return {id,data:JSON.stringify({id,clinicId:'syn_scale',name:'synthetic',padding})};});maxBatch=Math.max(maxBatch,rows.length);patients+=rows.length;return {rows};}
   return {rows:[]};
  }};
  const service=createBackupService({db,finance:{streamExport:async(_c,w)=>w('{"version":1,"receipts":[],"events":[],"requests":{}}')},hashPassword:async p=>p});
- const gzip=createGzip({level:1});let bytes=0,raw=0,peak=process.memoryUsage().rss;const start=Date.now(),baseline=peak;
+ const gzip=createGzip({level:1});let writes=0,bytes=0,raw=0,peak=process.memoryUsage().rss;const start=Date.now(),baseline=peak;
  const transfer=pipeline(gzip,new Writable({write(c,_e,cb){bytes+=c.length;peak=Math.max(peak,process.memoryUsage().rss);cb();}}));transfer.catch(()=>{});
- await service.streamSystemExport(async s=>{raw+=Buffer.byteLength(s);if(!gzip.write(s))await once(gzip,'drain');});gzip.end();await transfer;assert.equal(patients,n);assert.equal(maxBatch,100);
- console.log(JSON.stringify({measured:true,fixture:'single synthetic clinic, generated row batches, not live DB',patientRows:patients,maxRowsPerBatch:maxBatch,uncompressedMiB:+(raw/1048576).toFixed(2),gzipMiB:+(bytes/1048576).toFixed(2),seconds:+((Date.now()-start)/1000).toFixed(2),baselineRssMiB:+(baseline/1048576).toFixed(1),peakObservedRssMiB:+(peak/1048576).toFixed(1)}));
+ await service.streamSystemExport(async s=>{writes++;raw+=Buffer.byteLength(s);if(!gzip.write(s))await once(gzip,'drain');});gzip.end();await transfer;assert.equal(patients,n);assert.equal(maxBatch,1000);
+ console.log(JSON.stringify({measured:true,fixture:'single synthetic clinic, generated row batches, not live DB',patientRows:patients,writeCalls:writes,maxRowsPerBatch:maxBatch,uncompressedMiB:+(raw/1048576).toFixed(2),gzipMiB:+(bytes/1048576).toFixed(2),seconds:+((Date.now()-start)/1000).toFixed(2),baselineRssMiB:+(baseline/1048576).toFixed(1),peakObservedRssMiB:+(peak/1048576).toFixed(1)}));
 }finally{await rm(file,{force:true});}

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { checkExportMemory, LEGACY_FINANCE_MAX_BYTES, EXPORT_WRITE_BYTES } from './exportLimits';
 import {isDeepStrictEqual} from 'node:util';
 
 const groups = ['receipts','events','requests','assignments'] as const;
@@ -176,16 +177,19 @@ export function createFinanceStore(db: any) {
     await schema();
     const m=await meta(cid);
     if(!m) {
-      // Untouched legacy ledger is already exact JSON. Do not parse/rebuild it.
+      // Read a legacy value once, never repeatedly detoast/scan it via substring.
+      check();checkExportMemory();
       if(db.getIsPostgres()) {
-        let offset=1,emitted=false;
-        while(true){check();const rows=(await db.execute({sql:'SELECT substring(data from ? for 65536) AS chunk FROM finance_state WHERE id = ?',args:[offset,cid]})).rows;
-          const chunk=rows[0]?.chunk;if(!chunk)break;await write(chunk);emitted=true;if([...chunk].length<65536)break;offset+=65536;}
-        if(!emitted)await write('{"version":1,"receipts":[],"events":[],"requests":{}}');
-      } else {
-        const rows=(await db.execute({sql:'SELECT data FROM finance_state WHERE id = ?',args:[cid]})).rows;
-        const raw=rows[0]?.data;await write(typeof raw==='string'?raw:JSON.stringify(raw||{version:1,receipts:[],events:[],requests:{}}));
+        const size=(await db.execute({sql:'SELECT octet_length(data) AS bytes FROM finance_state WHERE id = ?',args:[cid]})).rows[0]?.bytes;
+        if(Number(size)>LEGACY_FINANCE_MAX_BYTES)throw Object.assign(new Error('Legacy finance exceeds export working-set limit'),{code:'EXPORT_LEGACY_TOO_LARGE'});
       }
+      const rows=(await db.execute({sql:'SELECT data FROM finance_state WHERE id = ?',args:[cid]})).rows;
+      const raw=rows[0]?.data;
+      const text=typeof raw==='string'&&raw?raw:JSON.stringify(raw||{version:1,receipts:[],events:[],requests:{}});
+      if(Buffer.byteLength(text)>LEGACY_FINANCE_MAX_BYTES)throw Object.assign(new Error('Legacy finance exceeds export working-set limit'),{code:'EXPORT_LEGACY_TOO_LARGE'});
+      checkExportMemory();
+      // Slice JS text without splitting a surrogate pair across stream writes.
+      for(let offset=0;offset<text.length;){check();checkExportMemory();let end=Math.min(text.length,offset+EXPORT_WRITE_BYTES/2);const code=text.charCodeAt(end-1);if(end<text.length&&code>=0xD800&&code<=0xDBFF)end--;await write(text.slice(offset,end));offset=end;}
       return;
     }
     if(!m.verified)throw Error('Unverified financial migration');
@@ -195,14 +199,15 @@ export function createFinanceStore(db: any) {
       if(!m.present.includes(group))continue;
       const array=group==='receipts'||group==='events';
       await write((first?'':',')+JSON.stringify(group)+':'+(array?'[':'{'));first=false;
-      let emitted=false,offset=0;
+      let emitted=false,last:any=null;
       while(true){
         check();
-        const rows=(await db.execute({sql:`SELECT * FROM ${table(group)} WHERE clinicId = ? ORDER BY ordinal ASC, id ASC LIMIT 100 OFFSET ${offset}`,args:[cid]})).rows;
+        checkExportMemory();
+        const rows=(await db.execute({sql:`SELECT * FROM ${table(group)} WHERE clinicId = ?${last?' AND (ordinal > ? OR (ordinal = ? AND id > ?))':''} ORDER BY ordinal ASC, id ASC LIMIT 5000`,args:last?[cid,last.ordinal,last.ordinal,last.id]:[cid]})).rows;
         // The development JSON emulator does not sort arbitrary SQL columns.
         if(!db.getIsPostgres())rows.sort((a:any,b:any)=>Number(a.ordinal)-Number(b.ordinal));
         for(const row of rows){check();await write((emitted?',':'')+(array?'':JSON.stringify(row.entryKey??row.entrykey)+':')+JSON.stringify(payload(row)));emitted=true;}
-        if(rows.length<100)break;offset+=rows.length;
+        if(rows.length<5000)break;last=rows[rows.length-1];
       }
       await write(array?']':'}');
     }

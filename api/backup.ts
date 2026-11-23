@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import crypto from 'node:crypto';
+import { checkExportMemory, EXPORT_WRITE_BYTES } from './exportLimits';
 import { getClinicPaymentMethods, samePaymentMethod, normalizePaymentMethod } from '../src/utils/paymentMethods';
 import { CREDENTIAL_SCHEMA_VERSION, clinicCredentialCopy, adminCredentialCopy, validateClinicCredentials, validateBackupHash, restoreClinicCredentials, safeRestoredStaff, credentialNotice } from './backupCredentials';
 const TABLES = ['patients', 'appointments', 'records', 'teeth', 'xrays', 'prescriptions', 'custom_medications', 'custom_categories', 'shifts', 'expenses', 'inventory', 'billing', 'closings', 'laboratories', 'lab_orders', 'lab_work_types'];
@@ -303,16 +304,20 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
         }
     }
     // Bounded row batches preserve the format without materializing a clinic.
-    async function streamSystemExport(write:(chunk:string)=>Promise<void>, options:any={}) {
-        const check=()=>{if(options.signal?.aborted)throw Object.assign(new Error('Export aborted'),{code:'EXPORT_ABORTED'});};
+    async function streamSystemExport(sink:(chunk:string)=>Promise<void>, options:any={}) {
+        // Bound accumulated output by bytes, while avoiding a zlib write per row.
+        let pending:string[]=[],pendingBytes=0;
+        const flush=async()=>{if(!pending.length)return;const chunk=pending.join('');pending=[];pendingBytes=0;await sink(chunk);};
+        const write=async(chunk:string)=>{check();const bytes=Buffer.byteLength(chunk);if(pendingBytes+bytes>EXPORT_WRITE_BYTES)await flush();if(bytes>=EXPORT_WRITE_BYTES){await sink(chunk);return;}pending.push(chunk);pendingBytes+=bytes;};
+        const check=()=>{checkExportMemory();if(options.signal?.aborted)throw Object.assign(new Error('Export aborted'),{code:'EXPORT_ABORTED'});};
         async function array(table:string,cid?:string,transform?:(r:any)=>any) {
             await write('[');let first=true,last='';
             while(true){
                 check();
                 const where=[...(cid?['clinicId = ?']:[]),...(last?['id > ?']:[])];
-                const rows=(await db.execute({sql:`SELECT * FROM ${table}${where.length?' WHERE '+where.join(' AND '):''} ORDER BY id ASC LIMIT 100`,args:[...(cid?[cid]:[]),...(last?[last]:[])]})).rows;
+                const rows=(await db.execute({sql:`SELECT * FROM ${table}${where.length?' WHERE '+where.join(' AND '):''} ORDER BY id ASC LIMIT 1000`,args:[...(cid?[cid]:[]),...(last?[last]:[])]})).rows;
                 for(const row of rows){check();await write((first?'':',')+JSON.stringify(transform?transform(unpack(row)):unpack(row)));first=false;}
-                if(rows.length<100)break;last=rows[rows.length-1].id;
+                if(rows.length<1000)break;last=rows[rows.length-1].id;
             }
             await write(']');
         }
@@ -338,7 +343,7 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
         await write('],"renewalsLog":');await array('renewals');
         await write(',"broadcasts":');await array('announcements');
         await write(',"systemSettings":');
-        const settings=(await read('system_settings')).filter((r:any)=>r.id!=='auth_secret');await write(JSON.stringify(settings)+'}');
+        const settings=(await read('system_settings')).filter((r:any)=>r.id!=='auth_secret');await write(JSON.stringify(settings)+'}');await flush();
     }
     return { handler, validateClinic: normalize, restoreClinic, streamSystemExport };
 }
