@@ -1,4 +1,7 @@
 import {backupRequest,backupSqlPayload} from '../../utils/backupTransport';
+import { authHeaders } from '../../dbClient';
+import { RestoreProgressChip, RestoreProgressWindow, RestoreProgressState, ProgressStage } from './RestoreProgress';
+import { useTranslation } from 'react-i18next';
 import { systemSettingsSql } from '../../utils/systemSettingsSql';
 import React, { useState, useEffect } from 'react';
 import { Clinic } from '../../types';
@@ -29,6 +32,86 @@ interface SystemBackupTabProps {
 
 export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBackupTabProps) {
   const dialogs = useDialogs();
+  const { t, i18n } = useTranslation();
+
+  // Restore progress window / background chip (mockup-approved UX)
+  const [restoreProgress, setRestoreProgress] = useState<RestoreProgressState | null>(null);
+  const [progressOpen, setProgressOpen] = useState(false);
+
+  const fmtSize = (bytes: number) => bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + ' MiB' : Math.round(bytes / 1024) + ' KiB';
+  const fmtSecs = (ms: number) => (ms / 1000).toFixed(1);
+
+  const mapServerJob = (job: any): RestoreProgressState => {
+    const total = Number(job.totalClinics) || 200;
+    const done = job.state === 'completed';
+    const failed = job.state === 'failed';
+    const validating = job.state === 'validating';
+    const restoring = job.state === 'restoring';
+    const cDetail = (n: number) => t('superadmin.restoreProgress.clinicOf', { n, total });
+    const stages: ProgressStage[] = [
+      { key: 'upload', state: 'done', detail: t('superadmin.restoreProgress.doneInSecs', { s: fmtSecs(job.uploadMs || 0) }) },
+      { key: 'validate', state: validating ? 'running' : 'done', detail: validating ? cDetail(job.validatedClinics || 0) : t('superadmin.restoreProgress.doneInSecs', { s: fmtSecs(job.validationMs || 0) }), pct: validating ? (100 * (job.validatedClinics || 0)) / total : undefined },
+      { key: 'restore', state: restoring ? 'running' : done ? 'done' : 'waiting', detail: restoring ? cDetail(job.completedClinics || 0) : done ? t('superadmin.restoreProgress.clinicsWritten', { n: job.completedClinics }) : t('superadmin.restoreProgress.waitingValidate'), pct: restoring ? (100 * (job.completedClinics || 0)) / total : undefined },
+      { key: 'verify', state: done ? 'done' : restoring && (job.completedClinics || 0) >= total ? 'running' : 'waiting', detail: done ? t('superadmin.restoreProgress.verifyDone') : t('superadmin.restoreProgress.verifyHint') },
+    ];
+    if (failed) {
+      const idx = job.state === 'validating' ? 1 : 2;
+      for (let i = idx; i < 4; i++) stages[i] = { ...stages[i], state: i === idx ? 'error' : 'waiting', detail: i === idx ? job.errors?.[0] : t('superadmin.restoreProgress.notStarted') };
+    }
+    const counts = done && job.verifiedCounts ? [
+      { labelKey: 'superadmin.restoreProgress.count.clinics', value: job.completedClinics },
+      { labelKey: 'superadmin.restoreProgress.count.patients', value: job.verifiedCounts.patients },
+      { labelKey: 'superadmin.restoreProgress.count.appointments', value: job.verifiedCounts.appointments },
+      { labelKey: 'superadmin.restoreProgress.count.prescriptions', value: job.verifiedCounts.prescriptions },
+      { labelKey: 'superadmin.restoreProgress.count.shifts', value: job.verifiedCounts.shifts },
+      { labelKey: 'superadmin.restoreProgress.count.receipts', value: job.verifiedCounts.finance_receipts },
+      { labelKey: 'superadmin.restoreProgress.count.subscriptions', value: job.verifiedCounts.renewals },
+    ] : undefined;
+    return {
+      source: 'server',
+      status: done ? 'completed' : failed ? 'failed' : 'running',
+      fileName: 'full-system-backup.json.gz',
+      fileSizeLabel: job.uploadedBytes ? fmtSize(job.uploadedBytes) : undefined,
+      stages,
+      error: failed ? job.errors?.[0] : undefined,
+      nothingWritten: failed && (job.completedClinics || 0) === 0,
+      partialNote: failed && (job.completedClinics || 0) > 0 ? t('superadmin.restoreProgress.partialNote', { n: job.completedClinics }) : undefined,
+      counts,
+      reportLines: [
+        `Synthetic restore job ${job.id}`,
+        `Status: ${job.state}`,
+        `Upload: ${fmtSecs(job.uploadMs || 0)}s (${job.uploadedBytes} bytes)`,
+        `Validation: ${fmtSecs(job.validationMs || 0)}s (${job.validatedClinics}/${total})`,
+        `Restore: ${fmtSecs(job.restoreMs || 0)}s (${job.completedClinics}/${total})`,
+        `Total: ${fmtSecs(job.totalMs || 0)}s`,
+        `Peak process RSS: ${fmtSize(job.peakRssBytes || 0)}`,
+        `Min free host RAM: ${fmtSize(job.minFreeHostBytes || 0)}`,
+        ...(job.errors || []).map((e: string) => `Error: ${e}`),
+        ...(job.verifiedCounts ? Object.entries(job.verifiedCounts).map(([k, v]) => `${k}: ${v}`) : []),
+      ],
+    };
+  };
+
+  // Watch a server-side streaming restore job (demo-only endpoint; 404 elsewhere).
+  useEffect(() => {
+    let stop = false;
+    let timer: any;
+    const poll = async () => {
+      try {
+        const r = await fetch('/api/synthetic-restore', { headers: { ...authHeaders() } as any });
+        if (r.ok) {
+          const job = await r.json();
+          const recent = job.state === 'uploading' || job.state === 'validating' || job.state === 'restoring'
+            || (job.finishedAt && Date.now() - Date.parse(job.finishedAt) < 30 * 60 * 1000);
+          if (recent && !stop)
+            setRestoreProgress(prev => (prev?.source === 'local' && prev.status === 'running') ? prev : mapServerJob(job));
+        }
+      } catch { /* endpoint disabled or unreachable: no chip */ }
+      if (!stop) timer = setTimeout(poll, 5000);
+    };
+    poll();
+    return () => { stop = true; clearTimeout(timer); };
+  }, []);
 
   // Export Settings
   const [exportFormat, setExportFormat] = useState<'zip' | 'json' | 'sql' | 'db'>('zip');
@@ -284,6 +367,19 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
     const fileToRestore = pendingRestoreFile;
     setPendingRestoreFile(null);
 
+    const t0 = Date.now();
+    const mkStages = (patch: Partial<Record<string, Partial<ProgressStage>>>): ProgressStage[] => ([
+      { key: 'upload', state: 'running', ...patch.upload },
+      { key: 'validate', state: 'waiting', detail: t('superadmin.restoreProgress.waitingUpload'), ...patch.validate },
+      { key: 'restore', state: 'waiting', detail: t('superadmin.restoreProgress.waitingValidate'), ...patch.restore },
+      { key: 'verify', state: 'waiting', detail: t('superadmin.restoreProgress.verifyHint'), ...patch.verify },
+    ] as ProgressStage[]);
+    const progress: RestoreProgressState = { source: 'local', status: 'running', fileName: fileToRestore.name, fileSizeLabel: fmtSize(fileToRestore.size), stages: mkStages({}) };
+    setRestoreProgress(progress);
+    setProgressOpen(true);
+    const setStages = (patch: Partial<Record<string, Partial<ProgressStage>>>, extra?: Partial<RestoreProgressState>) =>
+      setRestoreProgress(prev => prev ? { ...prev, ...extra, stages: mkStages(patch) } : prev);
+
     try {
       const { text: content } = await readBackupFile(fileToRestore);
       if (!content) throw new Error('الملف فارغ أو يتعذر قراءته.');
@@ -294,20 +390,47 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
       } catch {
         parsed = null;
       }
+      if(!parsed) throw new Error('صيغة الملف غير متوافقة أو الملف تالف.');
 
-      if(parsed){
-        const full=Array.isArray(parsed.clinics)||parsed.backupScope==='FULL_SYSTEM_BACKUP';
-        const cId=parsed.clinicId||parsed.clinicInfo?.id;
-        if(!full&&!cId)throw new Error('Clinic id missing / رقم العيادة غير موجود');
-        const result=await backupRequest({action:full?'restore_system':'restore_clinic',clinicId:cId,backup:parsed});
-        dialogs.alert('تمت استعادة النسخة مع السجل المالي. Backup restored with financial history.'+(result.credentialNotice?'\n'+result.credentialNotice.ar+'\n'+result.credentialNotice.en:'')+(result.warnings?.length?'\n'+result.warnings.join('\n'):''),{severity:result.warnings?.length?'warning':'success'});
-        onRefreshClinics();return;
-      }
-
-      throw new Error('صيغة الملف غير متوافقة أو الملف تالف.');
+      const full=Array.isArray(parsed.clinics)||parsed.backupScope==='FULL_SYSTEM_BACKUP';
+      const cId=parsed.clinicId||parsed.clinicInfo?.id;
+      if(!full&&!cId)throw new Error('Clinic id missing / رقم العيادة غير موجود');
+      const uploadSecs = fmtSecs(Date.now() - t0);
+      setStages({
+        upload: { state: 'done', detail: t('superadmin.restoreProgress.doneInSecs', { s: uploadSecs }) },
+        validate: { state: 'running', detail: t('superadmin.restoreProgress.onServer') },
+      });
+      const result=await backupRequest({action:full?'restore_system':'restore_clinic',clinicId:cId,backup:parsed});
+      const tableCounts: { labelKey: string; value: number }[] = result.counts
+        ? [
+            { labelKey: 'superadmin.restoreProgress.count.patients', value: result.counts.patients || 0 },
+            { labelKey: 'superadmin.restoreProgress.count.appointments', value: result.counts.appointments || 0 },
+            { labelKey: 'superadmin.restoreProgress.count.prescriptions', value: result.counts.prescriptions || 0 },
+            { labelKey: 'superadmin.restoreProgress.count.shifts', value: result.counts.shifts || 0 },
+          ].filter(c => c.value > 0)
+        : (result.restoredClinics || []).length
+          ? [{ labelKey: 'superadmin.restoreProgress.count.clinics', value: result.restoredClinics.length }]
+          : [];
+      setStages({
+        upload: { state: 'done', detail: t('superadmin.restoreProgress.doneInSecs', { s: uploadSecs }) },
+        validate: { state: 'done', detail: t('superadmin.restoreProgress.validatePassed') },
+        restore: { state: 'done', detail: full ? t('superadmin.restoreProgress.clinicsWritten', { n: (result.restoredClinics || []).length }) : t('superadmin.restoreProgress.clinicWritten') },
+        verify: { state: 'done', detail: t('superadmin.restoreProgress.verifyDone') },
+      }, { status: 'completed', counts: tableCounts });
+      dialogs.alert('تمت استعادة النسخة مع السجل المالي. Backup restored with financial history.'+(result.credentialNotice?'\n'+result.credentialNotice.ar+'\n'+result.credentialNotice.en:'')+(result.warnings?.length?'\n'+result.warnings.join('\n'):''),{severity:result.warnings?.length?'warning':'success'});
+      onRefreshClinics();return;
     } catch (err: any) {
       console.error('Restore Error:', err);
-      dialogs.alert('حدث خطأ أثناء استعادة البيانات: ' + (err.message || err.toString()), { severity: 'error' });
+      const msg = err.message || err.toString();
+      const partial = msg.match(/\(completed clinics: (.+?)\)$/);
+      const failAt = progress.stages[0].state === 'running' ? 'upload' : 'validate';
+      setStages({
+        upload: failAt === 'upload' ? { state: 'error', detail: msg } : { state: 'done' },
+        validate: failAt === 'validate' ? { state: 'error', detail: msg } : failAt === 'upload' ? { state: 'waiting', detail: t('superadmin.restoreProgress.notStarted') } : { state: 'error', detail: msg },
+        restore: { state: 'waiting', detail: t('superadmin.restoreProgress.notStarted') },
+        verify: { state: 'waiting', detail: t('superadmin.restoreProgress.notStarted') },
+      }, { status: 'failed', error: msg, nothingWritten: !partial, partialNote: partial ? t('superadmin.restoreProgress.partialList', { list: partial[1] }) : undefined });
+      dialogs.alert('حدث خطأ أثناء استعادة البيانات: ' + msg, { severity: 'error' });
     } finally {
       setBackupLoading(false);
     }
@@ -342,6 +465,10 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
             />
           </div>
         </div>
+      )}
+
+      {restoreProgress && !progressOpen && (
+        <RestoreProgressChip progress={restoreProgress} onOpen={() => setProgressOpen(true)} onDismiss={() => setRestoreProgress(null)} />
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -628,6 +755,14 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
             </div>
           </div>
         </div>
+      )}
+
+      {restoreProgress && progressOpen && (
+        <RestoreProgressWindow
+          progress={restoreProgress}
+          onBackground={() => setProgressOpen(false)}
+          onClose={() => { setProgressOpen(false); if (restoreProgress.status !== 'running') setRestoreProgress(null); }}
+        />
       )}
     </div>
   );

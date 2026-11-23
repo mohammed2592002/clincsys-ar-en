@@ -442,6 +442,47 @@
       "missing": "Deleted {{deleted}} files. {{missing}} files registered for this clinic were not found in the cloud bucket - they may have been deleted earlier, or the server's storage settings do not point at the bucket they were uploaded to.",
       "error": "Failed to delete clinic images from cloud storage: {{message}}",
       "alertTitle": "Notice"
+    },
+    "restoreProgress": {
+      "runningTitle": "Restoring backup",
+      "completedTitle": "Restore completed successfully",
+      "failedTitle": "Restore failed",
+      "viewProgress": "View progress",
+      "dismiss": "Dismiss",
+      "continueBackground": "Continue in background",
+      "backgroundNote": "You can leave this page; the restore continues on the server",
+      "downloadReport": "Download report",
+      "close": "Close",
+      "clinicOf": "Clinic {{n}} of {{total}}",
+      "clinicsWritten": "{{n}} clinics written",
+      "clinicWritten": "Clinic written",
+      "doneInSecs": "Completed in {{s}}s",
+      "waitingUpload": "Starts after the upload completes",
+      "waitingValidate": "Starts after validation passes",
+      "verifyHint": "Counting records from the database",
+      "verifyDone": "Database verified",
+      "onServer": "Validating and restoring on the server...",
+      "validatePassed": "Validation passed",
+      "notStarted": "Not started",
+      "nothingWritten": "No data was written",
+      "partialNote": "{{n}} clinics completed before the error; nothing else was written",
+      "partialList": "Clinics completed before the error: {{list}}",
+      "countsTitle": "Actually written to the database",
+      "stages": {
+        "upload": "File upload",
+        "validate": "Data validation",
+        "restore": "Restoring clinics",
+        "verify": "Final verification"
+      },
+      "count": {
+        "clinics": "Clinics",
+        "patients": "Patients",
+        "appointments": "Appointments",
+        "prescriptions": "Prescriptions",
+        "shifts": "Shifts",
+        "receipts": "Receipts",
+        "subscriptions": "Subscriptions"
+      }
     }
   }
 }

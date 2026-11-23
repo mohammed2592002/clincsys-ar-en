@@ -15,6 +15,7 @@ import { streamObject } from 'stream-json/streamers/StreamObject';
 export function installSyntheticRestore(app:any, deps:any) {
   const {getAuth,getReady,isPostgres}=deps;
   const jobs = new Map<string,any>();
+  let lastJobId: string | null = null;
   const auditDir=path.join(os.tmpdir(),'synthetic-restore-reports');
   const save=(job:any)=>{fs.mkdirSync(auditDir,{recursive:true});fs.writeFileSync(path.join(auditDir,job.id+'.json'),JSON.stringify(job));};
   let busy = false;
@@ -42,6 +43,13 @@ export function installSyntheticRestore(app:any, deps:any) {
     if(auth?.type!=='admin'){res.status(403).json({message:'Superadmin only'});return false;}
     return true;
   }
+  app.get('/api/synthetic-restore',async(req:any,res:any)=>{
+    if(!await authorized(req,res))return;
+    let job=lastJobId?jobs.get(lastJobId):null;
+    if(!job){try{const files=fs.readdirSync(auditDir).filter(f=>f.endsWith('.json')).map(f=>({f,m:fs.statSync(path.join(auditDir,f)).mtimeMs})).sort((a,b)=>b.m-a.m);if(files.length)job=JSON.parse(fs.readFileSync(path.join(auditDir,files[0].f),'utf8'));}catch{}}
+    if(!job)return res.status(404).json({message:'No restore job'});
+    res.json(job);
+  });
   app.get('/api/synthetic-restore/:id',async(req:any,res:any)=>{
     if(!await authorized(req,res))return;
     if(!/^[0-9a-f-]{36}$/.test(req.params.id))return res.status(404).end();
@@ -59,7 +67,7 @@ export function installSyntheticRestore(app:any, deps:any) {
     const id=crypto.randomUUID(), dir=fs.mkdtempSync(path.join(os.tmpdir(),'synthetic-restore-')),file=path.join(dir,'backup.json.gz');
     const started=Date.now(),cpu=process.cpuUsage();
     const job:any={id,state:'uploading',startedAt:new Date().toISOString(),uploadedBytes:0,completedClinics:0,validatedClinics:0,peakRssBytes:process.memoryUsage().rss,minFreeHostBytes:os.freemem(),errors:[]};
-    jobs.set(id,job);
+    jobs.set(id,job);lastJobId=id;
     let previousCpu=process.cpuUsage(),previousTime=Date.now();
     const monitor=setInterval(()=>{const now=Date.now(),used=process.cpuUsage(previousCpu);job.peakCpuOneCorePercent=Math.max(job.peakCpuOneCorePercent||0,(used.user+used.system)/((now-previousTime)*10));previousCpu=process.cpuUsage();previousTime=now;job.peakRssBytes=Math.max(job.peakRssBytes,process.memoryUsage().rss,process.resourceUsage().maxRSS*1024);job.minFreeHostBytes=Math.min(job.minFreeHostBytes,os.freemem());},250);
     const finish=()=>{job.peakRssBytes=Math.max(job.peakRssBytes,process.resourceUsage().maxRSS*1024);clearInterval(monitor);job.totalMs=Date.now()-started;job.cpuMicros=process.cpuUsage(cpu);job.finishedAt=new Date().toISOString();busy=false;save(job);fs.rmSync(dir,{recursive:true,force:true});};
@@ -88,6 +96,7 @@ export function installSyntheticRestore(app:any, deps:any) {
           for(const r of item.finance_state?.receipts||[])if(!r.id?.startsWith(cid+'_')||r.clinicId!==cid||r.synthetic!==true||r.amountCents!==25000)throw Error('Invalid synthetic receipt');
           clinicIds.add(cid);job.validatedClinics++;
         });
+        job.totalClinics=globals.totalClinicsCount;
         if(clinicIds.size!==globals.totalClinicsCount)throw Error('Clinic count mismatch');
         for(const cid of clinicIds){const rs=(globals.renewalsLog||[]).filter((r:any)=>r.clinicId===cid);if(rs.length!==12||rs.reduce((n:number,r:any)=>n+r.amount,0)!==6000)throw Error('Subscription count mismatch');}
         for(const r of globals.renewalsLog||[])if(!clinicIds.has(r.clinicId))throw Error('Subscription references unknown clinic');

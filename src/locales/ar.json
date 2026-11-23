@@ -442,6 +442,47 @@
       "missing": "تم حذف {{deleted}} ملف. {{missing}} ملف مسجل لهذه العيادة غير موجود في مساحة التخزين السحابي - ربما حُذف سابقًا، أو إعدادات التخزين على الخادم لا تشير إلى نفس المساحة التي رُفع عليها.",
       "error": "فشل حذف صور العيادة من التخزين السحابي: {{message}}",
       "alertTitle": "تنبيه"
+    },
+    "restoreProgress": {
+      "runningTitle": "استعادة نسخة احتياطية",
+      "completedTitle": "اكتملت الاستعادة بنجاح",
+      "failedTitle": "فشلت الاستعادة",
+      "viewProgress": "عرض التقدم",
+      "dismiss": "إخفاء",
+      "continueBackground": "متابعة في الخلفية",
+      "backgroundNote": "تقدر تسيب الصفحة، الاستعادة بتكمّل على السيرفر",
+      "downloadReport": "تحميل التقرير",
+      "close": "إغلاق",
+      "clinicOf": "عيادة {{n}} من {{total}}",
+      "clinicsWritten": "{{n}} عيادة اكتملت",
+      "clinicWritten": "العيادة اكتملت",
+      "doneInSecs": "اكتمل في {{s}} ثانية",
+      "waitingUpload": "تبدأ بعد اكتمال الرفع",
+      "waitingValidate": "تبدأ بعد نجاح الفحص",
+      "verifyHint": "عدّ السجلات من قاعدة البيانات",
+      "verifyDone": "تم التحقق من قاعدة البيانات",
+      "onServer": "الفحص والاستعادة على السيرفر...",
+      "validatePassed": "الفحص نجح",
+      "notStarted": "لم تبدأ",
+      "nothingWritten": "لم تتم كتابة أي بيانات",
+      "partialNote": "اكتملت {{n}} عيادة قبل الخطأ وباقي البيانات لم تُكتب",
+      "partialList": "العيادات المكتملة قبل الخطأ: {{list}}",
+      "countsTitle": "المكتوب فعلاً في قاعدة البيانات",
+      "stages": {
+        "upload": "رفع الملف",
+        "validate": "فحص البيانات",
+        "restore": "استعادة العيادات",
+        "verify": "التحقق النهائي"
+      },
+      "count": {
+        "clinics": "عيادات",
+        "patients": "مرضى",
+        "appointments": "حجوزات",
+        "prescriptions": "روشتات",
+        "shifts": "ورديات",
+        "receipts": "إيصالات",
+        "subscriptions": "اشتراكات"
+      }
     }
   }
 }
