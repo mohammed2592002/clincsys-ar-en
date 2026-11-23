@@ -1272,7 +1272,9 @@ export function createFinanceService(deps: any) {
           const summary=projection.expenseSummary;
           const today=day(new Date().toISOString());
           const expenseSummary={allTotal:summary.allTotal,todayTotal:summary.byDate[today]||0,monthTotal:summary.byMonth[today.slice(0,7)]||0,categoryTotals:summary.categoryTotals};
-          return {receipts:selectedReceipts,events,expenses,appointments:apps,expenseSummary};
+          // Row envelopes duplicate parsed payloads and must not cross the view boundary.
+          const viewPayload=(row:any)=>{const {data,...value}=row;return value;};
+          return {receipts:selectedReceipts,events,expenses:expenses.map(viewPayload),appointments:apps.map(viewPayload),expenseSummary};
         });
         return res.json(result);
       }

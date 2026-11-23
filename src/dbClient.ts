@@ -34,6 +34,7 @@ export function getAuthToken(): string {
 }
 
 export function setAuthToken(token: string) {
+  invalidateFinanceViews();
   try {
     if (token) {
       safeStorage.setItem(AUTH_TOKEN_KEY, token);
@@ -68,14 +69,20 @@ export const app = { name: '[MockApp]' };
 const smartDocsCache = new Map<string, any>();
 const smartDocCache = new Map<string, any>();
 const invalidatedTables = new Set<string>();
+const financeViewCache = new Map<string,any>();
+let financeViewGeneration=0;
+function invalidateFinanceViews(){financeViewGeneration++;financeViewCache.clear();}
+
 
 export function clearQueryCache() {
+  invalidateFinanceViews();
   smartDocsCache.clear();
   smartDocCache.clear();
 }
 
 export function clearTableCache(tableName: string) {
   if (!tableName) return;
+  invalidateFinanceViews();
   const lowerTable = tableName.toLowerCase();
   invalidatedTables.add(lowerTable);
 
@@ -719,18 +726,27 @@ export async function getPendingCommands(){const owner=commandOwner(getAuthToken
 const financeReadsInFlight = new Map<string,Promise<any>>();
 export async function financeCommand(clinicId:string,body:any):Promise<any>{
  if(body.action==='view'){
-  const readKey=commandOwner(getAuthToken())+':'+clinicId+':'+JSON.stringify(body);
-  const pending=financeReadsInFlight.get(readKey);if(pending)return pending;
+  const token=getAuthToken(),owner=commandOwner(token);
+  const dayKey=new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Cairo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const readKey=token+':'+clinicId+':'+dayKey+':'+JSON.stringify(body);
+  const offlineKey=owner+':'+clinicId+':'+JSON.stringify(body);
+  if(financeViewCache.has(readKey)){const value=financeViewCache.get(readKey);financeViewCache.delete(readKey);financeViewCache.set(readKey,value);return structuredClone(value);}
+  const generation=financeViewGeneration;
+  const flightKey=generation+':'+readKey;
+  const pending=financeReadsInFlight.get(flightKey);if(pending)return pending;
   const request=(async()=>{
    if(!isPageVisible())throw new DOMException('Page hidden','AbortError');
    try{const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId,...body})});
     if(!response.ok){const denied:any=commandError((await response.json()).message||'تعذر تحميل السجل');denied.authoritative=true;throw denied;}
-    const result=await response.json();await saveLocalDoc('finance-ledger',readKey,result);return result;
-   }catch(e:any){if(e.authoritative)throw e;const cached=await getLocalDoc('finance-ledger',readKey);if(cached)return {...cached,fromCache:true};throw e;}
-  })();financeReadsInFlight.set(readKey,request);try{return await request;}finally{financeReadsInFlight.delete(readKey);}
+    const result=await response.json();
+    if(generation===financeViewGeneration){financeViewCache.set(readKey,structuredClone(result));while(financeViewCache.size>40)financeViewCache.delete(financeViewCache.keys().next().value!);await saveLocalDoc('finance-ledger',offlineKey,result);}
+    return result;
+   }catch(e:any){if(e.authoritative)throw e;const cached=await getLocalDoc('finance-ledger',offlineKey);if(cached)return {...cached,fromCache:true};throw e;}
+  })();financeReadsInFlight.set(flightKey,request);try{return await request;}finally{financeReadsInFlight.delete(flightKey);}
  }
 
  const originatingScreen=getActiveRequestScreen();
+ if(body.action!=='read'&&body.action!=='calendar_summary')invalidateFinanceViews();
  if(body.action==='read'||body.action==='calendar_summary'){if(!isPageVisible())throw new DOMException('Page hidden','AbortError');const ledgerKey=commandOwner(getAuthToken())+':'+clinicId+(body.action==='calendar_summary'?':calendar:'+body.date:'');try{const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId,...body})});if(!response.ok){const denied:any=commandError((await response.json()).message||'تعذر تحميل السجل');denied.authoritative=true;throw denied;}const result=await response.json();await saveLocalDoc('finance-ledger',ledgerKey,result);return result;}catch(e:any){if(e.authoritative)throw e;const cached=await getLocalDoc('finance-ledger',ledgerKey);if(cached)return {...cached,fromCache:true};throw e;}}
  const owner=commandOwner(getAuthToken());if(!owner)throw commandError('يلزم تسجيل الدخول قبل تسجيل طلب');
  if(body.action==='close'){const unresolved=(await getPendingCommands()).some(c=>c.financial&&c.body.action!=='close'&&(!c.body.expectedShiftId||c.body.expectedShiftId===body.shiftId));if(unresolved)throw commandError('توجد حركات مالية معلقة، راجع تنبيهات الإعدادات قبل إقفال الوردية');}

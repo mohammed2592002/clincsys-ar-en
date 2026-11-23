@@ -26,6 +26,13 @@ const phone=await view({scope:'patient',patientId:'unknown',patientPhone:'010'})
 assert.equal((await view({scope:'patient',patientName:'Patient'})).receipts.length,1);
 assert.equal((await view({scope:'revenues',from:'2000-01-01',to:'2000-01-01'})).receipts.length,0);
 assert.equal((await view({scope:'shift',shiftId:shift.id,date:shift.date})).receipts.length,1);
+const rawBefore=(await pg.query("SELECT data FROM appointments WHERE id='a'")).rows[0].data;
+const shiftView=await view({scope:'shift',shiftId:shift.id,date:shift.date});
+assert.equal(Object.hasOwn(shiftView.appointments[0],'data'),false,'shift must not duplicate its serialized DB row');
+assert.equal(shiftView.appointments[0].patientId,'p');assert.equal(shiftView.appointments[0].price,100);
+const fullProjection=await pg.query('SELECT data FROM finance_view_appointments WHERE clinicId=$1',[cid]);
+assert.equal(Object.hasOwn(JSON.parse(fullProjection.rows[0].data),'data'),true,'existing stored projection envelope remains intact');
+assert.equal((await pg.query("SELECT data FROM appointments WHERE id='a'")).rows[0].data,rawBefore,'view must not rewrite authoritative appointment');
 await run({action:'refund',appointmentId:'a',receiptId:collection.receipt.id,amount:5,paymentMethod:'كاش',reason:'refund test'});
 patient=await view({scope:'patient',patientId:'p'});assert.equal(patient.receipts.length,2);
 assert.equal(patient.receipts.reduce((n,r)=>n+(r.kind==='refund'?-1:1)*r.amountCents,0),2000);
