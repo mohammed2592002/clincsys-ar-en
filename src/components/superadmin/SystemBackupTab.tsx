@@ -79,7 +79,7 @@ export default function SystemBackupTab({ onRefreshClinics }: SystemBackupTabPro
         `Total: ${fmtSecs(job.totalMs || 0)}s`,
         `Peak process RSS: ${fmtSize(job.peakRssBytes || 0)}`,
         `Min free host RAM: ${fmtSize(job.minFreeHostBytes || 0)}`,
-        ...(job.superadminCredentialsReplaced ? ['Superadmin credentials replaced from file'] : []),
+        ...(job.superadminCredentialsFilled ? ['Superadmin account was missing and was filled from file; a live account is never replaced'] : []),
         ...(job.errors || []).map((e: string) => `Error: ${e}`),
         ...(job.verifiedCounts ? Object.entries(job.verifiedCounts).map(([k, v]) => `${k}: ${v}`) : []),
       ],

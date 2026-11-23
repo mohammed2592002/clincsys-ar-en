@@ -183,13 +183,14 @@ export function installSystemBackup(app: any, deps: any) {
         const globalReq = Object.create(req); globalReq.body = { action: 'restore_system', backup: { ...globals, superadminCredentials: [], clinics: [] } };
         await deps.backups.handler(globalReq, { json: (x: any) => { result = x; }, status: (s: number) => { status = s; return { json: (x: any) => { result = x; } }; } });
         if (status !== 200 || !result?.success) throw Error(result?.message || 'Global records restore failed / فشلت استعادة السجلات العامة');
-        // Approved behavior: the file's superadmin credentials REPLACE the live account.
+        // A platform archive can fill an absent account, never replace a live one
+        // (same rule as the restore_system handler in backup.ts).
         for (const row of globals.superadminCredentials || []) {
-          const now = new Date().toISOString();
           const existing = await deps.db.execute({ sql: 'SELECT id FROM superadmin_credentials WHERE id = ?', args: ['main'] });
-          if (existing.rows.length) await deps.db.execute({ sql: 'UPDATE superadmin_credentials SET email = ?, password = ?, updatedAt = ? WHERE id = ?', args: [row.email, row.password, row.updatedAt || now, 'main'] });
-          else await deps.db.execute({ sql: 'INSERT INTO superadmin_credentials (id, email, password, updatedAt) VALUES (?, ?, ?, ?)', args: ['main', row.email, row.password, row.updatedAt || now] });
-          job.superadminCredentialsReplaced = true;
+          if (!existing.rows.length) {
+            await deps.db.execute({ sql: 'INSERT INTO superadmin_credentials (id, email, password, updatedAt) VALUES (?, ?, ?, ?)', args: ['main', row.email, row.password, row.updatedAt || new Date().toISOString()] });
+            job.superadminCredentialsFilled = true;
+          }
         }
         job.restoreMs = Date.now() - applying;
         // Verification: no restored table may hold fewer rows than the file carried.
