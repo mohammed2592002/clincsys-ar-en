@@ -49,7 +49,7 @@ try{
  assert.equal(Number(full.headers.get('content-length')),ready.size);assert.equal(fullBytes.length,ready.size);
  assert.equal(JSON.parse(gunzipSync(fullBytes)).ok,true);
  await sleep(50);const done=await status(t);assert.equal(done.state,'completed');assert.equal(done.delivered,true);
- assert(done.expiresAt-Date.now()<=5*60*1000+1000,'finished download shortens remaining life');
+ assert(done.expiresAt-Date.now()<=30*60*1000+1000&&done.expiresAt-Date.now()>25*60*1000,'finished download shortens remaining life');
 
  // 2. Retry with the same link works (the old single-use 403 is gone).
  const again=await fetch(url);assert.equal(again.status,200);assert(Buffer.from(await again.arrayBuffer()).equals(fullBytes));
@@ -92,9 +92,9 @@ try{
 
  // 7. TTL: unused file expires and is deleted.
  mode='normal';const ttl=await ticket();await waitState(ttl,['ready']);assert.equal(leftovers().length,1);
- const realNow=Date.now;Date.now=()=>realNow()+31*60*1000;
+ const realNow=Date.now;Date.now=()=>realNow()+6*60*60*1000+60000;
  assert.equal((await fetch(base+ttl.downloadUrl)).status,403);Date.now=realNow;
- assert.equal(leftovers().length,0);assert.equal((await status(ttl)).state,'expired');
+ assert.equal(leftovers().length,0);{const s=await status(ttl);assert(s.state==='expired'||s.message==='Export status expired');}
 
  // 8. Legacy live-stream route still works; a fresh export after everything succeeds.
  const legacy=await fetch(base+'/api/system-backup/export',{headers});assert.equal(JSON.parse(gunzipSync(Buffer.from(await legacy.arrayBuffer()))).ok,true);

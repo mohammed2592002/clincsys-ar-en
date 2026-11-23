@@ -54,13 +54,13 @@ export function installSystemBackup(app: any, deps: any) {
   // (e.g. cellular -> wifi) resumes instead of restarting. The download URL
   // carries an opaque, purpose-scoped, random token (never a login token and
   // never logged). It is reusable for retries/resume until the file expires.
-  // Lifetime rules: file kept READY_TTL after generation finishes; once one
+  // Lifetime rules: file kept READY_TTL (6 h) after generation finishes; once one
   // response has delivered the whole file the remaining life drops to
-  // DONE_GRACE (late resume/retry window); a failed generation deletes its
+  // DONE_GRACE (30 min late resume/retry window); a failed generation deletes its
   // partial file at once; a new export replaces the previous file; a sweep
   // runs every minute; leftovers from a crashed process are removed at startup
   // and at process exit. A file is never deleted while a response is reading it.
-  const READY_TTL=30*60*1000,DONE_GRACE=5*60*1000,PREFIX='system-export-artifact-';
+  const READY_TTL=6*60*60*1000,DONE_GRACE=30*60*1000,PREFIX='system-export-artifact-';
   const artifacts=new Map<string,any>(); // token -> job
   const exports=new Map<string,any>();
   let exportBusy=false;

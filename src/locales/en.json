@@ -498,7 +498,7 @@
       "preparingDownload": "Preparing the full backup file on the server...",
       "lastBackup": "Last backup sent to the browser: {{date}} · {{size}}",
       "lastBackupNever": "No full backup sent to the browser yet",
-      "exportSuccess": "Backup is ready and the download started: {{name}} ({{size}}). If your connection drops, resume it from Downloads within 30 minutes (it continues where it stopped). Check Downloads to confirm the file was saved.",
+      "exportSuccess": "Backup is ready and the download started: {{name}} ({{size}}). If your connection drops, resume it from Downloads within 6 hours (it continues where it stopped). Check Downloads to confirm the file was saved.",
       "exportError": "Backup failed:",
       "restoreTitle": "Restore system and clinic data",
       "dropOrChoose": "Drag the file here or click to choose it",
