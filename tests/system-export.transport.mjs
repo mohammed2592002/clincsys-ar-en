@@ -18,12 +18,12 @@ try{
  const {installSystemBackup}=require(bundle);
  // Incompressible payload (~1.5 MB of gzip) so byte ranges are meaningful.
  const payload=randomBytes(1_000_000).toString('hex');
- let mode='normal',released,active=0,peak=0;
+ let mode='normal',released,active=0,peak=0,marker='clinics:1';
  const app=express();app.get('/health',(_q,r)=>r.end('ok'));
  installSystemBackup(app,{getReady:async()=>{},getAuth:async req=>req.headers.authorization==='Bearer fixture'?{type:'admin'}:null,isPostgres:()=>false,backups:{streamSystemExport:async(write,{signal})=>{
    active++;peak=Math.max(peak,active);
    try{
-    await write('{"ok":true,"padding":"');
+    await write('{"ok":true,"marker":"'+marker+'","padding":"');
     if(mode==='error'){await write('x'.repeat(100000));throw Error('synthetic patient-secret password-secret');}
     if(mode==='hold')await new Promise(r=>released=r);
     for(let i=0;i<payload.length;i+=65536){if(signal.aborted)throw Error('cancelled');await write(payload.slice(i,i+65536));}
@@ -95,6 +95,22 @@ try{
  const realNow=Date.now;Date.now=()=>realNow()+6*60*60*1000+60000;
  assert.equal((await fetch(base+ttl.downloadUrl)).status,403);Date.now=realNow;
  assert.equal(leftovers().length,0);{const s=await status(ttl);assert(s.state==='expired'||s.message==='Export status expired');}
+
+ // 7b. New request after a completed download always replaces the old file with fresh data.
+ mode='normal';marker='clinics:1';const first=await ticket();await waitState(first,['ready']);
+ const firstData=JSON.parse(gunzipSync(Buffer.from(await(await fetch(base+first.downloadUrl)).arrayBuffer())));assert.equal(firstData.marker,'clinics:1');
+ await sleep(50);assert.equal((await status(first)).state,'completed');
+ marker='clinics:2'; // a clinic was added in the meantime
+ const second=await ticket();assert.notEqual(second.id,first.id);assert.notEqual(second.downloadUrl,first.downloadUrl);
+ assert.equal((await fetch(base+first.downloadUrl)).status,403,'old link stops working the moment a new export is requested');
+ await waitState(second,['ready']);assert.equal(leftovers().length,1,'old file deleted, only the new one remains');
+ assert.equal((await fetch(base+first.downloadUrl)).status,403);
+ const secondData=JSON.parse(gunzipSync(Buffer.from(await(await fetch(base+second.downloadUrl)).arrayBuffer())));assert.equal(secondData.marker,'clinics:2');
+ // Even while an old download is still being read, a new request replaces it for all later requests.
+ marker='clinics:3';const slow=await fetch(base+second.downloadUrl);const slowReader=slow.body.getReader();await slowReader.read();
+ const third=await ticket();await waitState(third,['ready']);assert.equal((await fetch(base+second.downloadUrl)).status,403);assert.equal(leftovers().length,1);
+ await slowReader.cancel();
+ assert.equal(JSON.parse(gunzipSync(Buffer.from(await(await fetch(base+third.downloadUrl)).arrayBuffer()))).marker,'clinics:3');
 
  // 8. Legacy live-stream route still works; a fresh export after everything succeeds.
  const legacy=await fetch(base+'/api/system-backup/export',{headers});assert.equal(JSON.parse(gunzipSync(Buffer.from(await legacy.arrayBuffer()))).ok,true);

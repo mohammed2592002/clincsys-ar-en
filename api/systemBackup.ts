@@ -100,8 +100,9 @@ export function installSystemBackup(app: any, deps: any) {
   app.post('/api/system-backup/ticket',async(req:any,res:any)=>{
     if(!await authorized(req,res))return;cleanup();
     if(exportBusy)return res.status(409).json({message:'A system export is already running / يوجد تصدير شامل قيد التشغيل'});
-    // Only the newest export is kept on disk (bounded temporary space).
-    for(const [,j] of [...artifacts])if(!(j.active>0)){removeArtifact(j);j.state='expired';}
+    // A new request ALWAYS replaces the previous file and builds fresh data: the old
+    // token stops working at once (a response already reading keeps its open handle).
+    for(const [,j] of [...artifacts]){removeArtifact(j);j.state='expired';}
     exportBusy=true;
     const token=crypto.randomBytes(32).toString('hex'),id=crypto.randomUUID();
     const job:any={id,token,state:'pending',created:Date.now(),bytes:0,expiresAt:Date.now()+READY_TTL,active:0,downloads:0,name:fileName()};
