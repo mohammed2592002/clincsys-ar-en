@@ -18,8 +18,12 @@ export function installSystemBackup(app: any, deps: any) {
   const { getAuth, getReady } = deps;
   const jobs = new Map<string, any>();
   let lastJobId: string | null = null;
-  const auditDir = path.join(os.tmpdir(), 'system-restore-reports');
-  const save = (job: any) => { fs.mkdirSync(auditDir, { recursive: true }); fs.writeFileSync(path.join(auditDir, job.id + '.json'), JSON.stringify(job)); };
+  // Disposable/local databases must not inherit another database's restore
+  // status merely because both processes share the operating-system temp dir.
+  // Preserve the existing PostgreSQL report location for deployed jobs.
+  const auditDir = () => deps.isPostgres?.() ? path.join(os.tmpdir(), 'system-restore-reports')
+    : path.join(os.tmpdir(), 'system-restore-reports', 'local-' + crypto.createHash('sha256').update(path.resolve(process.cwd(), 'local_db.json')).digest('hex').slice(0, 24));
+  const save = (job: any) => { fs.mkdirSync(auditDir(), { recursive: true }); fs.writeFileSync(path.join(auditDir(), job.id + '.json'), JSON.stringify(job)); };
   let busy = false;
   const limit = (max: number) => { let bytes = 0; return new Transform({ transform(chunk, _enc, cb) { bytes += chunk.length; cb(bytes > max ? new Error('Backup exceeds size limit') : null, chunk); } }); };
   function values(file: string, clinics: boolean) {
@@ -64,7 +68,7 @@ export function installSystemBackup(app: any, deps: any) {
   app.get('/api/system-restore', async (req: any, res: any) => {
     if (!await authorized(req, res)) return;
     let job = lastJobId ? jobs.get(lastJobId) : null;
-    if (!job) { try { const files = fs.readdirSync(auditDir).filter(f => f.endsWith('.json')).map(f => ({ f, m: fs.statSync(path.join(auditDir, f)).mtimeMs })).sort((a, b) => b.m - a.m); if (files.length) job = JSON.parse(fs.readFileSync(path.join(auditDir, files[0].f), 'utf8')); } catch {} }
+    if (!job) { try { const files = fs.readdirSync(auditDir()).filter(f => f.endsWith('.json')).map(f => ({ f, m: fs.statSync(path.join(auditDir(), f)).mtimeMs })).sort((a, b) => b.m - a.m); if (files.length) job = JSON.parse(fs.readFileSync(path.join(auditDir(), files[0].f), 'utf8')); } catch {} }
     if (!job) return res.status(404).json({ message: 'No restore job' });
     res.json(job);
   });
@@ -72,7 +76,7 @@ export function installSystemBackup(app: any, deps: any) {
     if (!await authorized(req, res)) return;
     if (!/^[0-9a-f-]{36}$/.test(req.params.id)) return res.status(404).end();
     let job = jobs.get(req.params.id);
-    if (!job) { try { job = JSON.parse(fs.readFileSync(path.join(auditDir, req.params.id + '.json'), 'utf8')); } catch {} }
+    if (!job) { try { job = JSON.parse(fs.readFileSync(path.join(auditDir(), req.params.id + '.json'), 'utf8')); } catch {} }
     if (!job) return res.status(404).json({ message: 'Job not found' });
     res.json(job);
   });
