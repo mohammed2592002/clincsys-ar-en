@@ -536,3 +536,26 @@ export async function checkAndRunAutoBackup(
 
   return { triggered: false, date: todayStr, format: fmt };
 }
+
+// Unified single-format system backup: streams the server's .json.gz export to a download.
+export async function downloadSystemBackupGz(): Promise<{ fileName: string; size: number }> {
+  const { authHeaders } = await import('../dbClient');
+  const res = await fetch('/api/system-backup/export', { headers: { ...authHeaders() } as any });
+  if (!res.ok) {
+    let msg = 'Export failed';
+    try { msg = (await res.json()).message || msg; } catch {}
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  const dispo = res.headers.get('content-disposition') || '';
+  const match = dispo.match(/filename="?([^";]+)"?/);
+  const fileName = match?.[1] || `CMS_FULL_SYSTEM_BACKUP_${new Date().toISOString().split('T')[0]}.json.gz`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
+  return { fileName, size: blob.size };
+}

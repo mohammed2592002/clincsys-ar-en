@@ -281,7 +281,7 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
                     for (const [key, table] of [['renewalsLog', 'renewals'], ['broadcasts', 'announcements'], ['systemSettings', 'system_settings']])
                         for (const row of backup[key] || []) {
                             if (row.id && !(table === 'system_settings' && row.id === 'auth_secret'))
-                                await put(table, row.id, row);
+                                await put(table, row.id, row, row.clinicId);
                         }
                     // A platform archive can fill an absent account, never replace a live one.
                     for (const row of backup.superadminCredentials || []) {
@@ -302,5 +302,22 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
             res.status(e.status || 500).json({ message: e.message || 'Backup failed / فشل النسخ الاحتياطي' });
         }
     }
-    return { handler, validateClinic: normalize, restoreClinic };
+    // Streams the full-system backup JSON in legacy flat shape, one clinic at a time.
+    async function streamSystemExport(write: (chunk: string) => void | Promise<void>) {
+        const clinics = await read('clinics');
+        const adminRows = (await read('superadmin_credentials')).filter((row: any) => row.id === 'main');
+        const superadminCredentials = [];
+        for (const row of adminRows.length ? adminRows : defaultAdmin ? [{ id: 'main', ...defaultAdmin }] : []) {
+            const copy = await adminCredentialCopy(row, hashPassword);
+            if (copy) superadminCredentials.push(copy);
+        }
+        await write('{"schemaVersion":3,"credentialSchemaVersion":' + CREDENTIAL_SCHEMA_VERSION + ',"superadminCredentials":' + JSON.stringify(superadminCredentials) + ',"platform":"CrownDent Multi-Tenant System Master","backupScope":"FULL_SYSTEM_BACKUP","backupTimestamp":' + JSON.stringify(new Date().toISOString()) + ',"totalClinicsCount":' + clinics.length + ',"clinics":[');
+        let first = true;
+        for (const c of clinics) {
+            await write((first ? '' : ',') + JSON.stringify(legacyItem(await exportClinic(c.id))));
+            first = false;
+        }
+        await write('],"renewalsLog":' + JSON.stringify(await read('renewals')) + ',"broadcasts":' + JSON.stringify(await read('announcements')) + ',"systemSettings":' + JSON.stringify((await read('system_settings')).filter((s: any) => s.id !== 'auth_secret')) + '}');
+    }
+    return { handler, validateClinic: normalize, restoreClinic, streamSystemExport };
 }

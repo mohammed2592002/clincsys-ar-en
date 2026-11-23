@@ -1,6 +1,7 @@
 import {installLegacyReadIndexes} from './readIndexes';
 import {createBackupService} from './backup';
 import {installSyntheticRestore} from './syntheticRestore';
+import {installSystemBackup} from './systemBackup';
 import { DEFAULT_PAYMENT_METHODS } from '../src/utils/paymentMethods';
 import {commandMessage} from '../src/utils/commandMessages';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -76,6 +77,7 @@ app.use('/api', (req, res, next) => {
 });
 
 installSyntheticRestore(app,{getAuth:getRequestAuth,getReady:()=>getDbReady(),isPostgres:()=>dbClient.getIsPostgres(),get backups(){return backups;},get db(){return dbClient;}});
+installSystemBackup(app,{getAuth:getRequestAuth,getReady:()=>getDbReady(),isPostgres:()=>dbClient.getIsPostgres(),get backups(){return backups;},get db(){return dbClient;}});
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));

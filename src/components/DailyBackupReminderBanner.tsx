@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Download, X, HardDrive, CalendarClock, CheckCircle2 } from 'lucide-react';
-import { exportClinicBackup, exportFullSystemBackup, getLocalTodayStr } from '../utils/backupService';
+import { exportClinicBackup, downloadSystemBackupGz, getLocalTodayStr } from '../utils/backupService';
 import { safeStorage } from '../utils/storage';
 
 interface DailyBackupReminderBannerProps {
@@ -89,8 +89,10 @@ export default function DailyBackupReminderBanner({ session }: DailyBackupRemind
 
     try {
       if (session.type === 'admin') {
-        await exportFullSystemBackup(fmt);
+        // Unified single format: the daily admin reminder downloads the .json.gz system backup.
+        const { size } = await downloadSystemBackupGz();
         localStorage.setItem(key, todayStr);
+        localStorage.setItem('auto_backup_admin_last_full', JSON.stringify({ date: new Date().toISOString(), size }));
       } else if (session.type === 'clinic' || session.type === 'clinic_staff') {
         await exportClinicBackup(session.clinicId, { name: session.clinicName }, fmt, true);
         safeStorage.setItem(key, todayStr);
