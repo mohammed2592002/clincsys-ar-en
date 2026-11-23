@@ -2385,9 +2385,9 @@ export default function ClinicFinancials({
                           const expense = paymentMethodMapAmount(selectedHistoryShift.snapshot?.dynamicExpenses || selectedHistoryShift.dynamicExpenses,method);
                           return <div key={method} data-testid="history-method-row" data-payment-method={method} className="flex justify-between gap-2"><span className="text-slate-500">{paymentMethodLabel(method,isEn)}</span><span className="font-bold font-mono text-slate-800">{revenue.toLocaleString()} / -{expense.toLocaleString()} {isEn ? 'EGP' : 'ج.م'}</span></div>;
                         })}
-                        <div className="flex justify-between bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200/60 font-bold text-amber-900">
-                          <span>{isEn ? 'Outstanding installments for this day:' : 'الأقساط والمتبقي بالذمة لهذا اليوم:'}</span>
-                          <span className="font-mono text-amber-700">
+                        <div data-testid="history-outstanding-row" className="col-span-2 flex items-center justify-between gap-4 bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200/60 font-bold text-amber-900">
+                          <span className="min-w-0">{isEn ? 'Outstanding installments for this day:' : 'الأقساط والمتبقي بالذمة لهذا اليوم:'}</span>
+                          <span className="shrink-0 whitespace-nowrap font-mono text-amber-700">
                             {(
                               selectedHistoryShift.remainingRevenue !== undefined
                                 ? selectedHistoryShift.remainingRevenue
