@@ -1,3 +1,4 @@
+import {installRenewalsLog} from './renewalsLog';
 import {installLegacyReadIndexes} from './readIndexes';
 import {createBackupService} from './backup';
 import {installSyntheticRestore} from './syntheticRestore';
@@ -3976,6 +3977,8 @@ app.get('/api/superadmin/analytics', async (req, res) => {
     res.status(500).send(err.message || 'Error compiling analytics');
   }
 });
+
+installRenewalsLog(app,{getAuth:getRequestAuth,get db(){return dbClient;}});
 
 // GET /api/superadmin/income-stats - Income analytics for SuperAdmin based on clinic subscriptions and renewals
 app.get('/api/superadmin/income-stats', async (req, res) => {

@@ -1,4 +1,3 @@
-import { backupRequest } from '../../utils/backupTransport';
 import { authHeaders } from '../../dbClient';
 import { RestoreProgressChip, RestoreProgressWindow, RestoreProgressState, ProgressStage } from './RestoreProgress';
 import { useTranslation } from 'react-i18next';
@@ -13,7 +12,6 @@ import {
   HardDrive,
   Clock,
   ShieldAlert,
-  Building2,
   FileArchive,
   AlertCircle,
 } from 'lucide-react';
@@ -23,7 +21,7 @@ interface SystemBackupTabProps {
   onRefreshClinics: () => Promise<void>;
 }
 
-export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBackupTabProps) {
+export default function SystemBackupTab({ onRefreshClinics }: SystemBackupTabProps) {
   const dialogs = useDialogs();
   const { t, i18n } = useTranslation();
 
@@ -118,7 +116,6 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
   const [lastFullBackup, setLastFullBackup] = useState<{ date: string; size: number } | null>(() => {
     try { return JSON.parse(localStorage.getItem('auto_backup_admin_last_full') || 'null'); } catch { return null; }
   });
-  const [selectedSingleClinicId, setSelectedSingleClinicId] = useState<string>('');
 
   // Auto backup (daily reminder download, unified format)
   const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(() => localStorage.getItem('auto_backup_admin_enabled') === 'true');
@@ -162,37 +159,6 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
     } catch (err: any) {
       console.error('Super Admin Backup Error:', err);
       dialogs.alert(t('superadmin.unifiedBackup.exportError') + ' ' + (err.message || err.toString()), { severity: 'error' });
-    } finally {
-      setBackupLoading(false);
-      setBackupStatusText('');
-    }
-  };
-
-  // Single clinic export (fixed .json)
-  const handleSingleClinicExportFromDropdown = async () => {
-    if (!selectedSingleClinicId) {
-      dialogs.alert(t('superadmin.unifiedBackup.chooseClinicFirst'), { severity: 'warning' });
-      return;
-    }
-    const clinic = clinics.find(c => c.id === selectedSingleClinicId);
-    if (!clinic) return;
-    setBackupLoading(true);
-    setBackupStatusText(t('superadmin.unifiedBackup.downloadingClinic', { name: clinic.name }));
-    try {
-      const clinicBackup = await backupRequest({ action: 'export_clinic', clinicId: clinic.id });
-      const dateStr = new Date().toISOString().split('T')[0];
-      const safeName = (clinic.name || 'Clinic').replace(/[^a-zA-Z0-9\u0600-\u06FF_-]/g, '_');
-      const blob = new Blob([JSON.stringify(clinicBackup, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `BACKUP_${safeName}_${dateStr}.json`;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
-      dialogs.alert(t('superadmin.unifiedBackup.clinicExportSuccess', { name: clinic.name }), { severity: 'success' });
-    } catch (err: any) {
-      dialogs.alert(t('superadmin.unifiedBackup.exportError') + ' ' + err.toString(), { severity: 'error' });
     } finally {
       setBackupLoading(false);
       setBackupStatusText('');
@@ -452,41 +418,7 @@ export default function SystemBackupTab({ clinics, onRefreshClinics }: SystemBac
           </div>
         </div>
 
-        {/* ================= SINGLE CLINIC EXPORT CARD ================= */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5 flex flex-col justify-between">
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-[#3C7F72]/10 text-[#3C7F72] font-bold flex items-center justify-center border border-[#3C7F72]/20">
-                <Building2 className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-800">{t('superadmin.unifiedBackup.singleClinicTitle')}</h3>
-                <p className="text-xs text-slate-500">{t('superadmin.unifiedBackup.singleClinicSubtitle')}</p>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700">{t('superadmin.unifiedBackup.chooseClinic')}</label>
-              <select
-                value={selectedSingleClinicId}
-                onChange={(e) => setSelectedSingleClinicId(e.target.value)}
-                className="w-full p-3 border border-slate-200 rounded-xl text-xs text-slate-800 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#3C7F72] focus:outline-none"
-              >
-                <option value="">{t('superadmin.unifiedBackup.chooseClinicPlaceholder')}</option>
-                {clinics.map(c => (
-                  <option key={c.id} value={c.id}>{c.name} - ({c.doctorName || t('superadmin.unifiedBackup.noDoctor')})</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <button
-            disabled={backupLoading || !selectedSingleClinicId}
-            onClick={handleSingleClinicExportFromDropdown}
-            className="w-full py-3 bg-[#3C7F72] hover:bg-[#2E6156] text-white font-bold rounded-xl shadow-md transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 text-xs"
-          >
-            <Download className="h-4 w-4" />
-            {t('superadmin.unifiedBackup.downloadClinic')}
-          </button>
-        </div>
+
       </div>
 
       {/* ================= CRITICAL 2-STEP RESTORE CONFIRMATION MODAL ================= */}

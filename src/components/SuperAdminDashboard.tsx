@@ -279,15 +279,12 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
       let renewalsTotal = 0;
       let renewalsCount = 0;
       try {
-        const rSnap = await getDocs(collection(db, 'renewals'));
-        rSnap.forEach((rDoc) => {
-          const rData = rDoc.data();
-          const amt = Number(rData.amount || 0);
-          if (amt > 0) {
-            renewalsTotal += amt;
-            renewalsCount++;
-          }
-        });
+        const response = await fetch('/api/superadmin/renewals?offset=0', {headers:authHeaders()});
+        if (response.ok) {
+          const summary = await response.json();
+          renewalsTotal = summary.totalRevenue;
+          renewalsCount = summary.total;
+        }
       } catch (e) {}
 
       setGlobalStats(prev => ({

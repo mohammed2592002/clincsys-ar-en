@@ -1,5 +1,6 @@
+import { useTranslation } from 'react-i18next';
 import React, { useState, useEffect, useRef } from 'react';
-import { db, doc, deleteDoc, getRenewalsRef, getClinicRef, getDocsSmart as getDocs, addDoc, updateDoc } from '../dbClient';
+import { db, doc, deleteDoc, getRenewalsRef, getClinicRef, authHeaders, addDoc, updateDoc } from '../dbClient';
 import { Clinic, RenewalRecord } from '../types';
 import { 
   Receipt, 
@@ -30,6 +31,16 @@ interface AdminRenewalsProps {
 
 export default function AdminRenewals({ clinics, onRefreshClinics }: AdminRenewalsProps) {
   const dialogs = useDialogs();
+  const {i18n} = useTranslation();
+  const ar = i18n.language.startsWith('ar');
+  const l = (arabic:string, english:string) => ar ? arabic : english;
+  const [total, setTotal] = useState(0);
+  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const requestId = useRef(0);
+  const searchRef = useRef('');
+  const busyMore = useRef(false);
   const [renewals, setRenewals] = useState<RenewalRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -73,40 +84,33 @@ export default function AdminRenewals({ clinics, onRefreshClinics }: AdminRenewa
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchRenewals = async () => {
-    setLoading(true);
+  const fetchRenewals = async (append = false) => {
+    if (append && busyMore.current) return;
+    const id = ++requestId.current;
+    const query = searchRef.current;
+    busyMore.current = true;
+    if (append) setLoadingMore(true); else { setLoading(true); setRenewals([]); setHasMore(false); }
     setError(null);
     try {
-      const snap = await getDocs(getRenewalsRef());
-      const list: RenewalRecord[] = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data();
-        list.push({
-          id: docSnap.id,
-          clinicId: data.clinicId || '',
-          clinicName: data.clinicName || '',
-          oldExpiry: data.oldExpiry || '',
-          newExpiry: data.newExpiry || '',
-          renewedAt: data.renewedAt || '',
-          amount: Number(data.amount) || 0,
-          paymentMethod: data.paymentMethod || data.method || 'cash',
-          notes: data.notes || ''
-        });
-      });
-      // Sort newest first
-      list.sort((a, b) => (b.renewedAt || '').localeCompare(a.renewedAt || ''));
-      setRenewals(list);
-    } catch (err: any) {
-      console.error(err);
-      setError('فشل تحميل سجل تجديد الاشتراكات: ' + (err.message || err.toString()));
-    } finally {
-      setLoading(false);
-    }
+      const offset = append ? renewals.length : 0;
+      const response = await fetch(`/api/superadmin/renewals?offset=${offset}&q=${encodeURIComponent(query)}`, {headers:authHeaders(),cache:'no-store'});
+      if (!response.ok) throw new Error(l('تعذر تحميل سجل التجديدات', 'Could not load renewals'));
+      const data = await response.json();
+      if (id !== requestId.current || query !== searchRef.current) return;
+      setRenewals(prev => append ? [...prev, ...data.items.filter((r:RenewalRecord)=>!prev.some(p=>p.id===r.id))] : data.items);
+      setTotal(data.total); setTotalRevenue(data.totalRevenue); setHasMore(data.hasMore);
+    } catch (err:any) { if(id===requestId.current) setError(err.message); }
+    finally { if(id===requestId.current) {setLoading(false);setLoadingMore(false);busyMore.current=false;} }
   };
 
   useEffect(() => {
-    fetchRenewals();
-  }, []);
+    searchRef.current = searchTerm.trim();
+    requestId.current++; // Ignore any response belonging to the previous query.
+    busyMore.current=false;
+    setLoading(true);setLoadingMore(false);setRenewals([]);setHasMore(false);setTotal(0);setTotalRevenue(0);
+    const timer=setTimeout(()=>fetchRenewals(),300);
+    return ()=>{clearTimeout(timer);requestId.current++;};
+  }, [searchTerm]);
 
   // Selected Clinic object
   const selectedClinic = clinics.find((c) => c.id === selectedClinicId);
@@ -225,20 +229,14 @@ export default function AdminRenewals({ clinics, onRefreshClinics }: AdminRenewa
   };
 
   const handleDeleteRenewal = async (record: RenewalRecord) => {
-    const formattedOldExpiry = record.oldExpiry ? formatArabicDate(record.oldExpiry) : 'تاريخ البداية الأصلي';
+    const formattedOldExpiry = record.oldExpiry ? formatArabicDate(record.oldExpiry) : l('تاريخ البداية الأصلي','Original start date');
     const amountStr = (Number(record.amount) || 0).toLocaleString();
 
     const isConfirmed = await dialogs.confirm(
-      `هل أنت متأكد من رغبتك في حذف سجل التجديد هذا لعيادة "${record.clinicName}"؟\n\n` +
-      `• سيتم استرجاع تاريخ انتهاء الاشتراك السابق للعيادة إلى: ${formattedOldExpiry}\n` +
-      `• سيتم خصم مبلغ (${amountStr} ج.م) بالكامل من إجمالي الاشتراكات وحسابات الإيرادات.\n\n` +
-      `هل تريد تأكيد الحذف والاسترجاع؟`,
-      {
-        title: 'حذف التجديد واسترجاع تاريخ الاشتراك السابق',
-        confirmText: 'نعم، احذف التجديد واسترجع التاريخ',
-        cancelText: 'إلغاء التراجع',
-        severity: 'danger'
-      }
+      l(`هل تريد حذف تجديد عيادة "${record.clinicName}" واسترجاع تاريخ الاشتراك السابق إلى ${formattedOldExpiry} وخصم ${amountStr} ج.م من الإيرادات؟`,
+        `Delete the renewal for "${record.clinicName}", restore its previous expiry to ${formattedOldExpiry}, and subtract ${amountStr} EGP from revenue?`),
+      {title:l('حذف التجديد واسترجاع تاريخ الاشتراك السابق','Delete renewal and restore previous expiry'),
+       confirmText:l('نعم، احذف التجديد واسترجع التاريخ','Delete and restore expiry'),cancelText:l('إلغاء التراجع','Cancel'),severity:'danger'}
     );
 
     if (!isConfirmed) return;
@@ -261,17 +259,14 @@ export default function AdminRenewals({ clinics, onRefreshClinics }: AdminRenewa
         });
       }
 
-      dialogs.alert(
-        `تم حذف سجل التجديد بنجاح، وتم استرجاع تاريخ اشتراك عيادة "${record.clinicName}" إلى (${formattedOldExpiry}) وخصم ${amountStr} ج.م من الإيرادات.`,
-        { severity: 'success' }
-      );
+      dialogs.alert(l(`تم حذف التجديد واسترجاع تاريخ الاشتراك السابق وخصم ${amountStr} ج.م من الإيرادات.`, `Renewal deleted, previous expiry restored, and ${amountStr} EGP removed from revenue.`),{severity:'success'});
 
       // Refresh both clinics and renewals list
       await onRefreshClinics();
       await fetchRenewals();
     } catch (err: any) {
       console.error('Error deleting renewal:', err);
-      setError('حدث خطأ أثناء حذف سجل التجديد: ' + (err.message || err.toString()));
+      setError(l('حدث خطأ أثناء حذف سجل التجديد: ','Could not delete renewal: ') + (err.message || err.toString()));
     } finally {
       setDeletingId(null);
     }
@@ -292,16 +287,14 @@ export default function AdminRenewals({ clinics, onRefreshClinics }: AdminRenewa
     );
   });
 
-  const filteredRenewals = renewals.filter((r) =>
-    r.clinicName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredRenewals = renewals;
 
   const formatArabicDate = (isoString: string): string => {
-    if (!isoString) return 'غير محدد';
+    if (!isoString) return l('غير محدد','Not set');
     try {
       const d = new Date(isoString);
-      if (isNaN(d.getTime())) return 'غير صالح';
-      return d.toLocaleDateString('ar-EG', {
+      if (isNaN(d.getTime())) return l('غير صالح','Invalid');
+      return d.toLocaleDateString(ar ? 'ar-EG' : 'en-GB', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -335,16 +328,16 @@ export default function AdminRenewals({ clinics, onRefreshClinics }: AdminRenewa
   const calculatedNewExpiry = calculateNewExpiryDate();
 
   return (
-    <div className="space-y-6 animate-fade-in" dir="rtl">
+    <div className="space-y-6 animate-fade-in" dir={ar ? "rtl" : "ltr"} data-renewals-log>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
         <div>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <Receipt className="h-6 w-6 text-indigo-600" />
-            سجل وتتبع عمليات تجديد الاشتراكات
+            {l('سجل وتتبع عمليات تجديد الاشتراكات','Renewals Log')}
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            مراجعة كافة المعاملات المالية وفترات التجديد التي قام بها المشرف لتفعيل أو تمديد اشتراكات العيادات.
+            {l('مراجعة كافة المعاملات المالية وفترات التجديد التي قام بها المشرف لتفعيل أو تمديد اشتراكات العيادات.','Review subscription payments and renewal periods for all clinics.')}
           </p>
         </div>
         <div className="flex gap-2">
@@ -355,15 +348,15 @@ export default function AdminRenewals({ clinics, onRefreshClinics }: AdminRenewa
                 setIsClinicDropdownOpen(false);
               }
             }}
-            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm transition shadow-md shadow-indigo-100 cursor-pointer"
+            className="flex items-center gap-1.5 bg-[#3C7F72] hover:bg-[#2E6156] text-white px-4 py-2.5 rounded-xl font-bold text-sm transition shadow-md shadow-indigo-100 cursor-pointer"
           >
             <Plus className="h-4 w-4" />
-            {isAdding ? 'إغلاق نموذج التجديد' : 'تجديد جديد لعيادة'}
+            {isAdding ? l('إغلاق نموذج التجديد','Close renewal form') : l('تجديد جديد لعيادة','New clinic renewal')}
           </button>
           <button
-            onClick={fetchRenewals}
+            onClick={() => fetchRenewals()}
             className="p-2.5 text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition cursor-pointer"
-            title="تحديث البيانات"
+            title={l('تحديث البيانات','Refresh')}
           >
             <RefreshCw className="h-5 w-5" />
           </button>
@@ -375,7 +368,7 @@ export default function AdminRenewals({ clinics, onRefreshClinics }: AdminRenewa
         <div className="bg-rose-50 border-r-4 border-rose-500 p-4 rounded-xl flex items-start gap-3">
           <AlertCircle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
           <div>
-            <h4 className="font-bold text-rose-800 text-sm">تنبيه:</h4>
+            <h4 className="font-bold text-rose-800 text-sm">{l('تنبيه:','Notice:')}</h4>
             <p className="text-xs text-rose-700 mt-1 leading-relaxed">{error}</p>
           </div>
         </div>
@@ -904,7 +897,7 @@ export default function AdminRenewals({ clinics, onRefreshClinics }: AdminRenewa
             <button
               type="submit"
               disabled={loading || !selectedClinicId}
-              className="px-6 py-2.5 text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded-xl text-xs font-bold transition shadow-md shadow-indigo-200 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+              className="px-6 py-2.5 text-white bg-[#3C7F72] hover:bg-[#2E6156] active:bg-indigo-800 rounded-xl text-xs font-bold transition shadow-md shadow-indigo-200 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
             >
               {loading ? (
                 <>
@@ -930,52 +923,54 @@ export default function AdminRenewals({ clinics, onRefreshClinics }: AdminRenewa
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="ابحث عن تجديدات عيادة معينة بالاسم..."
+            placeholder={l('ابحث عن تجديدات عيادة معينة بالاسم...','Search all renewals by clinic name...')}
             className="w-full pl-4 pr-11 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
           />
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="px-3.5 py-1.5 bg-indigo-50/80 border border-indigo-200/60 rounded-xl flex items-center gap-2 text-xs">
-            <span className="text-slate-500 font-bold">عدد العمليات:</span>
-            <span className="font-black text-indigo-700 font-mono">{filteredRenewals.length}</span>
+            <span className="text-slate-500 font-bold">{l('عدد العمليات:','Total operations:')}</span>
+            <span className="font-black text-indigo-700 font-mono">{total.toLocaleString()}</span>
           </div>
           <div className="px-3.5 py-1.5 bg-emerald-50/80 border border-emerald-200/60 rounded-xl flex items-center gap-2 text-xs">
-            <span className="text-slate-500 font-bold">إجمالي الاشتراكات:</span>
+            <span className="text-slate-500 font-bold">{l('إجمالي الاشتراكات:','Total revenue:')}</span>
             <span className="font-black text-emerald-700 font-mono">
-              {filteredRenewals.reduce((sum, r) => sum + (Number(r.amount) || 0), 0).toLocaleString()} ج.م
+              {totalRevenue.toLocaleString()} {l('ج.م','EGP')}
             </span>
           </div>
         </div>
       </div>
 
+      <p className="text-xs text-slate-500">{l('البحث والعدد والإجمالي يشملوا كل السجل على السيرفر، مش الصفوف الظاهرة بس.', 'Search, counts and totals cover the entire log on the server, not just visible rows.')}</p>
+      <style>{`@media(max-width:767px){[data-renewals-log] table{display:block;table-layout:fixed}[data-renewals-log] td{display:block;padding:6px 4px;max-width:100%;overflow-wrap:anywhere}[data-renewals-log] td::before{content:attr(data-label);display:inline-block;font-weight:600;color:#64748b;margin-inline-end:8px;font-size:11px}[data-renewals-log] td:last-child{text-align:start}}`}</style>
       {/* Renewals Table */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
         {loading && renewals.length === 0 ? (
           <div className="p-12 text-center text-slate-500">
             <RefreshCw className="h-8 w-8 text-indigo-600 animate-spin mx-auto mb-2" />
-            <p className="text-sm font-bold">جاري تحميل المعاملات...</p>
+            <p className="text-sm font-bold">{l('جاري تحميل المعاملات...','Loading renewals...')}</p>
           </div>
         ) : filteredRenewals.length === 0 ? (
           <div className="p-12 text-center text-slate-500">
             <AlertCircle className="h-10 w-10 text-slate-300 mx-auto mb-2" />
-            <p className="text-sm font-bold text-slate-600">لا يوجد سجلات لتجديد الاشتراكات حالياً</p>
+            <p className="text-sm font-bold text-slate-600">{l('لا يوجد سجلات لتجديد الاشتراكات حالياً','No renewal records found')}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-right border-collapse">
-              <thead>
+            <table className={`w-full border-collapse ${ar ? "text-right" : "text-left"}`}>
+              <thead className="hidden md:table-header-group">
                 <tr className="bg-slate-100/90 text-slate-700 text-xs font-black uppercase tracking-wider border-b border-slate-200">
-                  <th className="p-4">اسم العيادة</th>
-                  <th className="p-4">تاريخ التجديد</th>
-                  <th className="p-4">الفترة (من - إلى)</th>
-                  <th className="p-4">المبلغ المالي</th>
-                  <th className="p-4">طريقة الدفع</th>
-                  <th className="p-4">ملاحظات</th>
-                  <th className="p-4 text-center">إجراءات الحذف والتراجع</th>
+                  <th className="p-4">{l('اسم العيادة','Clinic')}</th>
+                  <th className="p-4">{l('تاريخ التجديد','Renewed on')}</th>
+                  <th className="p-4">{l('الفترة (من - إلى)','Period (from - to)')}</th>
+                  <th className="p-4">{l('المبلغ المالي','Amount')}</th>
+                  <th className="p-4">{l('طريقة الدفع','Payment method')}</th>
+                  <th className="p-4">{l('ملاحظات','Notes')}</th>
+                  <th className="p-4 text-center">{l('إجراءات الحذف والتراجع','Delete and revert')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
+              <tbody className="block md:table-row-group divide-y divide-slate-100 text-sm">
                 {filteredRenewals.map((r) => {
                   const methodStr = (r.paymentMethod || 'cash').toLowerCase();
                   const isCash = methodStr === 'cash' || methodStr.includes('كاش');
@@ -984,51 +979,51 @@ export default function AdminRenewals({ clinics, onRefreshClinics }: AdminRenewa
                   const isWallet = methodStr === 'wallet' || methodStr.includes('محفظ');
 
                   return (
-                    <tr key={r.id} className="hover:bg-slate-50/50 transition">
-                      <td className="p-4 font-bold text-slate-800">{r.clinicName}</td>
-                      <td className="p-4 font-mono text-xs text-slate-600" dir="ltr">
+                    <tr key={r.id} data-renewal-row={r.id} className="block md:table-row hover:bg-slate-50/50 transition p-3 md:p-0">
+                      <td data-label={l('اسم العيادة','Clinic')} className="p-4 font-bold text-slate-800">{r.clinicName}</td>
+                      <td data-label={l('تاريخ التجديد','Renewed on')} className="p-4 font-mono text-xs text-slate-600" dir="ltr">
                         {formatArabicDate(r.renewedAt)}
                       </td>
-                      <td className="p-4 space-y-1">
+                      <td data-label={l('الفترة','Period')} className="p-4 space-y-1">
                         <div className="text-xs text-slate-500">
-                          <span className="font-bold">قبل:</span> <span className="font-mono">{formatArabicDate(r.oldExpiry)}</span>
+                          <span className="font-bold">{l('قبل:','Before:')}</span> <span className="font-mono">{formatArabicDate(r.oldExpiry)}</span>
                         </div>
                         <div className="text-xs text-indigo-700 font-bold">
-                          <span>بعد:</span> <span className="font-mono">{formatArabicDate(r.newExpiry)}</span>
+                          <span>{l('بعد:','After:')}</span> <span className="font-mono">{formatArabicDate(r.newExpiry)}</span>
                         </div>
                       </td>
-                      <td className="p-4">
+                      <td data-label={l('المبلغ','Amount')} className="p-4">
                         <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full text-xs font-extrabold">
-                          {r.amount.toLocaleString()} ج.م
+                          {r.amount.toLocaleString()} {l('ج.م','EGP')}
                         </span>
                       </td>
-                      <td className="p-4">
+                      <td data-label={l('طريقة الدفع','Payment')} className="p-4">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-extrabold ${
                           isCash ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' :
                           isCard ? 'bg-blue-50 text-blue-700 border border-blue-200/60' :
                           isInstapay ? 'bg-purple-50 text-purple-700 border border-purple-200/60' :
                           'bg-amber-50 text-amber-700 border border-amber-200/60'
                         }`}>
-                          {isCash ? '💵 كاش' : isCard ? '💳 فيزا' : isInstapay ? '⚡ إنستاباي' : '📱 محفظة'}
+                          {isCash ? l('💵 كاش','💵 Cash') : isCard ? l('💳 فيزا','💳 Card') : isInstapay ? l('⚡ إنستاباي','⚡ InstaPay') : l('📱 محفظة','📱 Wallet')}
                         </span>
                       </td>
-                      <td className="p-4 text-xs text-slate-500 max-w-xs truncate" title={r.notes}>
+                      <td data-label={l('ملاحظات','Notes')} className="p-4 text-xs text-slate-500 max-w-xs truncate" title={r.notes}>
                         {r.notes || '—'}
                       </td>
-                      <td className="p-4 text-center">
+                      <td data-label={l('الإجراء','Action')} className="p-4 text-center">
                         <button
                           type="button"
                           onClick={() => handleDeleteRenewal(r)}
                           disabled={deletingId === r.id || loading}
                           className="px-3 py-1.5 text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/80 rounded-xl transition shadow-2xs cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5 text-xs font-bold"
-                          title={`حذف تجديد ${r.clinicName} واسترجاع تاريخ الاشتراك السابق`}
+                          title={l(`حذف تجديد ${r.clinicName} واسترجاع تاريخ الاشتراك السابق`, `Delete ${r.clinicName} renewal and restore previous expiry`)}
                         >
                           {deletingId === r.id ? (
                             <RefreshCw className="h-3.5 w-3.5 animate-spin text-rose-600" />
                           ) : (
                             <Trash2 className="h-3.5 w-3.5 text-rose-600" />
                           )}
-                          <span>حذف وتراجع</span>
+                          <span>{l('حذف وتراجع','Delete and revert')}</span>
                         </button>
                       </td>
                     </tr>
@@ -1038,6 +1033,14 @@ export default function AdminRenewals({ clinics, onRefreshClinics }: AdminRenewa
             </table>
           </div>
         )}
+      </div>
+      <div className="flex flex-col items-center gap-3 py-4" aria-live="polite">
+        <p className="text-sm text-slate-600" data-renewals-counter>{l(`يظهر ${renewals.length} من ${total.toLocaleString()} عملية`, `Showing ${renewals.length} of ${total.toLocaleString()} operations`)}</p>
+        {hasMore && <button data-renewals-more disabled={loading||loadingMore} onClick={()=>fetchRenewals(true)} className="px-6 py-3 rounded-xl bg-[#3C7F72] text-white font-bold text-sm disabled:opacity-50 flex items-center gap-2">
+          {loadingMore ? <RefreshCw className="h-4 w-4 animate-spin"/> : <ChevronDown className="h-4 w-4"/>}
+          {loadingMore ? l('جاري التحميل...', 'Loading...') : l('عرض المزيد · ١٠ التالية', 'Show more · next 10')}
+        </button>}
+        <p className="text-xs text-slate-400">{l('أول ١٠ عمليات فقط، وكل ضغطة تحمّل ١٠ تانيين من السيرفر.', 'First 10 only. Each click fetches the next 10 from the server.')}</p>
       </div>
     </div>
   );
