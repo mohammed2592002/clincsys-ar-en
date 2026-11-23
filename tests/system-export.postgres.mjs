@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import {createRequire} from 'node:module';
+import {rm} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import {PGlite} from '@electric-sql/pglite';
+const require=createRequire(import.meta.url),file=resolve('node_modules/.export-pg-'+process.pid+'.cjs');
+const db=new PGlite();let sqls=[];
+try{
+ await build({stdin:{contents:"export {createBackupService} from './api/backup';export {createFinanceStore} from './api/financeStore';",resolveDir:process.cwd(),loader:'ts'},outfile:file,bundle:true,platform:'node',format:'cjs',packages:'external'});
+ const {createBackupService,createFinanceStore}=require(file);
+ const driver={getIsPostgres:()=>true,financeTransaction:async(_cid,fn)=>fn(),execute:async q=>{const sql=typeof q==='string'?q:q.sql,args=typeof q==='string'?[]:q.args||[];sqls.push(sql);let i=0;return db.query(sql.replace(/\?/g,()=>'$'+(++i)),args);}};
+ const store=createFinanceStore(driver);await store.schema();
+ const tables=['clinics','patients','appointments','records','teeth','xrays','prescriptions','custom_medications','custom_categories','shifts','expenses','inventory','billing','closings','laboratories','lab_orders','lab_work_types','superadmin_credentials','renewals','announcements','system_settings'];
+ for(const table of tables)await db.exec(`CREATE TABLE ${table}(id text primary key,clinicId text,data text)`);
+ const insert=async(table,id,cid,d)=>db.query(`INSERT INTO ${table} VALUES($1,$2,$3)`,[id,cid,JSON.stringify(d)]);
+ await insert('clinics','syn_pg','syn_pg',{id:'syn_pg',name:'PG fixture'});await insert('clinics','syn_legacy','syn_legacy',{id:'syn_legacy',name:'PG legacy'});
+ for(let i=0;i<251;i++)await insert('patients','syn_'+String(i).padStart(4,'0'),'syn_pg',{id:'syn_'+String(i).padStart(4,'0'),name:'fixture',clinicId:'syn_pg'});
+ const receipts=Array.from({length:251},(_,i)=>({id:'syn_r'+i,amountCents:i,method:'cash',extra:'بيانات طبية تجريبية'}));
+ const state={version:1,receipts,events:[{id:'syn_e',type:'fixture'}],requests:{'test.map.key':{response:{ok:true}}},assignments:{'expense:one':'shift-one'},other:{preserve:true}};
+ await store.save('syn_pg',state);
+ const legacy={version:1,receipts:[],events:[],requests:{},unicode:'😀اختبار'.repeat(30000)};
+ await db.query('INSERT INTO finance_state(id,data) VALUES($1,$2)',['syn_legacy',JSON.stringify(legacy)]);
+ const finance={ensureSchema:store.schema,exportState:store.load,streamExport:store.streamExport};
+ const service=createBackupService({db:driver,getAuth:async()=>({type:'admin'}),finance,hashPassword:async p=>p,defaultAdmin:null});
+ sqls=[];let out='';await service.streamSystemExport(async chunk=>{out+=chunk;});const parsed=JSON.parse(out);
+ const c=parsed.clinics.find(c=>c.clinicInfo.id==='syn_pg');assert.equal(c.patients.length,251);assert.deepEqual(c.finance_state,state);assert.deepEqual(parsed.clinics.find(c=>c.clinicInfo.id==='syn_legacy').finance_state,legacy);
+ assert(sqls.filter(s=>s.startsWith('SELECT * FROM patients')).every(s=>s.includes('LIMIT 100')));assert(sqls.filter(s=>s.startsWith('SELECT * FROM finance_receipts')).every(s=>s.includes('LIMIT 100')));assert(sqls.some(s=>s.includes('substring(data from ? for 65536)')));
+ console.log('PASS PostgreSQL engine bounded export: 251 patient/receipt rows over three pages; exact financial objects/maps; untouched legacy Unicode JSON streamed as 64K character slices; no migration or data loss.');
+}finally{await db.close();await rm(file,{force:true});}

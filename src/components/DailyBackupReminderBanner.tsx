@@ -157,7 +157,7 @@ export default function DailyBackupReminderBanner({ session }: DailyBackupRemind
             {downloadSuccess ? (
               <div className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 bg-emerald-500/20 text-emerald-300 px-4 py-3 rounded-xl text-xs font-bold border border-emerald-500/30">
                 <CheckCircle2 className="w-4 h-4" />
-                <span>{isEn ? 'Downloaded successfully!' : 'تم التنزيل بنجاح!'}</span>
+                <span>{session.type === 'admin' ? (isEn ? 'Backup sent. Check browser Downloads.' : 'أُرسلت النسخة. راجع تنزيلات المتصفح.') : (isEn ? 'Downloaded successfully!' : 'تم التنزيل بنجاح!')}</span>
               </div>
             ) : (
               <button

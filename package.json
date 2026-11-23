@@ -39,7 +39,8 @@
     "test:clinic-delete:postgres": "node tests/clinic-delete-postgres.mjs",
     "test:r2-clinic-cleanup": "npm run build && node tests/run-r2-clinic-cleanup.mjs",
     "test:patient-search": "TEST_UI=1 TEST_UI_ENTRY=tests/patient-search.ui.cjs node tests/run-finance.mjs",
-    "test:renewals-log": "npm run lint && npm run build && node tests/renewals-log.postgres.mjs && TEST_UI_ENTRY=tests/renewals-log.ui.cjs node tests/run-admin-save.mjs"
+    "test:renewals-log": "npm run lint && npm run build && node tests/renewals-log.postgres.mjs && TEST_UI_ENTRY=tests/renewals-log.ui.cjs node tests/run-admin-save.mjs",
+    "test:system-export": "npm run lint && npm run build && node tests/system-export.transport.mjs && node tests/system-export.postgres.mjs && node tests/system-export.roundtrip.cjs && TEST_UI_ENTRY=tests/system-export.ui.cjs node tests/run-admin-save.mjs && node --max-old-space-size=128 tests/system-export.scale.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1108.0",

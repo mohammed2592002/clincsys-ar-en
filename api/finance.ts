@@ -1379,5 +1379,5 @@ export function createFinanceService(deps: any) {
       });
     }
   }
-  return { handler, run, validateClinicPaymentMethods, ensureSchema:ensure, exportState:store.load, importState:store.save, deleteState:store.remove };
+  return { handler, run, validateClinicPaymentMethods, ensureSchema:ensure, exportState:store.load, streamExport:store.streamExport, importState:store.save, deleteState:store.remove };
 }

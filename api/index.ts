@@ -931,13 +931,17 @@ class LocalJsonDbEmulator {
 
       // Sorting
       if (lowerSql.includes('order by')) {
-        const desc = lowerSql.includes('desc');
-        const isCreatedAt = lowerSql.includes('created_at') || lowerSql.includes('createdat');
+        if (/order by ordinal asc, id asc/.test(lowerSql)) {
+          table.sort((a,b)=>Number(a.ordinal)-Number(b.ordinal)||String(a.id).localeCompare(String(b.id)));
+        } else {
+          const desc = lowerSql.includes('desc');
+          const isCreatedAt = lowerSql.includes('created_at') || lowerSql.includes('createdat');
         table.sort((a, b) => {
           const valA = String(isCreatedAt ? (a.createdAt || a.created_at || '') : (a.id || a.path || ''));
           const valB = String(isCreatedAt ? (b.createdAt || b.created_at || '') : (b.id || b.path || ''));
           return desc ? valB.localeCompare(valA) : valA.localeCompare(valB);
         });
+        }
       }
 
       const offsetMatch=lowerSql.match(/offset\s+(\d+)/);

@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { createGzip, createGunzip } from 'node:zlib';
-import { Transform } from 'node:stream';
+import { Transform, PassThrough } from 'node:stream';
+import { once } from 'node:events';
 import { pipeline } from 'node:stream/promises';
 import { parser } from 'stream-json';
 import { pick } from 'stream-json/filters/Pick';
@@ -47,22 +48,59 @@ export function installSystemBackup(app: any, deps: any) {
     return true;
   }
 
-  // Streaming .json.gz download of the full-system backup (one clinic in memory at a time).
-  app.get('/api/system-backup/export', async (req: any, res: any) => {
-    if (!await authorized(req, res)) return;
-    const dateStr = new Date().toISOString().split('T')[0];
-    res.setHeader('content-type', 'application/gzip');
-    res.setHeader('content-disposition', `attachment; filename="CMS_FULL_SYSTEM_BACKUP_${dateStr}.json.gz"`);
-    const gzip = createGzip({ level: 1 });
-    gzip.pipe(res);
-    const write = async (chunk: string) => { if (!gzip.write(chunk)) await new Promise(r => gzip.once('drain', r)); };
-    try {
-      await deps.backups.streamSystemExport(write);
-      gzip.end();
-    } catch (e: any) {
-      console.error('[system-backup export]', e);
-      gzip.destroy(e);
-    }
+  // Tickets are single-use, purpose-scoped, opaque and short-lived. Never
+  // put a reusable login token in download URLs or log either kind of token.
+  const tickets=new Map<string,{expires:number,job:string}>();
+  const exports=new Map<string,any>();
+  let exportBusy=false;
+  const cleanup=()=>{const now=Date.now();for(const [key,t] of tickets)if(t.expires<now)tickets.delete(key);for(const [key,j] of exports)if(j.state!=='running'&&j.created<now-60*60*1000)exports.delete(key);};
+  app.post('/api/system-backup/ticket',async(req:any,res:any)=>{
+    if(!await authorized(req,res))return;cleanup();
+    if(exportBusy)return res.status(409).json({message:'A system export is already running / يوجد تصدير شامل قيد التشغيل'});
+    if(tickets.size>=100)return res.status(429).json({message:'Too many pending downloads'});
+    const token=crypto.randomBytes(32).toString('hex'),id=crypto.randomUUID();
+    tickets.set(token,{expires:Date.now()+60000,job:id});exports.set(id,{id,state:'pending',created:Date.now(),bytes:0});
+    res.setHeader('cache-control','no-store');
+    res.json({id,downloadUrl:'/api/system-backup/download/'+token,fileName:'CMS_FULL_SYSTEM_BACKUP_'+new Date().toISOString().split('T')[0]+'.json.gz'});
+  });
+  app.get('/api/system-backup/export-status/:id',async(req:any,res:any)=>{
+    if(!await authorized(req,res))return;cleanup();const job=exports.get(req.params.id);
+    if(!job)return res.status(404).json({message:'Export status expired'});
+    res.setHeader('cache-control','no-store');res.json(job);
+  });
+  async function sendExport(req:any,res:any,job:any) {
+    if(exportBusy){job.state='failed';return res.status(409).json({message:'A system export is already running / يوجد تصدير شامل قيد التشغيل'});}
+    exportBusy=true;job.state='running';const started=Date.now();const controller=new AbortController();
+    const cancel=()=>{if(!res.writableFinished)controller.abort();};res.on('close',cancel);
+    const source=new PassThrough({highWaterMark:64*1024});
+    const gzip=createGzip({level:1});
+    const meter=new Transform({transform(chunk,_enc,cb){job.bytes+=chunk.length;cb(null,chunk);}});
+    res.setHeader('content-type','application/gzip');
+    res.setHeader('content-disposition',`attachment; filename="CMS_FULL_SYSTEM_BACKUP_${new Date().toISOString().split('T')[0]}.json.gz"`);
+    res.setHeader('cache-control','no-store, no-transform');res.setHeader('referrer-policy','no-referrer');res.setHeader('x-content-type-options','nosniff');
+    const log=(stage:string)=>console.info('[system-export]',JSON.stringify({id:job.id,stage,bytes:job.bytes,elapsedMs:Date.now()-started}));
+    // Attach rejection handling immediately, before the producer does DB work.
+    const transfer=pipeline(source,gzip,meter,res,{signal:controller.signal});transfer.catch(()=>{});
+    const write=async(chunk:string)=>{if(controller.signal.aborted||source.destroyed)throw Error('Export connection closed');if(!source.write(chunk))await once(source,'drain',{signal:controller.signal});};
+    try{
+      log('started');
+      await deps.backups.streamSystemExport(write,{signal:controller.signal,stage:(stage:string)=>{job.stage=stage;if(stage==='clinic')log('clinic');}});
+      source.end();await transfer;job.state='completed';log('completed');
+    }catch(e:any){
+      job.state=controller.signal.aborted?'aborted':'failed';
+      // Do not log database errors: they may contain a query or record values.
+      log(job.state);controller.abort();source.destroy();await transfer.catch(()=>{});
+    }finally{res.off('close',cancel);job.elapsedMs=Date.now()-started;exportBusy=false;}
+  }
+  app.get('/api/system-backup/download/:ticket',async(req:any,res:any)=>{
+    await getReady();cleanup();const ticket=tickets.get(req.params.ticket);tickets.delete(req.params.ticket);
+    if(!ticket||ticket.expires<Date.now())return res.status(403).json({message:'Download link expired or used'});
+    await sendExport(req,res,exports.get(ticket.job));
+  });
+  // Keep the authenticated legacy route for older clients, with the same gate.
+  app.get('/api/system-backup/export',async(req:any,res:any)=>{
+    if(!await authorized(req,res))return;cleanup();const id=crypto.randomUUID();
+    const job={id,state:'pending',created:Date.now(),bytes:0};exports.set(id,job);await sendExport(req,res,job);
   });
 
   app.get('/api/system-restore', async (req: any, res: any) => {

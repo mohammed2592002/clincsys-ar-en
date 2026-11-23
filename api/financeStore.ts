@@ -172,11 +172,47 @@ export function createFinanceStore(db: any) {
     return state;
   }
   async function load(cid:string) {await schema();return db.financeTransaction(cid,async()=>{const m=await migrate(cid);return reconstruct(cid,m);});}
+  async function streamExport(cid:string, write:(chunk:string)=>Promise<void>, check:()=>void) {
+    await schema();
+    const m=await meta(cid);
+    if(!m) {
+      // Untouched legacy ledger is already exact JSON. Do not parse/rebuild it.
+      if(db.getIsPostgres()) {
+        let offset=1,emitted=false;
+        while(true){check();const rows=(await db.execute({sql:'SELECT substring(data from ? for 65536) AS chunk FROM finance_state WHERE id = ?',args:[offset,cid]})).rows;
+          const chunk=rows[0]?.chunk;if(!chunk)break;await write(chunk);emitted=true;if([...chunk].length<65536)break;offset+=65536;}
+        if(!emitted)await write('{"version":1,"receipts":[],"events":[],"requests":{}}');
+      } else {
+        const rows=(await db.execute({sql:'SELECT data FROM finance_state WHERE id = ?',args:[cid]})).rows;
+        const raw=rows[0]?.data;await write(typeof raw==='string'?raw:JSON.stringify(raw||{version:1,receipts:[],events:[],requests:{}}));
+      }
+      return;
+    }
+    if(!m.verified)throw Error('Unverified financial migration');
+    await write('{');let first=true;
+    for(const [k,v] of Object.entries(m.root||{})){await write((first?'':',')+JSON.stringify(k)+':'+JSON.stringify(v));first=false;}
+    for(const group of groups) {
+      if(!m.present.includes(group))continue;
+      const array=group==='receipts'||group==='events';
+      await write((first?'':',')+JSON.stringify(group)+':'+(array?'[':'{'));first=false;
+      let emitted=false,offset=0;
+      while(true){
+        check();
+        const rows=(await db.execute({sql:`SELECT * FROM ${table(group)} WHERE clinicId = ? ORDER BY ordinal ASC, id ASC LIMIT 100 OFFSET ${offset}`,args:[cid]})).rows;
+        // The development JSON emulator does not sort arbitrary SQL columns.
+        if(!db.getIsPostgres())rows.sort((a:any,b:any)=>Number(a.ordinal)-Number(b.ordinal));
+        for(const row of rows){check();await write((emitted?',':'')+(array?'':JSON.stringify(row.entryKey??row.entrykey)+':')+JSON.stringify(payload(row)));emitted=true;}
+        if(rows.length<100)break;offset+=rows.length;
+      }
+      await write(array?']':'}');
+    }
+    await write('}');
+  }
   async function save(cid:string,state:any) {await schema();return db.financeTransaction(cid,async()=>{await migrate(cid);await write(cid,state);});}
   async function remove(cid:string) {
     for(const group of groups) await db.execute({sql:`DELETE FROM ${table(group)} WHERE clinicId = ?`,args:[cid]});
     for(const kind of ['receipts','events','expenses','appointments'])await db.execute({sql:`DELETE FROM finance_view_${kind} WHERE clinicId = ?`,args:[cid]});
     await db.execute({sql:'DELETE FROM finance_meta WHERE id = ?',args:[cid]});
   }
-  return {schema,load,save,migrate,remove,readLedger,queryRows,projectionMeta,buildProjection,selectProjection,loadCommand,saveCommand};
+  return {schema,load,streamExport,save,migrate,remove,readLedger,queryRows,projectionMeta,buildProjection,selectProjection,loadCommand,saveCommand};
 }

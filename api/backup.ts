@@ -302,22 +302,43 @@ export function createBackupService({ db, getAuth, finance, mapColumns, sanitize
             res.status(e.status || 500).json({ message: e.message || 'Backup failed / فشل النسخ الاحتياطي' });
         }
     }
-    // Streams the full-system backup JSON in legacy flat shape, one clinic at a time.
-    async function streamSystemExport(write: (chunk: string) => void | Promise<void>) {
-        const clinics = await read('clinics');
-        const adminRows = (await read('superadmin_credentials')).filter((row: any) => row.id === 'main');
-        const superadminCredentials = [];
-        for (const row of adminRows.length ? adminRows : defaultAdmin ? [{ id: 'main', ...defaultAdmin }] : []) {
-            const copy = await adminCredentialCopy(row, hashPassword);
-            if (copy) superadminCredentials.push(copy);
+    // Bounded row batches preserve the format without materializing a clinic.
+    async function streamSystemExport(write:(chunk:string)=>Promise<void>, options:any={}) {
+        const check=()=>{if(options.signal?.aborted)throw Object.assign(new Error('Export aborted'),{code:'EXPORT_ABORTED'});};
+        async function array(table:string,cid?:string,transform?:(r:any)=>any) {
+            await write('[');let first=true,last='';
+            while(true){
+                check();
+                const where=[...(cid?['clinicId = ?']:[]),...(last?['id > ?']:[])];
+                const rows=(await db.execute({sql:`SELECT * FROM ${table}${where.length?' WHERE '+where.join(' AND '):''} ORDER BY id ASC LIMIT 100`,args:[...(cid?[cid]:[]),...(last?[last]:[])]})).rows;
+                for(const row of rows){check();await write((first?'':',')+JSON.stringify(transform?transform(unpack(row)):unpack(row)));first=false;}
+                if(rows.length<100)break;last=rows[rows.length-1].id;
+            }
+            await write(']');
         }
-        await write('{"schemaVersion":3,"credentialSchemaVersion":' + CREDENTIAL_SCHEMA_VERSION + ',"superadminCredentials":' + JSON.stringify(superadminCredentials) + ',"platform":"CrownDent Multi-Tenant System Master","backupScope":"FULL_SYSTEM_BACKUP","backupTimestamp":' + JSON.stringify(new Date().toISOString()) + ',"totalClinicsCount":' + clinics.length + ',"clinics":[');
-        let first = true;
-        for (const c of clinics) {
-            await write((first ? '' : ',') + JSON.stringify(legacyItem(await exportClinic(c.id))));
-            first = false;
+        const clinics=await read('clinics');
+        const adminRows=(await read('superadmin_credentials')).filter((row:any)=>row.id==='main');
+        const credentials=[];
+        for(const row of adminRows.length?adminRows:defaultAdmin?[{id:'main',...defaultAdmin}]:[]){const copy=await adminCredentialCopy(row,hashPassword);if(copy)credentials.push(copy);}
+        await write('{"schemaVersion":3,"credentialSchemaVersion":'+CREDENTIAL_SCHEMA_VERSION+',"superadminCredentials":'+JSON.stringify(credentials)+',"platform":"CrownDent Multi-Tenant System Master","backupScope":"FULL_SYSTEM_BACKUP","backupTimestamp":'+JSON.stringify(new Date().toISOString())+',"totalClinicsCount":'+clinics.length+',"clinics":[');
+        let first=true;
+        for(const c of clinics){
+            check();options.stage?.('clinic');
+            await db.financeTransaction(c.id,async()=>{
+                const info=await one('clinics',c.id);
+                await write((first?'':',')+'{"credentialSchemaVersion":'+CREDENTIAL_SCHEMA_VERSION+',"clinicInfo":'+JSON.stringify(await clinicCredentialCopy(info,hashPassword)));
+                // Flat records/teeth/xrays are authoritative. Legacy nested
+                // duplicates are unnecessary, and normalize() accepts both.
+                for(const table of TABLES){check();options.stage?.('table');await write(','+JSON.stringify(table)+':');await array(table,c.id);}
+                await write(',"finance_state":');await finance.streamExport(c.id,write,check);
+                for(const [table,alias] of Object.entries(ALIASES)){if(alias==='expenseList')continue;await write(','+JSON.stringify(alias)+':');await array(table,c.id);}
+                await write('}');
+            });first=false;
         }
-        await write('],"renewalsLog":' + JSON.stringify(await read('renewals')) + ',"broadcasts":' + JSON.stringify(await read('announcements')) + ',"systemSettings":' + JSON.stringify((await read('system_settings')).filter((s: any) => s.id !== 'auth_secret')) + '}');
+        await write('],"renewalsLog":');await array('renewals');
+        await write(',"broadcasts":');await array('announcements');
+        await write(',"systemSettings":');
+        const settings=(await read('system_settings')).filter((r:any)=>r.id!=='auth_secret');await write(JSON.stringify(settings)+'}');
     }
     return { handler, validateClinic: normalize, restoreClinic, streamSystemExport };
 }
