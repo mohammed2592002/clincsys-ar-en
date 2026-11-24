@@ -108,6 +108,25 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
   const isEn = lang === 'en';
   const dir = isEn ? 'ltr' : 'rtl';
 
+  // Keep the tab title and search-result description in sync with the landing
+  // language. The static index.html defaults are Arabic; restore them on
+  // unmount so the login/app screens don't inherit landing copy.
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="description"]');
+    const prevTitle = document.title;
+    const prevDesc = meta?.getAttribute('content') ?? null;
+    document.title = isEn
+      ? 'CoreDentSys | Dental Clinic Management System — run your entire clinic from one place'
+      : 'CoreDentSys | نظام إدارة عيادات الأسنان — إدارة عيادتك كلها من مكان واحد';
+    meta?.setAttribute('content', isEn
+      ? 'CoreDentSys is a complete system for dental clinics: queue or time-based booking, full patient files, an interactive dental chart, x-rays, prescriptions, and daily closing — works offline, in Arabic and English, on any device.'
+      : 'CoreDentSys نظام متكامل لإدارة عيادات ومراكز الأسنان: حجوزات بالدور أو بالوقت، ملفات مرضى كاملة، مخطط أسنان تفاعلي، أشعة، روشتات، وحسابات وتقفيل يومي — يعمل بدون إنترنت، بالعربي والإنجليزي، ومن أي جهاز.');
+    return () => {
+      document.title = prevTitle;
+      if (meta && prevDesc !== null) meta.setAttribute('content', prevDesc);
+    };
+  }, [isEn]);
+
   // Per-language text: English override, falling back to the Arabic copy.
   const T = useMemo(() => {
     const ar = content.ar;

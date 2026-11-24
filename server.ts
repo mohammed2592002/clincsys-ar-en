@@ -40,6 +40,19 @@ async function startServer() {
       }
 
       console.log(`[CrownDent Server] Production mode: Serving static files from: ${distPath}`);
+
+      // Keep non-production hosts (demo/staging) out of search-engine indexes:
+      // only the real site should rank, and demo content is test data.
+      // Hosts come from NOINDEX_HOSTS (comma-separated), defaulting to the demo.
+      const noindexHosts = (process.env.NOINDEX_HOSTS || 'demo.coredentsys.cloud')
+        .split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+      app.use((req, res, next) => {
+        if (noindexHosts.includes((req.hostname || '').toLowerCase())) {
+          res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+        }
+        next();
+      });
+
       app.use(express.static(distPath));
       app.get('*', (req, res) => {
         res.sendFile(path.join(distPath, 'index.html'));
