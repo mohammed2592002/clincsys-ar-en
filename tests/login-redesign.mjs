@@ -9,7 +9,7 @@ const dir=await mkdtemp(join(tmpdir(),'coredent-login-'));
 const clinic={id:'login_test',name:'Login Test Clinic',email:'login@example.invalid',password:'local-test-password',staffPin:'4826',isActive:true,subscriptionExpiresAt:'2030-01-01',staffMembers:[{id:'staff1',name:'Test Staff',role:'Reception',password:'local-staff-password',allowedTabs:['calendar']}]};
 await writeFile(join(dir,'local_db.json'),JSON.stringify({clinics:[{id:clinic.id,data:JSON.stringify(clinic)}],system_settings:[{id:'support',data:JSON.stringify({trialPhoneNumber:'01000000000',socialLinks:[{id:'test-support',platform:'website',url:'https://example.invalid/support',title:'الدعم الفني'}]})}]}));
 const reserve=net.createServer();await new Promise(r=>reserve.listen(0,'127.0.0.1',r));const port=reserve.address().port;await new Promise(r=>reserve.close(r));const base=`http://127.0.0.1:${port}`;
-const env={...process.env,NODE_ENV:'production',PORT:String(port),AUTH_SECRET:'isolated-login-test-secret'};
+const env={...process.env,NODE_ENV:'production', ALLOW_LOCAL_JSON_DB: '1', PORT:String(port),AUTH_SECRET:'isolated-login-test-secret'};
 for(const k of ['DATABASE_URL','POSTGRES_URL','PG_DATABASE_URL','PGHOST','DB_HOST','PGUSER','PGPASSWORD','DB_PASSWORD','PGDATABASE','DB_NAME'])delete env[k];
 const server=spawn(process.execPath,[resolve('dist-server/server.cjs')],{cwd:dir,env,stdio:['ignore','pipe','pipe']});let log='';server.stdout.on('data',d=>log+=d);server.stderr.on('data',d=>log+=d);
 let browser;

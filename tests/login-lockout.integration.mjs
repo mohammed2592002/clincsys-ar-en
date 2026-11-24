@@ -34,7 +34,7 @@ const server = spawn('node', [path.resolve('dist-server/server.cjs')], {
   cwd: tmpDir,
   env: {
     ...process.env,
-    NODE_ENV: 'production',
+    NODE_ENV: 'production', ALLOW_LOCAL_JSON_DB: '1', 
     PORT: String(PORT),
     LOGIN_LOCKOUT_DURATIONS_MS: '1000,2000,3000'
   },

@@ -1047,6 +1047,13 @@ class PostgresDbClient {
 
       this.createPool();
     } else {
+      // Fail loud in production: if the database env is missing or mistyped on a
+      // real deployment, the process must crash at boot instead of silently
+      // running on a throwaway local JSON file and losing real clinic data.
+      // Local dev, tests and demos opt in explicitly with ALLOW_LOCAL_JSON_DB=1.
+      if (process.env.NODE_ENV === 'production' && process.env.ALLOW_LOCAL_JSON_DB !== '1') {
+        throw new Error('[Database] DATABASE_URL (or PGHOST) is not configured. Refusing to start in production on the volatile local JSON database. Set DATABASE_URL, or set ALLOW_LOCAL_JSON_DB=1 to force the emulator.');
+      }
       this.isPostgres = false;
       console.log('💡 [Database] No external PostgreSQL environment variables configured. Activating local database emulator...');
       this.localDb = new LocalJsonDbEmulator();

@@ -25,7 +25,7 @@ const pgPort = await freePort();
 const cluster = join(dir, 'pg');
 let started = false;
 const admin = new pg.Client({ host: '127.0.0.1', port: pgPort, user: 'postgres', database: 'postgres' });
-const cleanEnv = { ...process.env, NODE_ENV: 'production', AUTH_SECRET: 'isolated-migration-test-only' };
+const cleanEnv = { ...process.env, NODE_ENV: 'production', ALLOW_LOCAL_JSON_DB: '1',  AUTH_SECRET: 'isolated-migration-test-only' };
 for (const k of ['DATABASE_URL','POSTGRES_URL','PG_DATABASE_URL','PGHOST','DB_HOST','PGUSER','DB_USER','PGPASSWORD','DB_PASSWORD','PGDATABASE','DB_NAME','PGSSLMODE','DB_SSL','R2_ACCESS_KEY_ID','R2_SECRET_ACCESS_KEY','R2_ENDPOINT','R2_BUCKET_NAME','R2_PUBLIC_URL']) delete cleanEnv[k];
 async function boot(cwd, database) {
   const port = await freePort();

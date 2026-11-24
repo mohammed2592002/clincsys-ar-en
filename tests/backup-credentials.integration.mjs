@@ -27,7 +27,7 @@ async function server(seed = {}) {
     const seeded = { clinics: (seed.clinics || [{ id: 'test_bootstrap', name: 'Temporary test bootstrap' }]).map(row), patients: [{ id: 'test_sentinel', clinicId: 'test_bootstrap', data: '{}' }], ...(seed.platform ? { superadmin_credentials: [seed.platform] } : {}) };
     await writeFile(join(dir, 'local_db.json'), JSON.stringify(seeded));
     const authSecret = seed.authSecret || secret;
-    const env = { ...process.env, NODE_ENV: 'production', PORT: String(port), AUTH_SECRET: authSecret };
+    const env = { ...process.env, NODE_ENV: 'production', ALLOW_LOCAL_JSON_DB: '1',  PORT: String(port), AUTH_SECRET: authSecret };
     for (const key of Object.keys(env)) if (/^(DATABASE_URL|POSTGRES_URL|PG_DATABASE_URL|PGHOST|DB_HOST|PGUSER|PGPASSWORD|DB_PASSWORD|PGDATABASE|DB_NAME|R2_|AWS_|CLOUDFLARE_)/.test(key)) delete env[key];
     const child = spawn(process.execPath, [resolve('dist-server/server.cjs')], { cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let log = ''; child.stdout.on('data', data => log += data); child.stderr.on('data', data => log += data);

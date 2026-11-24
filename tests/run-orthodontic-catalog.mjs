@@ -22,7 +22,7 @@ if (!process.env.TEST_LANG) {
   await new Promise(r => reserve.close(r));
   const clinic = { id: 'finance_isolated_test', name: 'عيادة الاختبار المحلي', email: 'finance-isolated@example.invalid', password: 'test-only-password', isActive: true, subscriptionExpiresAt: '2030-01-01', staffMembers: [] };
   await writeFile(join(dir, 'local_db.json'), JSON.stringify({ clinics: [{ id: clinic.id, data: JSON.stringify(clinic) }] }));
-  const env = { ...process.env, NODE_ENV: 'production', PORT: String(port), AUTH_SECRET: 'isolated-ortho-test-secret', TEST_BASE: `http://127.0.0.1:${port}` };
+  const env = { ...process.env, NODE_ENV: 'production', ALLOW_LOCAL_JSON_DB: '1',  PORT: String(port), AUTH_SECRET: 'isolated-ortho-test-secret', TEST_BASE: `http://127.0.0.1:${port}` };
   for (const k of ['DATABASE_URL', 'POSTGRES_URL', 'PG_DATABASE_URL', 'PGHOST', 'DB_HOST', 'PGUSER', 'PGPASSWORD', 'DB_PASSWORD', 'PGDATABASE', 'DB_NAME']) delete env[k];
   const server = spawn(process.execPath, [resolve('dist-server/server.cjs')], { cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';

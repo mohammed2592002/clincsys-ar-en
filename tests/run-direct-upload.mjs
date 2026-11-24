@@ -38,7 +38,7 @@ await writeFile(
 
 const env = {
   ...process.env,
-  NODE_ENV: "production",
+  NODE_ENV: "production", ALLOW_LOCAL_JSON_DB: '1', 
   PORT: String(port),
   AUTH_SECRET: "isolated-direct-upload-test-secret-only",
   TEST_BASE: `http://127.0.0.1:${port}`,

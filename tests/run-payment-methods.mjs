@@ -20,7 +20,7 @@ if (!process.env.TEST_LANG) {
   await new Promise(r => reserve.close(r));
   const clinic = { id: 'finance_isolated_test', name: 'عيادة الاختبار المحلي', email: 'finance-isolated@example.invalid', password: 'test-only-password', isActive: true, subscriptionExpiresAt: '2030-01-01', staffMembers: [] };
   await writeFile(join(dir, 'local_db.json'), JSON.stringify({ clinics: [{ id: clinic.id, data: JSON.stringify(clinic) }],patients:[{id:'isolated_seed',clinicId:clinic.id,data:JSON.stringify({id:'isolated_seed',clinicId:clinic.id,name:'Isolated test bootstrap',phone:''})}] }));
-  const env = { ...process.env, NODE_ENV: 'production', PORT: String(port), AUTH_SECRET: 'isolated-prescription-test-secret', TEST_BASE: `http://127.0.0.1:${port}` };
+  const env = { ...process.env, NODE_ENV: 'production', ALLOW_LOCAL_JSON_DB: '1',  PORT: String(port), AUTH_SECRET: 'isolated-prescription-test-secret', TEST_BASE: `http://127.0.0.1:${port}` };
   for (const k of ['DATABASE_URL', 'POSTGRES_URL', 'PG_DATABASE_URL', 'PGHOST', 'DB_HOST', 'PGUSER', 'PGPASSWORD', 'DB_PASSWORD', 'PGDATABASE', 'DB_NAME']) delete env[k];
   for (const key of Object.keys(env)) if (/^(R2_|AWS_|CLOUDFLARE_)/.test(key)) delete env[key];
   const server = spawn(process.execPath, [resolve('dist-server/server.cjs')], { cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe'] });

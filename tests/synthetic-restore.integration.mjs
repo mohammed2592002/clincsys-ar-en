@@ -13,7 +13,7 @@ const reserve = net.createServer();
 await new Promise(r => reserve.listen(0, '127.0.0.1', r));
 const port = reserve.address().port;
 await new Promise(r => reserve.close(r));
-const env = {...process.env, NODE_ENV:'production', PORT:String(port), AUTH_SECRET:'isolated-syn-test', SYNTHETIC_RESTORE_ENABLED:'demo-only', SYNTHETIC_RESTORE_LOCAL_TEST:'1'};
+const env = {...process.env, NODE_ENV:'production', ALLOW_LOCAL_JSON_DB: '1',  PORT:String(port), AUTH_SECRET:'isolated-syn-test', SYNTHETIC_RESTORE_ENABLED:'demo-only', SYNTHETIC_RESTORE_LOCAL_TEST:'1'};
 for (const k of ['DATABASE_URL','POSTGRES_URL','PG_DATABASE_URL','PGHOST','DB_HOST','PGUSER','PGPASSWORD','DB_PASSWORD','PGDATABASE','DB_NAME']) delete env[k];
 const server = spawn(process.execPath, [resolve('dist-server/server.cjs')], { cwd: dir, env, stdio: ['ignore','pipe','pipe'] });
 let log=''; server.stdout.on('data',d=>log+=d); server.stderr.on('data',d=>log+=d);
