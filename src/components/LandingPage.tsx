@@ -133,7 +133,16 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
   const cleanPhone = (content.whatsappNumber || '').replace(/[^\d]/g, '');
   const trialUrl = cleanPhone
     ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(T.trialWhatsappPrefill || '')}`
-    : '#';
+    : '';
+
+  // Trial buttons only become real links once the super admin sets a WhatsApp
+  // number on the website tab; without it they stay visible but inert.
+  const TrialLink = ({ className, children }: { className: string; children: React.ReactNode }) =>
+    trialUrl ? (
+      <a className={className} href={trialUrl} target="_blank" rel="noopener noreferrer">{children}</a>
+    ) : (
+      <span className={className} aria-disabled="true" style={{ opacity: 0.55, cursor: 'not-allowed' }}>{children}</span>
+    );
 
   const scrollTo = (id: string) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -226,9 +235,9 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
             </h1>
             <p className="hero-sub"><Copy>{T.heroSubtitle}</Copy></p>
             <div className="hero-btns">
-              <a className="btn btn-primary" href={trialUrl} target="_blank" rel="noopener noreferrer">
+              <TrialLink className="btn btn-primary">
                 <Copy>{T.trialButtonLabel}</Copy>
-              </a>
+              </TrialLink>
               <a className="btn btn-ghost" href="#pricing" onClick={scrollTo('pricing')}>
                 <Copy>{T.pricingButtonLabel}</Copy>
               </a>
@@ -414,9 +423,9 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
                       </li>
                     ))}
                   </ul>
-                  <a className={`btn ${p.popular ? 'btn-primary' : 'btn-ghost'}`} href={trialUrl} target="_blank" rel="noopener noreferrer">
+                  <TrialLink className={`btn ${p.popular ? 'btn-primary' : 'btn-ghost'}`}>
                     <Copy>{t.buttonLabel}</Copy>
-                  </a>
+                  </TrialLink>
                 </div>
               );
             })}
@@ -430,9 +439,9 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
           <h2><Copy>{T.ctaTitle}</Copy><HandUnderline light /></h2>
           <p><Copy>{T.ctaSubtitle}</Copy></p>
           <div className="hero-btns">
-            <a className="btn btn-primary" href={trialUrl} target="_blank" rel="noopener noreferrer">
+            <TrialLink className="btn btn-primary">
               <Copy>{T.ctaTrialLabel}</Copy>
-            </a>
+            </TrialLink>
             <button type="button" className="btn btn-ghost" onClick={onLogin}>
               <Copy>{T.ctaLoginLabel}</Copy>
             </button>

@@ -741,7 +741,7 @@ export const DEFAULT_LANDING_CONTENT: LandingSiteContent = {
   heroImageUrl: '/landing/appointments.jpg',
   chartImageUrl: '/landing/chart.jpg',
   financeImageUrl: '/landing/finance.jpg',
-  whatsappNumber: '201067727684',
+  whatsappNumber: '',
   whatsappCommunityUrl: '',
   facebookUrl: '',
   features: [
