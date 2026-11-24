@@ -2591,7 +2591,9 @@ app.get('/api/patients/search',async(req,res)=>{
   if(!cid||(auth.type!=='admin'&&auth.clinicId!==cid))return res.status(403).json({error:'forbidden'});
   const term=String(req.query.q||'').trim().slice(0,120).replace(/[%_\\]/g,'').trim();
   const size=Math.min(500,Math.max(1,Number(req.query.limit)||15));
-  const offset=Math.min(1000000,Math.max(0,Math.floor(Number(req.query.offset)||0)));
+  // Deep OFFSET scans get slower as the table grows; 10,000 rows back is far
+  // beyond any real browsing (500/page).
+  const offset=Math.min(10000,Math.max(0,Math.floor(Number(req.query.offset)||0)));
   if(term.length<3)return res.json({items:[],total:0});
   const fields=req.query.scope==='booking'?['name','phone']:['name','phone','governorate','cityOrDistrict','area','address','occupation'];
   const op=dbClient.getIsPostgres()?'ILIKE':'LIKE';
@@ -2823,7 +2825,14 @@ app.post('/api/db', async (req, res) => {
             const dirStr = c.direction === 'desc' ? 'DESC' : 'ASC';
             orderByStr = ` ORDER BY COALESCE(${orderCol}, '') ${dirStr}, id ${dirStr}`;
           } else if (c.type === 'limit') {
-            limitStr = ` LIMIT ${Number(c.limit)}`;
+            // Server-side ceiling: a client may ask for any number, but one
+            // request may never pull more than MAX_GETDOCS_LIMIT rows. The
+            // app's own screens ask for at most 150.
+            const requestedLimit = Math.floor(Number(c.limit));
+            if (!Number.isFinite(requestedLimit) || requestedLimit <= 0) {
+              return res.status(400).send('Invalid limit');
+            }
+            limitStr = ` LIMIT ${Math.min(requestedLimit, MAX_GETDOCS_LIMIT)}`;
           }
         }
       }
