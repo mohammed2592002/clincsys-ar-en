@@ -1026,6 +1026,18 @@ class PostgresDbClient {
       this.poolConfig.connectionTimeoutMillis = 6000; // 6s connection timeout for fast failover
       this.poolConfig.keepAlive = true;
       this.poolConfig.keepAliveInitialDelayMillis = 5000;
+
+      // Query time limits (sent to PostgreSQL as connection startup parameters):
+      // one stuck or runaway statement must not hold one of the 10 pooled
+      // connections forever and freeze every clinic. Each is env-overridable.
+      // - statement_timeout: any single statement fails after 30s.
+      // - lock_timeout: waiting on a row/table/advisory lock fails after 10s
+      //   instead of piling up behind a stuck writer.
+      // - idle_in_transaction_session_timeout: a transaction left open for
+      //   60s is aborted so its locks and connection are released.
+      this.poolConfig.statement_timeout = Number(process.env.PG_STATEMENT_TIMEOUT_MS) || 30000;
+      this.poolConfig.lock_timeout = Number(process.env.PG_LOCK_TIMEOUT_MS) || 10000;
+      this.poolConfig.idle_in_transaction_session_timeout = Number(process.env.PG_IDLE_TX_TIMEOUT_MS) || 60000;
       
       if (pgUrl && (pgUrl.includes('sslmode=require') || pgUrl.includes('supabase') || pgUrl.includes('neon') || pgUrl.includes('hostinger') || pgUrl.includes('aiven') || pgUrl.includes('.com') || pgUrl.includes('.net'))) {
         this.poolConfig.ssl = { rejectUnauthorized: false };
