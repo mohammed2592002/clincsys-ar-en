@@ -10,7 +10,7 @@ const reserve = net.createServer();
 await new Promise(r => reserve.listen(0, '127.0.0.1', r));
 const port = reserve.address().port;
 await new Promise(r => reserve.close(r));
-const env = {...process.env, NODE_ENV:dev?'development':'production', ALLOW_LOCAL_JSON_DB: '1',  PORT:String(port), AUTH_SECRET:'isolated-admin-test-only', TEST_BASE:`http://127.0.0.1:${port}`};
+const env = {...process.env, NODE_ENV:dev?'development':'production', PORT:String(port), AUTH_SECRET:'isolated-admin-test-only', TEST_BASE:`http://127.0.0.1:${port}`};
 for(const k of ['DATABASE_URL','POSTGRES_URL','PG_DATABASE_URL','PGHOST','DB_HOST','PGUSER','PGPASSWORD','DB_PASSWORD','PGDATABASE','DB_NAME']) delete env[k];
 if(dev) {
  for(const file of ['src','api','public','server.ts','vite.config.ts','tsconfig.json','index.html','package.json']) await cp(resolve(file),join(dir,file),{recursive:true});

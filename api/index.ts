@@ -80,15 +80,8 @@ app.use('/api', (req, res, next) => {
 installSyntheticRestore(app,{getAuth:getRequestAuth,getReady:()=>getDbReady(),isPostgres:()=>dbClient.getIsPostgres(),get backups(){return backups;},get db(){return dbClient;}});
 installSystemBackup(app,{getAuth:getRequestAuth,getReady:()=>getDbReady(),isPostgres:()=>dbClient.getIsPostgres(),get backups(){return backups;},get db(){return dbClient;}});
 
-// Per-route body limits: only the document API and backup restore accept very
-// large payloads (documents may embed content; a clinic restore carries a
-// whole backup JSON). Everything else gets a small default so an oversized
-// request body cannot waste server memory. /api/db/batch is covered by the
-// '/api/db' mount; already-parsed bodies are skipped by later parsers.
-app.use('/api/db', express.json({ limit: '50mb' }));
-app.use('/api/backups', express.json({ limit: '50mb' }));
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ limit: '1mb', extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(fileUpload({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
 }));
@@ -1033,18 +1026,6 @@ class PostgresDbClient {
       this.poolConfig.connectionTimeoutMillis = 6000; // 6s connection timeout for fast failover
       this.poolConfig.keepAlive = true;
       this.poolConfig.keepAliveInitialDelayMillis = 5000;
-
-      // Query time limits (sent to PostgreSQL as connection startup parameters):
-      // one stuck or runaway statement must not hold one of the 10 pooled
-      // connections forever and freeze every clinic. Each is env-overridable.
-      // - statement_timeout: any single statement fails after 30s.
-      // - lock_timeout: waiting on a row/table/advisory lock fails after 10s
-      //   instead of piling up behind a stuck writer.
-      // - idle_in_transaction_session_timeout: a transaction left open for
-      //   60s is aborted so its locks and connection are released.
-      this.poolConfig.statement_timeout = Number(process.env.PG_STATEMENT_TIMEOUT_MS) || 30000;
-      this.poolConfig.lock_timeout = Number(process.env.PG_LOCK_TIMEOUT_MS) || 10000;
-      this.poolConfig.idle_in_transaction_session_timeout = Number(process.env.PG_IDLE_TX_TIMEOUT_MS) || 60000;
       
       if (pgUrl && (pgUrl.includes('sslmode=require') || pgUrl.includes('supabase') || pgUrl.includes('neon') || pgUrl.includes('hostinger') || pgUrl.includes('aiven') || pgUrl.includes('.com') || pgUrl.includes('.net'))) {
         this.poolConfig.ssl = { rejectUnauthorized: false };
@@ -1054,13 +1035,6 @@ class PostgresDbClient {
 
       this.createPool();
     } else {
-      // Fail loud in production: if the database env is missing or mistyped on a
-      // real deployment, the process must crash at boot instead of silently
-      // running on a throwaway local JSON file and losing real clinic data.
-      // Local dev, tests and demos opt in explicitly with ALLOW_LOCAL_JSON_DB=1.
-      if (process.env.NODE_ENV === 'production' && process.env.ALLOW_LOCAL_JSON_DB !== '1') {
-        throw new Error('[Database] DATABASE_URL (or PGHOST) is not configured. Refusing to start in production on the volatile local JSON database. Set DATABASE_URL, or set ALLOW_LOCAL_JSON_DB=1 to force the emulator.');
-      }
       this.isPostgres = false;
       console.log('💡 [Database] No external PostgreSQL environment variables configured. Activating local database emulator...');
       this.localDb = new LocalJsonDbEmulator();
@@ -1384,8 +1358,7 @@ function broadcastSync(clinicId: string | null, eventData: { eventId?: string; t
   
   const clients = wsClients.get(clinicId);
   if (clients && clients.size > 0) {
-    // Log identifiers only, never the payload (it can carry patient data).
-    console.log(`[WS Broadcast] Sending to ${clients.size} clients in clinic ${clinicId}: event=${eventData.eventId || ''} ${eventData.table}:${eventData.action} id=${eventData.id || ''}`);
+    console.log(`[WS Broadcast] Sending to ${clients.size} clients in clinic ${clinicId}:`, eventData);
     clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
         try {
@@ -1421,32 +1394,31 @@ async function publishSyncEvent(clinicId: string, tableName: string, action: str
   const now = Date.now();
   const payloadStr = fullData ? JSON.stringify(fullData) : '';
   try {
-    // 1. Persist the event inside the transaction.
-    const committed = await dbClient.financeTransaction(clinicId,async()=>{
-    if(!(await getExistingClinicData(clinicId)))return false;
+    return await dbClient.financeTransaction(clinicId,async()=>{
+    if(!(await getExistingClinicData(clinicId)))return null;
     await dbClient.execute({
       sql: `INSERT INTO server_sync_events (id, clinic_id, table_name, action, record_id, created_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       args: [eventId, clinicId, tableName, action, recordId || '', now, payloadStr]
     });
-    return true;
-    });
-    if (!committed) return null;
-    console.log(`[Sync Engine] Event published: ${eventId} for ${tableName}:${action} id=${recordId || ''}`);
-
-    // 2. Broadcast via WebSockets only AFTER the transaction has committed.
-    //    Broadcasting before COMMIT can push events for rolled-back data.
+    console.log(`[Sync Engine] Event published: ${eventId} for ${tableName}:${action}`);
+    
+    // Broadcast via WebSockets instantly (sub-second latency!)
     broadcastSync(clinicId, { eventId, table: tableName, action, id: recordId, payload: fullData });
 
-    // Old event cleanup runs on a periodic scheduler, not on every write.
+    // Clean up old events (older than 30 minutes) - increased from 10 minutes to reduce database operations
+    const thirtyMinutesAgo = now - 30 * 60 * 1000;
+    dbClient.execute({
+      sql: `DELETE FROM server_sync_events WHERE created_at < ?`,
+      args: [thirtyMinutesAgo]
+    }).catch(err => console.error('[Sync Engine] Error cleaning up old events:', err));
+    
     return eventId;
+    });
   } catch (err) {
     console.error('[Sync Engine] Failed to publish sync event:', err);
     return null;
   }
 }
-
-// Hard ceiling for client-requested getDocs page sizes (app screens use <= 150).
-const MAX_GETDOCS_LIMIT = 1000;
 
 const ALLOWED_TABLES = [
   'clinics', 'users', 'patients', 'appointments', 'records', 'prescriptions',
@@ -2006,38 +1978,20 @@ async function initDb() {
   isDbInitialized = true;
 }
 
-// Background schedulers that clean up older server_sync_events to keep the
-// table lightweight. Cleanup is periodic (batched), never per-write.
+// Background daily cron job to clean up older server_sync_events to keep tables lightweight
 function startSyncEventsCleanupScheduler() {
   const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-  const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
-  const THIRTY_MINUTES_MS = 30 * 60 * 1000;
-
-  // Every 15 minutes: drop consumed sync events older than 30 minutes
-  // (same threshold the old per-write delete used, batched instead).
-  const performRecentCleanup = async () => {
-    try {
-      const thirtyMinutesAgo = Date.now() - THIRTY_MINUTES_MS;
-      await dbClient.execute({
-        sql: `DELETE FROM server_sync_events WHERE created_at < ?`,
-        args: [thirtyMinutesAgo]
-      });
-    } catch (err: any) {
-      console.error('[Cleanup Scheduler] Error during recent sync events cleanup:', err);
-    }
-  };
-
-  // Daily backstop: drop anything older than 7 days.
+  
   const performCleanup = async () => {
     try {
       console.log('[Cleanup Scheduler] Running daily cleanup of synchronized events older than 7 days...');
       const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-
-      await dbClient.execute({
+      
+      const result = await dbClient.execute({
         sql: `DELETE FROM server_sync_events WHERE created_at < ?`,
         args: [sevenDaysAgo]
       });
-
+      
       console.log('[Cleanup Scheduler] Daily cleanup completed successfully.');
     } catch (err: any) {
       console.error('[Cleanup Scheduler] Error during daily synchronized events cleanup:', err);
@@ -2045,10 +1999,9 @@ function startSyncEventsCleanupScheduler() {
   };
 
   // Run once on startup (after 5 seconds to not interfere with boot)
-  setTimeout(() => { void performRecentCleanup(); void performCleanup(); }, 5000);
+  setTimeout(performCleanup, 5000);
 
-  // Recent-event sweep every 15 minutes; deep sweep every 24 hours.
-  setInterval(performRecentCleanup, FIFTEEN_MINUTES_MS);
+  // Run every 24 hours
   setInterval(performCleanup, ONE_DAY_MS);
 }
 
@@ -2598,9 +2551,7 @@ app.get('/api/patients/search',async(req,res)=>{
   if(!cid||(auth.type!=='admin'&&auth.clinicId!==cid))return res.status(403).json({error:'forbidden'});
   const term=String(req.query.q||'').trim().slice(0,120).replace(/[%_\\]/g,'').trim();
   const size=Math.min(500,Math.max(1,Number(req.query.limit)||15));
-  // Deep OFFSET scans get slower as the table grows; 10,000 rows back is far
-  // beyond any real browsing (500/page).
-  const offset=Math.min(10000,Math.max(0,Math.floor(Number(req.query.offset)||0)));
+  const offset=Math.min(1000000,Math.max(0,Math.floor(Number(req.query.offset)||0)));
   if(term.length<3)return res.json({items:[],total:0});
   const fields=req.query.scope==='booking'?['name','phone']:['name','phone','governorate','cityOrDistrict','area','address','occupation'];
   const op=dbClient.getIsPostgres()?'ILIKE':'LIKE';
@@ -2832,14 +2783,7 @@ app.post('/api/db', async (req, res) => {
             const dirStr = c.direction === 'desc' ? 'DESC' : 'ASC';
             orderByStr = ` ORDER BY COALESCE(${orderCol}, '') ${dirStr}, id ${dirStr}`;
           } else if (c.type === 'limit') {
-            // Server-side ceiling: a client may ask for any number, but one
-            // request may never pull more than MAX_GETDOCS_LIMIT rows. The
-            // app's own screens ask for at most 150.
-            const requestedLimit = Math.floor(Number(c.limit));
-            if (!Number.isFinite(requestedLimit) || requestedLimit <= 0) {
-              return res.status(400).send('Invalid limit');
-            }
-            limitStr = ` LIMIT ${Math.min(requestedLimit, MAX_GETDOCS_LIMIT)}`;
+            limitStr = ` LIMIT ${Number(c.limit)}`;
           }
         }
       }
@@ -4554,19 +4498,10 @@ app.post('/api/superadmin/credentials', async (req, res) => {
 
 // Global Express Error Handling Middleware to catch any unhandled exceptions in route handlers
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('[Global Error Handler] Caught unexpected server-side error:', err);
   if (res.headersSent) {
     return next(err);
   }
-  // Body-parser client errors (413 payload too large, 400 malformed JSON) carry
-  // err.status/err.type: answer with the real status instead of a generic 500.
-  const errStatus = Number(err?.status || err?.statusCode);
-  if (errStatus >= 400 && errStatus < 500) {
-    return res.status(errStatus).json({
-      error: err.type || 'bad_request',
-      message: 'حجم أو محتوى الطلب غير مقبول / Request payload rejected'
-    });
-  }
-  console.error('[Global Error Handler] Caught unexpected server-side error:', err);
   res.status(500).json({
     error: 'InternalServerError',
     message: process.env.NODE_ENV === 'production' 

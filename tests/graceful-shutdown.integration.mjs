@@ -15,7 +15,7 @@ fs.writeFileSync(path.join(tmpDir, 'local_db.json'), JSON.stringify({ clinics: [
 
 const server = spawn('node', [path.resolve('dist-server/server.cjs')], {
   cwd: tmpDir,
-  env: { ...process.env, NODE_ENV: 'production', ALLOW_LOCAL_JSON_DB: '1',  PORT: String(PORT) },
+  env: { ...process.env, NODE_ENV: 'production', PORT: String(PORT) },
   stdio: ['ignore', 'pipe', 'pipe']
 });
 let log = '';
@@ -68,7 +68,7 @@ try {
   // Drain timeout: a request that never finishes must not block exit forever.
   const server2 = spawn('node', [path.resolve('dist-server/server.cjs')], {
     cwd: tmpDir,
-    env: { ...process.env, NODE_ENV: 'production', ALLOW_LOCAL_JSON_DB: '1',  PORT: String(PORT), SHUTDOWN_TIMEOUT_MS: '1500' },
+    env: { ...process.env, NODE_ENV: 'production', PORT: String(PORT), SHUTDOWN_TIMEOUT_MS: '1500' },
     stdio: 'ignore'
   });
   const exited2 = new Promise((resolve) => server2.on('exit', (code) => resolve(code)));

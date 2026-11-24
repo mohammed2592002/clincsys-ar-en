@@ -15,7 +15,7 @@ for(const t of tables)seed[t]=[row(t+'-a',a,{name:'Synthetic fixture',createdAt:
 seed.patients.push(...Array.from({length:220},(_,i)=>row('patient-'+i,a,{name:'Search fixture '+i,phone:'010'+String(i).padStart(8,'0'),createdAt:'2026-11-23T00:00:00Z'})));
 await writeFile(join(dir,'local_db.json'),JSON.stringify(seed));
 const reserve=net.createServer();await new Promise(r=>reserve.listen(0,'127.0.0.1',r));const port=reserve.address().port;await new Promise(r=>reserve.close(r));
-const env={...process.env,NODE_ENV:'production', ALLOW_LOCAL_JSON_DB: '1', PORT:String(port),AUTH_SECRET:secret};
+const env={...process.env,NODE_ENV:'production',PORT:String(port),AUTH_SECRET:secret};
 for(const k of Object.keys(env))if(/^(DATABASE_URL|POSTGRES_URL|PG_DATABASE_URL|PGHOST|DB_HOST|PGUSER|PGPASSWORD|DB_PASSWORD|PGDATABASE|DB_NAME|R2_|AWS_|CLOUDFLARE_)/.test(k))delete env[k];
 const server=spawn(process.execPath,[resolve('dist-server/server.cjs')],{cwd:dir,env,stdio:['ignore','pipe','pipe']});let log='';server.stdout.on('data',d=>log+=d);server.stderr.on('data',d=>log+=d);
 const token=(type,cid=a,staffId)=>{const body=Buffer.from(JSON.stringify({type,clinicId:cid,staffId,exp:Date.now()+3600000})).toString('base64url');return 'v1.'+body+'.'+crypto.createHmac('sha256',secret).update(body).digest('base64url');};

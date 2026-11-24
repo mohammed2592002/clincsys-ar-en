@@ -20,7 +20,7 @@ async function server(source=false){
  const dir=await mkdtemp(join(tmpdir(),'clinic-backup-test-'));const reserve=net.createServer();await new Promise(r=>reserve.listen(0,'127.0.0.1',r));const port=reserve.address().port;await new Promise(r=>reserve.close(r));
  const record=(id,data)=>({id,clinicId:cid,data:JSON.stringify({id,clinicId:cid,...data})});
  await writeFile(join(dir,'local_db.json'),JSON.stringify({clinics:[{id:cid,data:JSON.stringify(clinic)}],patients:[record('backup_seed',{name:'Bootstrap patient'})],...(source?{expenses:[record('legacy_expense',{title:'Legacy assigned cash expense',amount:5,paymentMethod:'كاش',date:'2020-01-01',type:'shift'})]}:{})}));
- const env={...process.env,NODE_ENV:'production', ALLOW_LOCAL_JSON_DB: '1', PORT:String(port),AUTH_SECRET:secret};
+ const env={...process.env,NODE_ENV:'production',PORT:String(port),AUTH_SECRET:secret};
  for(const key of Object.keys(env))if(/^(DATABASE_URL|POSTGRES_URL|PG_DATABASE_URL|PGHOST|DB_HOST|PGUSER|PGPASSWORD|DB_PASSWORD|PGDATABASE|DB_NAME|R2_|AWS_|CLOUDFLARE_)/.test(key))delete env[key];
  const child=spawn(process.execPath,[resolve('dist-server/server.cjs')],{cwd:dir,env,stdio:['ignore','pipe','pipe']});let log='';child.stdout.on('data',d=>log+=d);child.stderr.on('data',d=>log+=d);
  const base=`http://127.0.0.1:${port}`;let ready=false;for(let i=0;i<100;i++){try{await fetch(base);ready=true;break;}catch{}await new Promise(r=>setTimeout(r,100));}assert(ready,log);
