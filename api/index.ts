@@ -1377,7 +1377,8 @@ function broadcastSync(clinicId: string | null, eventData: { eventId?: string; t
   
   const clients = wsClients.get(clinicId);
   if (clients && clients.size > 0) {
-    console.log(`[WS Broadcast] Sending to ${clients.size} clients in clinic ${clinicId}:`, eventData);
+    // Log identifiers only, never the payload (it can carry patient data).
+    console.log(`[WS Broadcast] Sending to ${clients.size} clients in clinic ${clinicId}: event=${eventData.eventId || ''} ${eventData.table}:${eventData.action} id=${eventData.id || ''}`);
     clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
         try {
@@ -1413,31 +1414,32 @@ async function publishSyncEvent(clinicId: string, tableName: string, action: str
   const now = Date.now();
   const payloadStr = fullData ? JSON.stringify(fullData) : '';
   try {
-    return await dbClient.financeTransaction(clinicId,async()=>{
-    if(!(await getExistingClinicData(clinicId)))return null;
+    // 1. Persist the event inside the transaction.
+    const committed = await dbClient.financeTransaction(clinicId,async()=>{
+    if(!(await getExistingClinicData(clinicId)))return false;
     await dbClient.execute({
       sql: `INSERT INTO server_sync_events (id, clinic_id, table_name, action, record_id, created_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       args: [eventId, clinicId, tableName, action, recordId || '', now, payloadStr]
     });
-    console.log(`[Sync Engine] Event published: ${eventId} for ${tableName}:${action}`);
-    
-    // Broadcast via WebSockets instantly (sub-second latency!)
+    return true;
+    });
+    if (!committed) return null;
+    console.log(`[Sync Engine] Event published: ${eventId} for ${tableName}:${action} id=${recordId || ''}`);
+
+    // 2. Broadcast via WebSockets only AFTER the transaction has committed.
+    //    Broadcasting before COMMIT can push events for rolled-back data.
     broadcastSync(clinicId, { eventId, table: tableName, action, id: recordId, payload: fullData });
 
-    // Clean up old events (older than 30 minutes) - increased from 10 minutes to reduce database operations
-    const thirtyMinutesAgo = now - 30 * 60 * 1000;
-    dbClient.execute({
-      sql: `DELETE FROM server_sync_events WHERE created_at < ?`,
-      args: [thirtyMinutesAgo]
-    }).catch(err => console.error('[Sync Engine] Error cleaning up old events:', err));
-    
+    // Old event cleanup runs on a periodic scheduler, not on every write.
     return eventId;
-    });
   } catch (err) {
     console.error('[Sync Engine] Failed to publish sync event:', err);
     return null;
   }
 }
+
+// Hard ceiling for client-requested getDocs page sizes (app screens use <= 150).
+const MAX_GETDOCS_LIMIT = 1000;
 
 const ALLOWED_TABLES = [
   'clinics', 'users', 'patients', 'appointments', 'records', 'prescriptions',
@@ -1997,20 +1999,38 @@ async function initDb() {
   isDbInitialized = true;
 }
 
-// Background daily cron job to clean up older server_sync_events to keep tables lightweight
+// Background schedulers that clean up older server_sync_events to keep the
+// table lightweight. Cleanup is periodic (batched), never per-write.
 function startSyncEventsCleanupScheduler() {
   const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-  
+  const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
+  const THIRTY_MINUTES_MS = 30 * 60 * 1000;
+
+  // Every 15 minutes: drop consumed sync events older than 30 minutes
+  // (same threshold the old per-write delete used, batched instead).
+  const performRecentCleanup = async () => {
+    try {
+      const thirtyMinutesAgo = Date.now() - THIRTY_MINUTES_MS;
+      await dbClient.execute({
+        sql: `DELETE FROM server_sync_events WHERE created_at < ?`,
+        args: [thirtyMinutesAgo]
+      });
+    } catch (err: any) {
+      console.error('[Cleanup Scheduler] Error during recent sync events cleanup:', err);
+    }
+  };
+
+  // Daily backstop: drop anything older than 7 days.
   const performCleanup = async () => {
     try {
       console.log('[Cleanup Scheduler] Running daily cleanup of synchronized events older than 7 days...');
       const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-      
-      const result = await dbClient.execute({
+
+      await dbClient.execute({
         sql: `DELETE FROM server_sync_events WHERE created_at < ?`,
         args: [sevenDaysAgo]
       });
-      
+
       console.log('[Cleanup Scheduler] Daily cleanup completed successfully.');
     } catch (err: any) {
       console.error('[Cleanup Scheduler] Error during daily synchronized events cleanup:', err);
@@ -2018,9 +2038,10 @@ function startSyncEventsCleanupScheduler() {
   };
 
   // Run once on startup (after 5 seconds to not interfere with boot)
-  setTimeout(performCleanup, 5000);
+  setTimeout(() => { void performRecentCleanup(); void performCleanup(); }, 5000);
 
-  // Run every 24 hours
+  // Recent-event sweep every 15 minutes; deep sweep every 24 hours.
+  setInterval(performRecentCleanup, FIFTEEN_MINUTES_MS);
   setInterval(performCleanup, ONE_DAY_MS);
 }
 
