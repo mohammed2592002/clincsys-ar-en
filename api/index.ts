@@ -80,8 +80,15 @@ app.use('/api', (req, res, next) => {
 installSyntheticRestore(app,{getAuth:getRequestAuth,getReady:()=>getDbReady(),isPostgres:()=>dbClient.getIsPostgres(),get backups(){return backups;},get db(){return dbClient;}});
 installSystemBackup(app,{getAuth:getRequestAuth,getReady:()=>getDbReady(),isPostgres:()=>dbClient.getIsPostgres(),get backups(){return backups;},get db(){return dbClient;}});
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// Per-route body limits: only the document API and backup restore accept very
+// large payloads (documents may embed content; a clinic restore carries a
+// whole backup JSON). Everything else gets a small default so an oversized
+// request body cannot waste server memory. /api/db/batch is covered by the
+// '/api/db' mount; already-parsed bodies are skipped by later parsers.
+app.use('/api/db', express.json({ limit: '50mb' }));
+app.use('/api/backups', express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ limit: '1mb', extended: true }));
 app.use(fileUpload({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
 }));
@@ -4547,10 +4554,19 @@ app.post('/api/superadmin/credentials', async (req, res) => {
 
 // Global Express Error Handling Middleware to catch any unhandled exceptions in route handlers
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('[Global Error Handler] Caught unexpected server-side error:', err);
   if (res.headersSent) {
     return next(err);
   }
+  // Body-parser client errors (413 payload too large, 400 malformed JSON) carry
+  // err.status/err.type: answer with the real status instead of a generic 500.
+  const errStatus = Number(err?.status || err?.statusCode);
+  if (errStatus >= 400 && errStatus < 500) {
+    return res.status(errStatus).json({
+      error: err.type || 'bad_request',
+      message: 'حجم أو محتوى الطلب غير مقبول / Request payload rejected'
+    });
+  }
+  console.error('[Global Error Handler] Caught unexpected server-side error:', err);
   res.status(500).json({
     error: 'InternalServerError',
     message: process.env.NODE_ENV === 'production' 
