@@ -47,7 +47,6 @@ import {
   Settings, 
   Receipt, 
   UserPlus, 
-  KeyRound, 
   Edit2, 
   X, 
   Database, 
@@ -185,7 +184,6 @@ export default function ClinicSettings({
   const dialogs = useDialogs();
 
   // Local inputs/states
-  const [staffPinInput, setStaffPinInput] = useState('1234');
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffRole, setNewStaffRole] = useState('سكرتير / استقبال');
   const [newStaffPassword, setNewStaffPassword] = useState('');
@@ -767,29 +765,6 @@ export default function ClinicSettings({
       }
     }
   }, [clinic.id, clinic.name, clinic.logoUrl, clinic.doctorName, clinic.doctorPhone, clinic.allowedFeatures, editingStaffId]);
-
-  const handleUpdateStaffPin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (checkSubscriptionBlocked(clinic, dialogs)) return;
-    setSettingsSuccess('');
-    setSettingsError('');
-    if (staffPinInput.length !== 4 || isNaN(Number(staffPinInput))) {
-      dialogs.alert('يجب أن يكون الرمز السري مكوناً من 4 أرقام فقط!', { severity: 'warning' });
-      return;
-    }
-    try {
-      const docRef = doc(db, 'clinics', clinicId);
-      await updateDoc(docRef, {
-        staffPin: staffPinInput
-      });
-      
-      const updatedClinic = { ...clinic, staffPin: staffPinInput };
-      onClinicDataUpdated(updatedClinic);
-      setSettingsSuccess('تم تحديث رمز دخول السكرتارية العام بنجاح!');
-    } catch (err: any) {
-      dialogs.alert('حدث خطأ أثناء حفظ الرمز السري: ' + err.toString(), { severity: 'error' });
-    }
-  };
 
   const handleSaveStaffMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3440,33 +3415,6 @@ export default function ClinicSettings({
               )}
             </div>
 
-            {/* Legacy General Staff PIN Accordion / Collapsible */}
-            <div className="pt-4 border-t border-slate-100">
-              <details className="group">
-                <summary className="text-[11px] font-bold text-slate-400 cursor-pointer hover:text-slate-600 transition flex items-center gap-1">
-                  <KeyRound className="h-3.5 w-3.5" />
-                  {isEn ? 'Legacy Staff Backup PIN (4 digits)' : 'الرمز السري الاحتياطي القديم (PIN الموحد 4 أرقام)'}
-                </summary>
-                <form onSubmit={handleUpdateStaffPin} className="mt-3 flex items-center gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200/60 max-w-sm">
-                  <span className="text-[11px] text-slate-600 font-bold">{isEn ? 'Backup PIN:' : 'الرمز الاحتياطي:'}</span>
-                  <input
-                    type="text"
-                    required
-                    maxLength={4}
-                    value={staffPinInput}
-                    onChange={(e) => setStaffPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    placeholder="1234"
-                    className="w-24 px-2 py-1 border border-slate-300 rounded-lg text-xs font-mono text-center font-bold"
-                  />
-                  <button
-                    type="submit"
-                    className="bg-slate-700 hover:bg-slate-800 text-white font-bold px-3 py-1 rounded-lg text-[11px] transition cursor-pointer"
-                  >
-                    {isEn ? 'Update Legacy PIN' : 'تحديث الرمز القديم'}
-                  </button>
-                </form>
-              </details>
-            </div>
             </div>
           </div>
         )}
