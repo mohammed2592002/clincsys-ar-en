@@ -211,7 +211,7 @@
 .lp-root .faq-q{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px;font-family:'El Messiri',serif;font-size:19.5px;font-weight:600;cursor:pointer;user-select:none}
 .lp-root .faq-q .ic{flex:none;width:28px;height:28px;border-radius:50%;border:1.5px solid var(--accent);color:var(--accent-deep);display:flex;align-items:center;justify-content:center;font-size:17px;font-family:'Almarai',sans-serif;font-weight:700;transition:.2s}
 .lp-root .faq-item.open .ic{background:var(--accent-deep);border-color:var(--accent-deep);color:#F4FAF7}
-.lp-root .faq-a{padding:0 24px 22px;color:var(--ink-soft);font-size:15.5px;line-height:1.9}
+.lp-root .faq-a{padding:0 24px 22px;color:var(--ink-soft);font-size:15.5px;line-height:1.9;white-space:pre-wrap;overflow-wrap:break-word}
 .lp-root[dir="ltr"] .faq h2{font-weight:600}
 @media (max-width:860px){
   .lp-root .faq{padding:64px 0}
