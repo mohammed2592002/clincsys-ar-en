@@ -85,19 +85,74 @@ function ImageField({ label, value, onChange, uploading, setUploading }: {
   );
 }
 
-function FaviconField({ value, onChange, uploading, setUploading }: {
+function FaviconField({ value, onChange, uploading, setUploading, en }: {
   value: string; onChange: (v: string) => void;
   uploading: boolean; setUploading: (b: boolean) => void;
+  en?: boolean;
 }) {
   const dialogs = useDialogs();
   const fileRef = useRef<HTMLInputElement>(null);
   const previewSrc = value || '/favicon.svg';
+  const convertToSquarePng = (file: File): Promise<File> => new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('decode')); };
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const size = 512;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('canvas')); return; }
+      const scale = Math.min(size / img.width, size / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+      canvas.toBlob((blob) => {
+        if (blob) resolve(new File([blob], 'favicon-512.png', { type: 'image/png' }));
+        else reject(new Error('encode'));
+      }, 'image/png');
+    };
+    img.src = objectUrl;
+  });
+
   const handleFile = async (file?: File | null) => {
     if (!file) return;
+    // The picker accepts any image (mobile galleries hide mismatched MIME
+    // filters), so type and size are validated here after the pick.
+    if (!file.type || !file.type.startsWith('image/')) {
+      dialogs.alert(en
+        ? 'The selected file is not an image. Please choose an image file (PNG, JPG, SVG, ICO, WebP...).'
+        : 'الملف المختار ليس صورة. اختر ملف صورة (PNG أو JPG أو SVG أو ICO أو WebP...).', { severity: 'error' });
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      dialogs.alert(en
+        ? 'The image is larger than 10 MB. Please choose a smaller icon image.'
+        : 'حجم الصورة أكبر من 10 ميجابايت. اختر صورة أيقونة أصغر.', { severity: 'error' });
+      if (fileRef.current) fileRef.current.value = '';
+      return;
+    }
     setUploading(true);
     try {
-      // Original bytes are kept (no webp conversion) so SVG/ICO favicons stay valid.
-      const url = await uploadFileToR2(file, 'landing', 'superadmin', undefined, { skipCompression: true });
+      // SVG and ICO keep their original bytes; every other image (JPG, WebP,
+      // PNG, photos...) is converted here to a square 512x512 PNG so it works
+      // as a favicon everywhere.
+      const keepAsIs = ['image/svg+xml', 'image/x-icon', 'image/vnd.microsoft.icon'].includes(file.type);
+      let toUpload: File | Blob = file;
+      if (!keepAsIs) {
+        try {
+          toUpload = await convertToSquarePng(file);
+        } catch {
+          dialogs.alert(en
+            ? 'This image format could not be converted here. Please pick a PNG, JPG, WebP, SVG or ICO image.'
+            : 'تعذر تحويل صيغة الصورة دي هنا. اختر صورة PNG أو JPG أو WebP أو SVG أو ICO.', { severity: 'error' });
+          return;
+        }
+      }
+      const url = await uploadFileToR2(toUpload, 'landing', 'superadmin', undefined, { skipCompression: true });
       onChange(url);
       dialogs.alert('تم رفع الأيقونة وحفظ رابطها هنا. لا تنسَ الضغط على «حفظ التعديلات».', { severity: 'success' });
     } catch (err: any) {
@@ -137,7 +192,7 @@ function FaviconField({ value, onChange, uploading, setUploading }: {
         </div>
         <div className="flex-1 min-w-[220px] flex flex-col gap-2">
           <input className={inputCls} value={value || ''} dir="ltr" placeholder="اتركه فارغاً للأيقونة الافتراضية" onChange={e => onChange(e.target.value)} />
-          <input ref={fileRef} type="file" accept="image/png,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,.ico" className="hidden" onChange={e => handleFile(e.target.files?.[0])} />
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => handleFile(e.target.files?.[0])} />
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -158,7 +213,7 @@ function FaviconField({ value, onChange, uploading, setUploading }: {
               </button>
             )}
           </div>
-          <span className="text-[10px] text-slate-400">PNG / SVG / ICO — تُرفع كما هي بدون تحويل، وتُقدَّم على /favicon.ico بعد الحفظ.</span>
+          <span className="text-[10px] text-slate-400">أي صورة بحد أقصى 10 ميجابايت — JPG وWebP وPNG تتحوّل تلقائياً لمربع PNG، وSVG/ICO تُرفع كما هي، وتُقدَّم على /favicon.ico بعد الحفظ.</span>
         </div>
       </div>
     </div>
@@ -276,7 +331,7 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
               <Field label={en ? 'Brand name (EN)' : 'اسم البراند'} value={textOf('brandName')} onChange={v => setText('brandName', v)} placeholder={ph('brandName')} dir="ltr" />
               <ImageField label="لوجو الموقع (اتركه فارغاً للوجو الافتراضي)" value={content.logoUrl} onChange={v => setShared('logoUrl', v)} uploading={uploading} setUploading={setUploading} />
             </div>
-            <FaviconField value={content.faviconUrl || ''} onChange={v => setShared('faviconUrl', v)} uploading={uploading} setUploading={setUploading} />
+            <FaviconField value={content.faviconUrl || ''} onChange={v => setShared('faviconUrl', v)} uploading={uploading} setUploading={setUploading} en={en} />
           </div>
         );
 
