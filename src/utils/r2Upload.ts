@@ -18,7 +18,8 @@ export async function uploadFileToR2(
   file: File | Blob,
   category: string = 'attachments',
   clinicIdOrFileName?: string,
-  originalFileName?: string
+  originalFileName?: string,
+  options?: { skipCompression?: boolean }
 ): Promise<string> {
   let targetCategory = category || 'attachments';
   let targetClinicId = '';
@@ -42,7 +43,8 @@ export async function uploadFileToR2(
   let fileToUpload: File | Blob = file;
 
   // Automatically compress image files before sending to Cloudflare R2
-  if (file.type && file.type.startsWith('image/')) {
+  // (skipped for assets that must keep their original bytes, e.g. favicons)
+  if (!options?.skipCompression && file.type && file.type.startsWith('image/')) {
     try {
       const fileObj = file instanceof File ? file : new File([file], fileName, { type: file.type || 'image/jpeg' });
       const { file: compressedFile } = await compressImage(fileObj, 1600, 1600, 0.80, 'image/webp');

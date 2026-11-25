@@ -131,6 +131,29 @@ app.use('/api',async(req,res,next)=>{
   }catch(error){next(error);}
 });
 
+app.get('/favicon.ico', async (req, res) => {
+  // Serves the custom site icon uploaded from the superadmin Website tab
+  // (stored in system_settings/landing_page.faviconUrl). Falls back to the
+  // bundled /favicon.svg when no custom icon is set. A short cache lets a
+  // new icon show up within minutes without hammering the DB per request.
+  let customUrl = '';
+  try {
+    const result = await dbClient.execute({
+      sql: `SELECT data FROM system_settings WHERE id = ?`,
+      args: ['landing_page']
+    });
+    if (result.rows.length > 0) {
+      const parsed = safeParseJson(result.rows[0].data);
+      const candidate = parsed && typeof parsed.faviconUrl === 'string' ? parsed.faviconUrl.trim() : '';
+      if (/^https?:\/\//i.test(candidate)) customUrl = candidate;
+    }
+  } catch (e) {
+    console.warn('[Favicon] Could not read custom favicon setting:', e);
+  }
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  return res.redirect(302, customUrl || '/favicon.svg');
+});
+
 app.get('/api/db-status', async (req, res) => {
   // Superadmin-only: this endpoint exposes internal infrastructure details
   const auth = await getRequestAuth(req);

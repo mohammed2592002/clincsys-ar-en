@@ -625,6 +625,7 @@ export interface LandingSiteContent {
   ar: LandingTexts;
   en?: Partial<LandingTexts>;
   logoUrl: string;
+  faviconUrl: string;
   heroImageUrl: string;
   chartImageUrl: string;
   financeImageUrl: string;
@@ -738,6 +739,7 @@ export const DEFAULT_LANDING_CONTENT: LandingSiteContent = {
   ar: DEFAULT_LANDING_TEXTS_AR,
   en: DEFAULT_LANDING_TEXTS_EN,
   logoUrl: '',
+  faviconUrl: '',
   heroImageUrl: '/landing/appointments.jpg',
   chartImageUrl: '/landing/chart.jpg',
   financeImageUrl: '/landing/finance.jpg',
@@ -817,7 +819,7 @@ export function mergeLandingContent(stored: any): LandingSiteContent {
       };
     });
   };
-  for (const k of ['logoUrl', 'heroImageUrl', 'chartImageUrl', 'financeImageUrl', 'whatsappCommunityUrl', 'facebookUrl']) {
+  for (const k of ['faviconUrl', 'logoUrl', 'heroImageUrl', 'chartImageUrl', 'financeImageUrl', 'whatsappCommunityUrl', 'facebookUrl']) {
     if (k in out) out[k] = safeLandingUrl(out[k]);
   }
   out.features = mergeList(base.features, stored.features);

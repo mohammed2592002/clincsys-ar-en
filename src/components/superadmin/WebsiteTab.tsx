@@ -85,6 +85,86 @@ function ImageField({ label, value, onChange, uploading, setUploading }: {
   );
 }
 
+function FaviconField({ value, onChange, uploading, setUploading }: {
+  value: string; onChange: (v: string) => void;
+  uploading: boolean; setUploading: (b: boolean) => void;
+}) {
+  const dialogs = useDialogs();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const previewSrc = value || '/favicon.svg';
+  const handleFile = async (file?: File | null) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      // Original bytes are kept (no webp conversion) so SVG/ICO favicons stay valid.
+      const url = await uploadFileToR2(file, 'landing', 'superadmin', undefined, { skipCompression: true });
+      onChange(url);
+      dialogs.alert('تم رفع الأيقونة وحفظ رابطها هنا. لا تنسَ الضغط على «حفظ التعديلات».', { severity: 'success' });
+    } catch (err: any) {
+      dialogs.alert('فشل رفع الأيقونة: ' + (err?.message || err), { severity: 'error' });
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+  const resetToDefault = () => {
+    onChange('');
+    dialogs.alert('سيتم الرجوع للأيقونة الافتراضية بعد الضغط على «حفظ التعديلات».', { severity: 'info' });
+  };
+  return (
+    <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/60">
+      <label className={labelCls}>أيقونة الموقع (Favicon)</label>
+      <p className="text-[11px] text-slate-400 mb-3 leading-relaxed">
+        الأيقونة الصغيرة التي تظهر في تبويب المتصفح ونتائج البحث لكل صفحات الموقع (الرئيسية و/ar و/en وتسجيل الدخول).
+        ارفع صورة مربعة (يفضّل PNG أو SVG بحجم 512×512). عند تركها فارغة تُستخدم الأيقونة الافتراضية.
+      </p>
+      <div className="flex flex-wrap items-center gap-5">
+        <div className="flex flex-col gap-2">
+          <div className="w-56 bg-white border border-slate-200 rounded-t-xl shadow-sm overflow-hidden">
+            <div className="bg-slate-100 px-2.5 py-1.5 flex items-center gap-1.5 border-b border-slate-200">
+              <img src={previewSrc} alt="" className="w-4 h-4 rounded" />
+              <span className="text-[10px] font-semibold text-slate-600 truncate" dir="ltr">CoreDentSys</span>
+            </div>
+          </div>
+          <div className="flex items-end gap-3">
+            {[48, 32, 16].map(sz => (
+              <div key={sz} className="text-center">
+                <img src={previewSrc} alt="" width={sz} height={sz} className="mx-auto mb-1 rounded border border-slate-200 bg-white" />
+                <span className="text-[9px] font-bold text-slate-400">{sz}px</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex-1 min-w-[220px] flex flex-col gap-2">
+          <input className={inputCls} value={value || ''} dir="ltr" placeholder="اتركه فارغاً للأيقونة الافتراضية" onChange={e => onChange(e.target.value)} />
+          <input ref={fileRef} type="file" accept="image/png,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,.ico" className="hidden" onChange={e => handleFile(e.target.files?.[0])} />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="flex items-center gap-1.5 bg-slate-800 text-white rounded-xl px-3.5 py-2.5 text-xs font-bold hover:bg-slate-700 disabled:opacity-50"
+            >
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              رفع أيقونة
+            </button>
+            {value && (
+              <button
+                type="button"
+                onClick={resetToDefault}
+                className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-600 rounded-xl px-3.5 py-2.5 text-xs font-bold hover:bg-slate-50"
+              >
+                استعادة الافتراضية
+              </button>
+            )}
+          </div>
+          <span className="text-[10px] text-slate-400">PNG / SVG / ICO — تُرفع كما هي بدون تحويل، وتُقدَّم على /favicon.ico بعد الحفظ.</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type SectionKey = 'identity' | 'hero' | 'images' | 'shots' | 'pains' | 'contact' | 'headerSections' | 'features' | 'stats' | 'steps' | 'plans';
 
 interface SectionMeta {
@@ -191,9 +271,12 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
     switch (key) {
       case 'identity':
         return (
-          <div className="grid md:grid-cols-2 gap-4">
-            <Field label={en ? 'Brand name (EN)' : 'اسم البراند'} value={textOf('brandName')} onChange={v => setText('brandName', v)} placeholder={ph('brandName')} dir="ltr" />
-            <ImageField label="لوجو الموقع (اتركه فارغاً للوجو الافتراضي)" value={content.logoUrl} onChange={v => setShared('logoUrl', v)} uploading={uploading} setUploading={setUploading} />
+          <div className="flex flex-col gap-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              <Field label={en ? 'Brand name (EN)' : 'اسم البراند'} value={textOf('brandName')} onChange={v => setText('brandName', v)} placeholder={ph('brandName')} dir="ltr" />
+              <ImageField label="لوجو الموقع (اتركه فارغاً للوجو الافتراضي)" value={content.logoUrl} onChange={v => setShared('logoUrl', v)} uploading={uploading} setUploading={setUploading} />
+            </div>
+            <FaviconField value={content.faviconUrl || ''} onChange={v => setShared('faviconUrl', v)} uploading={uploading} setUploading={setUploading} />
           </div>
         );
 
