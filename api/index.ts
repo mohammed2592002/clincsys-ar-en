@@ -3515,11 +3515,18 @@ function validateUploadedFile(name: string, data: Buffer | undefined, size: numb
 // trusted, and the stored ownership always comes from the authenticated token.
 function resolveUploadClinicId(auth: AuthInfo, requested?: string): { clinicId: string } | { errorStatus: number } {
   const requestedId = (requested || '').trim();
-  // Every superadmin upload lands under the dedicated clinics/superadmin/ R2
-  // prefix (an explicit clinic id is still honored when one is requested).
+  // Every superadmin upload lands under the dedicated top-level superadmin/
+  // R2 prefix (an explicit clinic id is still honored when one is requested).
   if (auth.type === 'admin') return { clinicId: requestedId || 'superadmin' };
   if (requestedId && auth.clinicId && requestedId !== auth.clinicId) return { errorStatus: 403 };
   return { clinicId: auth.clinicId || requestedId || 'global' };
+}
+
+// Key prefix for an upload owner: superadmin uploads live at the top-level
+// superadmin/ prefix (outside clinics/, per the owner); clinic uploads stay
+// under clinics/{clinicId}/.
+function uploadKeyPrefix(clinicId: string): string {
+  return clinicId === 'superadmin' ? 'superadmin/' : `clinics/${clinicId}/`;
 }
 
 // Helper to construct R2 File Key according to standard structure: clinics/{clinicId}/{category}/{fileName}
@@ -3543,7 +3550,7 @@ function buildR2FileKey(rawClinicId?: string, rawCategory?: string, rawFolder?: 
   // Random segment makes stored keys (and therefore public R2 URLs) unguessable.
   const cleanName = `${Date.now()}_${crypto.randomBytes(8).toString('hex')}_${(fileName || `file_${Date.now()}`).replace(/[^a-zA-Z0-9.-]/g, '_')}`;
 
-  return `clinics/${cleanClinicId}/${cleanCategory}/${cleanName}`;
+  return `${uploadKeyPrefix(cleanClinicId)}${cleanCategory}/${cleanName}`;
 }
 
 // Cloudflare R2 Direct Upload Presigned URL Generator
@@ -3626,7 +3633,7 @@ app.get('/api/get-upload-url', async (req, res) => {
 // browser finished its presigned PUT. Ownership rules match /api/upload: the stored
 // clinic always comes from the authenticated token, and the key must live under that
 // clinic's prefix, so one clinic cannot register another clinic's objects.
-const R2_KEY_PATTERN = /^clinics\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9._-]+$/;
+const R2_KEY_PATTERN = /^(?:clinics\/[A-Za-z0-9_-]+|superadmin)\/[A-Za-z0-9_-]+\/[A-Za-z0-9._-]+$/;
 app.post('/api/confirm-upload', async (req, res) => {
   const auth = await getRequestAuth(req);
   if (!auth) return res.status(401).json({ error: 'authentication_required' });
@@ -3638,7 +3645,7 @@ app.post('/api/confirm-upload', async (req, res) => {
     }
     const owner = resolveUploadClinicId(auth, clinicId);
     if ('errorStatus' in owner) return res.status(owner.errorStatus).json({ error: 'forbidden' });
-    if (!fileKey.startsWith(`clinics/${owner.clinicId}/`)) {
+    if (!fileKey.startsWith(uploadKeyPrefix(owner.clinicId))) {
       return res.status(403).json({ error: 'forbidden', message: 'لا يمكن تسجيل ملف لعيادة أخرى' });
     }
     // Mime is derived from the verified extension, never from client input.
