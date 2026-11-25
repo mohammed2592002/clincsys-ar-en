@@ -8,7 +8,8 @@ import { uploadFileToR2 } from '../../utils/r2Upload';
 import {
   Save, Plus, Trash2, Image as ImageIcon, Upload, Loader2,
   Type, Phone, LayoutGrid, ListOrdered, CreditCard, BarChart3, ExternalLink,
-  Sparkles, Compass, Clock, MessageSquare, Camera
+  Sparkles, Compass, Clock, MessageSquare, Camera, MessageCircleQuestionMark,
+  ChevronUp, ChevronDown, GripVertical
 } from 'lucide-react';
 
 type EditLang = 'ar' | 'en';
@@ -220,7 +221,7 @@ function FaviconField({ value, onChange, uploading, setUploading, en }: {
   );
 }
 
-type SectionKey = 'identity' | 'hero' | 'images' | 'shots' | 'pains' | 'contact' | 'headerSections' | 'features' | 'stats' | 'steps' | 'plans';
+type SectionKey = 'identity' | 'hero' | 'images' | 'shots' | 'pains' | 'contact' | 'headerSections' | 'features' | 'stats' | 'steps' | 'plans' | 'faq';
 
 interface SectionMeta {
   key: SectionKey;
@@ -243,6 +244,7 @@ const SECTIONS: SectionMeta[] = [
   { key: 'stats', label: 'شريط الإحصائيات', icon: BarChart3, hint: 'الشريط الملون اللي تحت الهيرو (4 خانات).' },
   { key: 'steps', label: 'خطوات البداية (3)', icon: ListOrdered, hint: 'الخطوات الثلاثة اللي بتشرح للدكتور إزاي يبدأ.' },
   { key: 'plans', label: 'خطط الأسعار', icon: CreditCard, hint: 'أضف أو احذف أو عدل أي خطة. السعر وشارة «الأكثر اختياراً» مشتركين بين اللغتين.' },
+  { key: 'faq', label: 'الأسئلة الشائعة', icon: MessageCircleQuestionMark, hint: 'أسئلة وأجوبة بتظهر في سكشن الأسئلة الشائعة على الموقع، قبل زرار البداية الأخير مباشرة.' },
 ];
 
 const arTime = (d: Date) => new Intl.DateTimeFormat('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit' }).format(d);
@@ -298,6 +300,20 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
     return en ? '' : (item?.ar?.[field] ?? '');
   };
   const setShared = (key: keyof LandingSiteContent, v: any) => setContent(prev => ({ ...prev, [key]: v }));
+
+  // FAQ items edit both languages in the same card (per the approved mockup),
+  // so they do not use the editLang-scoped setListText helper.
+  const setFaqField = (id: string, lang: 'ar' | 'en', field: 'q' | 'a', v: string) =>
+    setContent(prev => ({ ...prev, faqs: prev.faqs.map(f => f.id === id ? { ...f, [lang]: { ...(f[lang] || {}), [field]: v } } : f) }));
+  const moveFaq = (i: number, d: -1 | 1) => setContent(prev => {
+    const arr = [...prev.faqs];
+    const j = i + d;
+    if (j < 0 || j >= arr.length) return prev;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    return { ...prev, faqs: arr };
+  });
+  const addFaq = () => setContent(prev => ({ ...prev, faqs: [...prev.faqs, { id: 'fq' + Date.now(), ar: { q: '', a: '' }, en: { q: '', a: '' } }] }));
+  const delFaq = (id: string) => setContent(prev => ({ ...prev, faqs: prev.faqs.filter(f => f.id !== id) }));
 
   const handleSafeSave = async () => {
     if (!content.ar.brandName.trim()) {
@@ -522,6 +538,49 @@ export default function WebsiteTab({ content, setContent, onSave, isSaving, isLo
                 <Area label="الوصف" value={itemText(s, 'label')} onChange={v => setListText('stats', s.id, 'label', v)} placeholder={en ? `العربي: ${s.ar.label}` : undefined} dir={dir} />
               </div>
             ))}
+          </div>
+        );
+
+      case 'faq':
+        return (
+          <div className="flex flex-col gap-4">
+            <label className="flex items-center justify-between border border-slate-200 rounded-2xl px-4 py-3.5 bg-slate-50/60 cursor-pointer select-none">
+              <span className="text-xs font-bold text-slate-600">إظهار سكشن الأسئلة الشائعة في الموقع</span>
+              <input
+                type="checkbox"
+                checked={content.faqVisible !== false}
+                onChange={e => setShared('faqVisible', e.target.checked)}
+                className="w-4 h-4 accent-emerald-600"
+              />
+            </label>
+            {content.faqs.map((f, i) => (
+              <div key={f.id} className="border border-slate-200 rounded-2xl p-4 bg-slate-50/60">
+                <div className="flex items-center gap-2 mb-3">
+                  <GripVertical className="h-4 w-4 text-slate-300 flex-none" />
+                  <span className="bg-emerald-50 text-emerald-700 text-[11px] font-black rounded-lg px-2.5 py-1 flex-none">سؤال {i + 1}</span>
+                  <span className="flex-1 text-xs font-bold text-slate-500 truncate">{f.ar.q || '...'}</span>
+                  <button type="button" title="تقديم" disabled={i === 0} onClick={() => moveFaq(i, -1)} className="w-8 h-8 flex-none rounded-lg border border-slate-200 bg-white text-slate-500 flex items-center justify-center disabled:opacity-30 hover:bg-slate-50">
+                    <ChevronUp className="h-4 w-4" />
+                  </button>
+                  <button type="button" title="تأخير" disabled={i === content.faqs.length - 1} onClick={() => moveFaq(i, 1)} className="w-8 h-8 flex-none rounded-lg border border-slate-200 bg-white text-slate-500 flex items-center justify-center disabled:opacity-30 hover:bg-slate-50">
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                  <button type="button" title="حذف السؤال" onClick={() => delFaq(f.id)} className="w-8 h-8 flex-none rounded-lg border border-slate-200 bg-white text-red-500 flex items-center justify-center hover:bg-red-50">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Field label="السؤال (عربي)" value={f.ar.q} onChange={v => setFaqField(f.id, 'ar', 'q', v)} dir="rtl" />
+                  <Field label="السؤال (إنجليزي)" value={f.en?.q || ''} onChange={v => setFaqField(f.id, 'en', 'q', v)} dir="ltr" />
+                  <Area label="الإجابة (عربي)" value={f.ar.a} onChange={v => setFaqField(f.id, 'ar', 'a', v)} dir="rtl" rows={3} />
+                  <Area label="الإجابة (إنجليزي)" value={f.en?.a || ''} onChange={v => setFaqField(f.id, 'en', 'a', v)} dir="ltr" rows={3} />
+                </div>
+              </div>
+            ))}
+            <button type="button" onClick={addFaq} className="w-full border-2 border-dashed border-emerald-300 text-emerald-700 rounded-2xl py-3.5 text-sm font-black flex items-center justify-center gap-2 hover:bg-emerald-50/50">
+              <Plus className="h-4 w-4" />
+              إضافة سؤال جديد
+            </button>
           </div>
         );
 

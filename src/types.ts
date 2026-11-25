@@ -574,6 +574,8 @@ export interface LandingTexts {
   featuresSubtitle: string;
   stepsKicker: string;
   stepsTitle: string;
+  faqKicker: string;
+  faqTitle: string;
   pricingKicker: string;
   pricingTitle: string;
   pricingSubtitle: string;
@@ -607,6 +609,12 @@ export interface LandingStep {
   en?: { title?: string; desc?: string };
 }
 
+export interface LandingFaq {
+  id: string;
+  ar: { q: string; a: string };
+  en?: { q?: string; a?: string };
+}
+
 export interface LandingPain {
   id: string;
   ar: { text: string };
@@ -637,6 +645,8 @@ export interface LandingSiteContent {
   steps: LandingStep[];
   plans: LandingPlan[];
   pains: LandingPain[];
+  faqs: LandingFaq[];
+  faqVisible?: boolean;
   updatedAt?: string;
 }
 
@@ -676,6 +686,8 @@ export const DEFAULT_LANDING_TEXTS_AR: LandingTexts = {
   featuresSubtitle: 'من أول ما المريض يدخل لحد ما يدفع ويتابع، النظام مغطي كل خطوة في يومك.',
   stepsKicker: 'إزاي تبدأ',
   stepsTitle: 'تلات خطوات وتشتغل',
+  faqKicker: 'الأسئلة الشائعة',
+  faqTitle: 'عندك سؤال؟ غالباً أجبنا عليه',
   pricingKicker: 'الأسعار',
   pricingTitle: 'باقة على مقاس عيادتك',
   pricingSubtitle: 'ابدأ بتجربة مجانية 7 أيام، وبعدها اختار الباقة اللي تناسبك. مفيش عقود ولا التزام.',
@@ -721,6 +733,8 @@ export const DEFAULT_LANDING_TEXTS_EN: LandingTexts = {
   featuresSubtitle: 'From the moment a patient walks in until they pay and follow up, the system covers every step of your day.',
   stepsKicker: 'Getting started',
   stepsTitle: 'Three steps and you\u2019re running',
+  faqKicker: 'FAQ',
+  faqTitle: 'Questions? We already answered most of them',
   pricingKicker: 'Pricing',
   pricingTitle: 'A plan that fits your clinic',
   pricingSubtitle: 'Start with a free 7-day trial, then pick the plan that suits you. No contracts, no commitment.',
@@ -771,6 +785,14 @@ export const DEFAULT_LANDING_CONTENT: LandingSiteContent = {
     { id: 'st1', ar: { title: 'اطلب تجربتك المجانية', desc: 'كلّمنا على واتساب وهنجهزلك حساب تجريبي لعيادتك في دقايق — 7 أيام مجاناً.' }, en: { title: 'Request your free trial', desc: 'Message us on WhatsApp and we\u2019ll set up a trial account for your clinic in minutes — free for 7 days.' } },
     { id: 'st2', ar: { title: 'سجّل مرضاك ومواعيدك', desc: 'واجهة عربية بسيطة، الموظفة هتعرف تشتغل عليها من أول يوم من غير تدريب.' }, en: { title: 'Add patients & appointments', desc: 'A simple interface your receptionist will use from day one, no training needed.' } },
     { id: 'st3', ar: { title: 'تابع عيادتك من أي مكان', desc: 'من الموبايل أو الكمبيوتر: مواعيد النهاردة، إيراد اليوم، وتقاريرك — كلها قدامك.' }, en: { title: 'Follow your clinic anywhere', desc: 'From phone or computer: today\u2019s appointments, daily revenue and reports — all in front of you.' } }
+  ],
+  faqVisible: true,
+  faqs: [
+    { id: 'fq1', ar: { q: 'هل في تجربة مجانية فعلاً؟', a: 'أيوه، أول ٧ أيام مجاناً بالكامل ومن غير أي التزام أو بطاقة بنكية. بنجهزلك حساب عيادتك وتجرب كل حاجة براحتك، وبعدها تقرر تكمل أو لأ.' }, en: { q: 'Is there really a free trial?', a: 'Yes. The first 7 days are completely free, with no commitment and no bank card. We set up your clinic account, you try everything at your own pace, then you decide.' } },
+    { id: 'fq2', ar: { q: 'بكام الاشتراك بعد التجربة؟', a: 'باقات شهرية واضحة ومكتوبة فوق في قسم الأسعار، من غير رسوم خفية ولا مفاجآت. وتقدر تلغي في أي وقت من غير غرامات.' }, en: { q: 'How much is the subscription after the trial?', a: 'Clear monthly plans, listed in the Pricing section above. No hidden fees, no surprises, and you can cancel anytime without penalties.' } },
+    { id: 'fq3', ar: { q: 'بيانات عيادتي ومرضاي في أمان؟', a: 'بياناتك متشفرة ومحفوظة على سيرفرات آمنة، وبنعمل نسخة احتياطية يومية تلقائياً لكل العيادات. وبيانات مرضاك ملكك لوحدك، محدش يشوفها غيرك.' }, en: { q: 'Is my clinic and patient data safe?', a: 'Your data is encrypted and stored on secure servers, with automatic daily backups for every clinic. Your patients\u2019 data belongs to you alone, and nobody else sees it.' } },
+    { id: 'fq4', ar: { q: 'لو النت قطع، النظام هيقف؟', a: 'لأ. النظام بيشتغل أوفلاين بالكامل: حجوزات وملفات وحسابات، وأول ما النت يرجع بيتعمل مزامنة تلقائية من غير ما تفقد أي حاجة.' }, en: { q: 'What happens if the internet goes down?', a: 'Nothing stops. The system works fully offline for bookings, files and accounts, and syncs automatically once the connection is back, without losing anything.' } },
+    { id: 'fq5', ar: { q: 'في حد يساعدني لو وقفت في حاجة؟', a: 'فريق دعم عربي جاهز على واتساب في أي وقت. وكمان بنجهزلك العيادة وننقل بياناتك الحالية معاك خطوة بخطوة.' }, en: { q: 'Is there someone to help if I get stuck?', a: 'An Arabic-speaking support team is available on WhatsApp anytime. We also set up your clinic and migrate your existing data with you, step by step.' } }
   ],
   plans: [
     {
@@ -827,5 +849,6 @@ export function mergeLandingContent(stored: any): LandingSiteContent {
   out.steps = mergeList(base.steps, stored.steps);
   out.plans = mergeList(base.plans, stored.plans);
   out.pains = mergeList(base.pains, stored.pains);
+  out.faqs = mergeList(base.faqs, stored.faqs);
   return out as LandingSiteContent;
 }

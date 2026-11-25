@@ -88,6 +88,7 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
   const [content, setContent] = useState<LandingSiteContent>(() => mergeLandingContent(null));
   // /en and /ar are standalone language URLs (server-rendered head per path);
   // the root stays the Arabic default.
+  const [openFaq, setOpenFaq] = useState<number>(0);
   const [lang, setLang] = useState<'ar' | 'en'>(() =>
     window.location.pathname.replace(/\/+$/, '') === '/en' ? 'en' : 'ar',
   );
@@ -464,6 +465,31 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
         </div>
       </section>
 
+      {/* ================= FAQ ================= */}
+      {content.faqVisible !== false && content.faqs.length > 0 && (
+        <section className="faq" id="faq">
+          <div className="wrap">
+            {T.faqKicker && <span className="label"><Copy>{T.faqKicker}</Copy></span>}
+            <h2><Copy>{T.faqTitle}</Copy></h2>
+            <div className="faq-list">
+              {content.faqs.map((f, i) => {
+                const t = lt(f);
+                const open = openFaq === i;
+                return (
+                  <div className={`faq-item${open ? ' open' : ''}`} key={f.id}>
+                    <div className="faq-q" onClick={() => setOpenFaq(open ? -1 : i)}>
+                      <span><Copy>{t.q}</Copy></span>
+                      <span className="ic">{open ? '\u2212' : '+'}</span>
+                    </div>
+                    {open && <div className="faq-a"><Copy>{t.a}</Copy></div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ================= CTA ================= */}
       <section className="cta">
         <div className="wrap">
@@ -495,7 +521,9 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
           {content.facebookUrl && (
             <a href={content.facebookUrl} target="_blank" rel="noopener noreferrer"><Copy>{T.footerFacebookLabel}</Copy></a>
           )}
-          <a href="#contact" onClick={(e) => e.preventDefault()}><Copy>{T.footerFaqLabel}</Copy></a>
+          {content.faqVisible !== false && content.faqs.length > 0 && (
+            <a href="#faq" onClick={scrollTo('faq')}><Copy>{T.footerFaqLabel}</Copy></a>
+          )}
           <Copy>{T.footerCopyright}</Copy>
         </div>
       </footer>

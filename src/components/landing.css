@@ -201,3 +201,21 @@
   .lp-root .login{padding:8px 12px;font-size:13px}
   .lp-root .lang{padding:6px 9px;font-size:12px}
 }
+
+/* FAQ accordion */
+.lp-root .faq{padding:90px 0;background:var(--paper)}
+.lp-root .faq h2{font-size:44px;font-weight:700;margin-top:16px}
+.lp-root .faq-list{max-width:780px;margin:44px auto 0;display:flex;flex-direction:column;gap:14px}
+.lp-root .faq-item{background:var(--white);border:1.5px solid var(--line);border-radius:14px;overflow:hidden;transition:border-color .2s, box-shadow .2s}
+.lp-root .faq-item.open{border-color:var(--accent);box-shadow:6px 6px 0 rgba(21,32,28,.06)}
+.lp-root .faq-q{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px;font-family:'El Messiri',serif;font-size:19.5px;font-weight:600;cursor:pointer;user-select:none}
+.lp-root .faq-q .ic{flex:none;width:28px;height:28px;border-radius:50%;border:1.5px solid var(--accent);color:var(--accent-deep);display:flex;align-items:center;justify-content:center;font-size:17px;font-family:'Almarai',sans-serif;font-weight:700;transition:.2s}
+.lp-root .faq-item.open .ic{background:var(--accent-deep);border-color:var(--accent-deep);color:#F4FAF7}
+.lp-root .faq-a{padding:0 24px 22px;color:var(--ink-soft);font-size:15.5px;line-height:1.9}
+.lp-root[dir="ltr"] .faq h2{font-weight:600}
+@media (max-width:860px){
+  .lp-root .faq{padding:64px 0}
+  .lp-root .faq h2{font-size:32px}
+  .lp-root .faq-q{font-size:17.5px;padding:16px 18px}
+  .lp-root .faq-a{padding:0 18px 18px}
+}
