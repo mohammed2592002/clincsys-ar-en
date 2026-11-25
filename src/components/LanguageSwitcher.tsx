@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Globe, Check } from 'lucide-react';
+import { safeStorage } from '../utils/storage';
 
 interface LanguageSwitcherProps {
   variant?: 'compact' | 'pill' | 'header';
@@ -14,8 +15,12 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = 'p
   const applyLanguage = (lang: 'ar' | 'en') => {
     // The public landing page has a dedicated URL per language (/ar, /en);
     // switching there navigates so Google sees two standalone pages.
+    // Logged-in sessions can also sit on / or /en, and for them the switcher
+    // must only change the language: a navigation would reload the app and
+    // drop its in-memory state.
+    const isLoggedIn = !!safeStorage.getItem('dental_saas_session');
     const path = window.location.pathname.replace(/\/+$/, '') || '/';
-    if (path === '/' || path === '/ar' || path === '/en') {
+    if (!isLoggedIn && (path === '/' || path === '/ar' || path === '/en')) {
       const target = '/' + lang;
       if (path !== target) {
         window.location.assign(target);
