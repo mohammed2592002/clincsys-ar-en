@@ -94,7 +94,7 @@
 .lp-root .steps{padding:90px 0;background:var(--paper2)}
 .lp-root .steps h2{font-size:40px;font-weight:700;margin-top:16px}
 .lp-root .steps-grid{margin-top:52px;display:grid;grid-template-columns:repeat(3,1fr);gap:48px}
-.lp-root .step{position:relative;padding-top:26px;border-top:2px dashed var(--accent)}
+.lp-root .step{position:relative;padding-top:44px;border-top:2px dashed var(--accent)}
 .lp-root .step b{position:absolute;top:-30px;inset-inline-start:0;font-family:'El Messiri',serif;font-size:52px;font-weight:700;color:var(--accent);background:var(--paper2);padding-inline-end:14px}
 .lp-root .step h3{font-size:23px;font-weight:600;margin-bottom:10px}
 .lp-root .step p{font-size:15.5px;line-height:1.9;color:var(--ink-soft)}
