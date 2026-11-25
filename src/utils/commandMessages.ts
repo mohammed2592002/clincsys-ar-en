@@ -136,6 +136,14 @@ export function commandMessage(message: string, english: boolean): string {
       "معرف السجل مستخدم",
       "This record ID is already in use. Review the conflicting record.",
     ],
+    [
+      "حذف المريض يحتاج اتصال",
+      "Deleting a patient needs a server connection. Try again when the connection returns.",
+    ],
+    [
+      "الطلب غير موجود على هذا الجهاز",
+      "This request no longer exists on this device.",
+    ],
     ["العيادة موقوفة", "This clinic is suspended."],
     ["يلزم تسجيل الدخول", "Sign in before continuing."],
     ["غير مصرح", "This account is not authorized for the requested record."],

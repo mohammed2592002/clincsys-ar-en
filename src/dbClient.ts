@@ -651,8 +651,22 @@ export async function getClinicPatientStats(clinicId:string){
 }
 
 const commandError=(message:string)=>new Error(commandMessage(message,(safeStorage.getItem('i18nextLng')||'ar').startsWith('en')));
+// A request the server rejected by rule (blocked delete, invalid money write)
+// is discarded instead of parked as an unresolvable conflict: the local record
+// is restored from the server copy and the caller gets a flagged error for a popup.
+const commandRejectedError=(message:string)=>{const err:any=commandError(message||'لم يؤكد السيرفر الطلب');err.rejected=true;return err;};
+const isRuleRejection=(command:DurableCommand,conflict:any)=>(command.body?.action==='delete'||command.financial)&&!conflict;
+async function restoreLocalFromServer(command:DurableCommand){
+ if(!command.localPath||!command.localId)return;
+ try{
+  const response=await fetch('/api/db',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({action:'getDoc',path:command.localPath,id:command.localId})});
+  if(response.ok){const docData=await response.json();if(docData)await saveLocalDoc(command.localPath,command.localId,{...docData,_syncStatus:'confirmed'});else await removeLocalDoc(command.localPath,command.localId);}
+ }catch{}
+ clearQueryCache();notifyLocalSync(command.localPath,'restored',command.localId);
+}
+export interface FlushSummary{confirmed:number;blocked:number;failed:number;offline?:boolean}
 // The queue persists commands, never a replacement paid-balance snapshot.
-let commandFlush:Promise<void>|null=null;
+let commandFlush:Promise<FlushSummary>|null=null;
 const activeSends = new Map<string, Promise<any>>();
 function sendDurable(command:DurableCommand, manual=false):Promise<any>{
  const existing=activeSends.get(command.id);if(existing)return existing;
@@ -676,7 +690,7 @@ async function sendDurableOnce(command:DurableCommand,manual=false){
     command.error='الطلب محفوظ وسيعاد تلقائياً بعد انتهاء حد الطلبات';delete command.conflict;
     await saveCommand(command);throw commandError(command.error);
   }
-  if(!response.ok){if(response.status>=400&&response.status<500){command.status='conflict';command.error=result.message||'يلزم مراجعة الطلب';command.conflict=result.conflict;if(command.body.table==='clinics'&&Object.prototype.hasOwnProperty.call(command.body.data||{},'paymentMethods'))await removeCommand(command.id);else await saveCommand(command);}throw commandError(result.message||'لم يؤكد السيرفر الطلب');}
+  if(!response.ok){if(response.status>=400&&response.status<500){if(isRuleRejection(command,result.conflict)){await removeCommand(command.id);await restoreLocalFromServer(command);throw commandRejectedError(result.message||'');}command.status='conflict';command.error=result.message||'يلزم مراجعة الطلب';command.conflict=result.conflict;if(command.body.table==='clinics'&&Object.prototype.hasOwnProperty.call(command.body.data||{},'paymentMethods'))await removeCommand(command.id);else await saveCommand(command);}throw commandError(result.message||'لم يؤكد السيرفر الطلب');}
   if(result.appointment)await saveLocalDoc('clinics/'+command.clinicId+'/appointments',result.appointment.id,result.appointment);
   if(command.localPath&&command.localId){if(command.body.action==='delete')await removeLocalDoc(command.localPath,command.localId);else await saveLocalDoc(command.localPath,command.localId,{...(command.body.table==='clinics'?await getLocalDoc(command.localPath,command.localId):{}),...result,_syncStatus:'confirmed'});}
   await removeCommand(command.id);if(command.localPath&&command.localId){for(const next of await listCommands()){if(next.localPath===command.localPath&&next.localId===command.localId&&next.body.action==='write'&&next.body.optimistic){const cached=await getLocalDoc(command.localPath,command.localId);await saveLocalDoc(command.localPath,command.localId,{...cached,...next.body.data,_syncStatus:next.status==='conflict'?'conflict':'pending'});}}}clearQueryCache();window.dispatchEvent(new CustomEvent('clinic-sync',{detail:{action:'command-confirmed'}}));syncChannel?.postMessage({action:'command-confirmed'});return result;
@@ -693,15 +707,15 @@ function commandsDependOn(current:DurableCommand,earlier:DurableCommand){
 function isLegacyRateLimitConflict(command:DurableCommand){
  return command.status==='conflict'&&(command.lastHttpStatus===429||/rate_limited|too many requests|طلبات كثيرة|محاولات كثيرة/i.test(command.error||''));
 }
-export async function flushDurableCommands(options:{manual?:boolean}={}){if(commandFlush)return commandFlush;if(!navigator.onLine || !isPageVisible())return;
- commandFlush=(async()=>{const owner=commandOwner(getAuthToken()),blocked:DurableCommand[]=[];for(const command of await listCommands()){
+export async function flushDurableCommands(options:{manual?:boolean}={}):Promise<FlushSummary>{if(commandFlush)return commandFlush;if(!navigator.onLine || !isPageVisible())return {confirmed:0,blocked:0,failed:0,offline:true};
+ commandFlush=(async()=>{const summary:FlushSummary={confirmed:0,blocked:0,failed:0};const owner=commandOwner(getAuthToken()),blocked:DurableCommand[]=[];for(const command of await listCommands()){
   if(command.owner!==owner)continue;
   if(isLegacyRateLimitConflict(command)){command.status='pending';command.lastHttpStatus=429;delete command.conflict;delete command.retryAt;await saveCommand(command);}
-  if(!options.manual&&((command.screen && command.screen !== getActiveRequestScreen()) || !screenOwnsPath(command.localPath || ('clinics/'+command.clinicId+'/'+(command.body.table || 'appointments'))))){blocked.push(command);continue;}
-  if(command.status==='conflict'||blocked.some(c=>commandsDependOn(command,c))){blocked.push(command);continue;}
-  if(command.retryAt&&command.retryAt>Date.now()){blocked.push(command);continue;}
-  try{await sendDurable(command,options.manual);}catch{if((command as DurableCommand).status==='conflict'){blocked.push(command);continue;}break;}
- }})().finally(()=>{commandFlush=null;});return commandFlush;
+  if(!options.manual&&((command.screen && command.screen !== getActiveRequestScreen()) || !screenOwnsPath(command.localPath || ('clinics/'+command.clinicId+'/'+(command.body.table || 'appointments'))))){blocked.push(command);summary.blocked++;continue;}
+  if(command.status==='conflict'||blocked.some(c=>commandsDependOn(command,c))){blocked.push(command);summary.blocked++;continue;}
+  if(command.retryAt&&command.retryAt>Date.now()){blocked.push(command);summary.blocked++;continue;}
+  try{await sendDurable(command,options.manual);summary.confirmed++;}catch(e:any){if(e&&e.rejected){summary.failed++;continue;}if((command as DurableCommand).status==='conflict'){blocked.push(command);summary.blocked++;continue;}summary.failed++;break;}
+ }return summary;})().finally(()=>{commandFlush=null;});return commandFlush;
 }
 export async function inspectFinancialConflict(id:string){const command=(await getPendingCommands()).find(c=>c.id===id);if(!command||!command.financial||command.status!=='conflict')throw commandError('اختر طلبًا ماليًا متعارضًا');const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId:command.clinicId,action:'inspect_pending',targetRequestId:command.id,appointmentId:command.body.appointmentId})});if(!response.ok)throw commandError((await response.json()).message||'تعذر المراجعة المالية');return {command,...await response.json()};}
 export async function reconcileFinancialConflict(id:string,reason:string){const review=await inspectFinancialConflict(id);const response=await fetch('/api/finance',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({clinicId:review.command.clinicId,action:'review_pending',targetRequestId:id,reason,requestId:crypto.randomUUID()})});const result=await response.json();if(!response.ok)throw commandError(result.message||'لم يؤكد السيرفر المراجعة');await settleConflict({...review.command,status:'resolved',resolution:result.reviewState,resolvedAt:new Date().toISOString()});if(result.originalResult?.appointment)await saveLocalDoc('clinics/'+review.command.clinicId+'/appointments',result.originalResult.appointment.id,result.originalResult.appointment);clearQueryCache();window.dispatchEvent(new CustomEvent('clinic-sync',{detail:{action:'financial-reviewed'}}));return result;}
@@ -719,6 +733,12 @@ export async function resolveDurableCommand(id:string,choice:'server'|'local',re
  await settleConflict({...command,status:'resolved',resolution:choice,resolvedAt:new Date().toISOString()},replacement);
  if(choice==='server'&&command.localPath&&command.localId)await saveLocalDoc(command.localPath,command.localId,{...current,_syncStatus:'confirmed'});
  clearQueryCache();notifyLocalSync(command.localPath||'','conflict-reviewed',command.localId);await flushDurableCommands();
+}
+export async function cancelDurableCommand(id:string){
+ const command=(await getPendingCommands()).find(c=>c.id===id);
+ if(!command)throw commandError('الطلب غير موجود على هذا الجهاز');
+ await removeCommand(command.id);
+ await restoreLocalFromServer(command);
 }
 export async function exportCommandHistory(){const owner=commandOwner(getAuthToken());return (await listCommands(true)).filter(c=>c.owner===owner);}
 export function pendingMoneyAmount(c:DurableCommand){if(['collect','refund'].includes(c.body.action))return Number(c.body.amount||0);if(c.body.pendingMoneyAmount!==undefined)return Number(c.body.pendingMoneyAmount);if(c.body.table==='expenses')return Number(c.body.data?.amount||0);return 0;}
@@ -752,10 +772,10 @@ export async function financeCommand(clinicId:string,body:any):Promise<any>{
  if(body.action==='close'){const unresolved=(await getPendingCommands()).some(c=>c.financial&&c.body.action!=='close'&&(!c.body.expectedShiftId||c.body.expectedShiftId===body.shiftId));if(unresolved)throw commandError('توجد حركات مالية معلقة، راجع تنبيهات الإعدادات قبل إقفال الوردية');}
  const fingerprint=commandFingerprint(clinicId,body);let command=(await listCommands()).find(c=>c.owner===owner&&c.fingerprint===fingerprint);
  if(command&&isLegacyRateLimitConflict(command)){command.status='pending';delete command.conflict;delete command.retryAt;await saveCommand(command);}
- if(command?.status==='conflict')throw commandError('طلب محفوظ للمراجعة: '+command.error);
+ if(command?.status==='conflict'){if(isRuleRejection(command,command.conflict)){await removeCommand(command.id);await restoreLocalFromServer(command);throw commandRejectedError(command.error||'');}throw commandError('طلب محفوظ للمراجعة: '+command.error);}
  if(!command){const shifts=await getLocalDocsForPath('clinics/'+clinicId+'/shifts');const activeShifts=shifts.filter(s=>s.status==='open');if((['collect','points','refund','discount'].includes(body.action)||body.table==='expenses'||(body.table==='lab_orders'&&Number(body.data?.paidAmount)>0)))body={...body,expectedShiftId:activeShifts.length===1?activeShifts[0].id:(!navigator.onLine?'unverified':undefined)};command={id:crypto.randomUUID(),screen:originatingScreen,owner,clinicId,body:{...body,clientOccurredAt:new Date().toISOString(),queuedBy:owner},fingerprint,createdAt:new Date().toISOString(),status:'pending',financial:!body.optimistic,localPath:body.localPath,localId:body.id};const clinic=await getLocalDoc('clinics',clinicId);let identity:any={};try{identity=JSON.parse(atob(getAuthToken().split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));}catch{}command.actorName=identity.staffName||clinic?.doctorName||clinic?.name||(owner.startsWith('manager:')?'مدير العيادة':'حساب العيادة');command.actorRole=identity.staffRole||(owner.startsWith('manager:')?'المدير':'موظف');const entity=body.localPath&&body.id?await getLocalDoc(body.localPath,body.id):body.appointmentId?await getLocalDoc('clinics/'+clinicId+'/appointments',body.appointmentId):null;const patientId=body.data?.patientId||entity?.patientId;const patient=patientId?await getLocalDoc('clinics/'+clinicId+'/patients',patientId):null;command.entityName=body.data?.patientName||body.data?.name||entity?.patientName||entity?.name||patient?.name||body.data?.title||entity?.title;command=await enqueueCommand(command);}
  if(body.optimistic&&body.localPath&&command.localId){const old=await getLocalDoc(body.localPath,command.localId);await saveLocalDoc(body.localPath,command.localId,{...old,...body.data,id:command.localId,_syncStatus:'pending'});notifyLocalSync(body.localPath,'pending',command.localId);}
- if(navigator.onLine){try{const earlier=(await listCommands()).filter(c=>c.owner===owner&&(c.sequence&&command.sequence?c.sequence<command.sequence:c.createdAt<command.createdAt));for(const c of earlier){if(c.screen&&c.screen!==getActiveRequestScreen()){if(commandsDependOn(command,c))throw commandError('طلب مرتبط ينتظر فتح شاشته');continue;}if(c.status==='conflict'){if(commandsDependOn(command,c))throw commandError('طلب مرتبط يحتاج مراجعة');continue;}try{await sendDurable(c);}catch(e){if((c as DurableCommand).status==='conflict'&&!commandsDependOn(command,c))continue;throw e;}}return await sendDurable(command);}catch(e:any){if(command.status==='conflict')throw e;}}
+ if(navigator.onLine){try{const earlier=(await listCommands()).filter(c=>c.owner===owner&&(c.sequence&&command.sequence?c.sequence<command.sequence:c.createdAt<command.createdAt));for(const c of earlier){if(c.screen&&c.screen!==getActiveRequestScreen()){if(commandsDependOn(command,c))throw commandError('طلب مرتبط ينتظر فتح شاشته');continue;}if(c.status==='conflict'){if(commandsDependOn(command,c))throw commandError('طلب مرتبط يحتاج مراجعة');continue;}try{await sendDurable(c);}catch(e){if((c as DurableCommand).status==='conflict'&&!commandsDependOn(command,c))continue;throw e;}}return await sendDurable(command);}catch(e:any){if(e&&e.rejected)throw e;if(command.status==='conflict')throw e;}}
  if(body.optimistic){return {id:command.localId,pending:true,_syncStatus:'pending'};}
  if(command.lastHttpStatus===429)throw commandError('الطلب محفوظ وسيعاد تلقائياً بعد انتهاء حد الطلبات');
  throw commandError('محفوظ على الجهاز كطلب غير مؤكد. ستتم المزامنة عند رجوع الاتصال، لا تسجله مرة ثانية.');
@@ -773,6 +793,7 @@ async function clinicSettingsWrite(path:string,id:string,data:any){
 function protectedPath(path:string){return /^clinics\/[^/]+\/(patients\/[^/]+\/)?(appointments|shifts|expenses|lab_orders|patients|records|prescriptions|xrays|teeth|inventory|custom_medications|custom_categories|laboratories|lab_work_types|billing|closings)(\/[^/]+)?$/.test(path);}
 async function confirmedWrite(action:string,path:string,id:string,data?:any,options?:any){
  const parts=path.split('/');if(parts[2]==='patients'&&parts.length>=5){data={...data,patientId:parts[3]};parts[2]=parts[4];}
+ if(action==='deleteDoc'&&parts[2]==='patients'&&!navigator.onLine)throw commandRejectedError('حذف المريض يحتاج اتصال بالسيرفر. أعد المحاولة عند رجوع الاتصال');
  const old=await getLocalDoc(path,id);const table=parts[2];
  const financial=action==='deleteDoc'||['expenses','shifts','billing','closings'].includes(table)||(table==='lab_orders'&&Number(data?.paidAmount||0)!==Number(old?.paidAmount||0))||(table==='appointments'&&(data?.status==='cancelled'||(data?.price!==undefined&&old?.price!==undefined&&Number(data.price)!==Number(old.price))));
  const patch={...data};delete patch._syncStatus;delete patch._fieldEdits;

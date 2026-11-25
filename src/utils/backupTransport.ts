@@ -3,7 +3,7 @@ import { getLocalDocsForPath, removeLocalDoc } from './offlineDb';
 export async function backupRequest(body: any): Promise<any> {
     if (!navigator.onLine)
         throw new Error('Backup/restore requires a connection / النسخ والاستعادة يحتاجان اتصالا بالسيرفر');
-    const pending = await getPendingCommands();
+    const pending = (await getPendingCommands()).filter((c) => c.status === 'pending');
     if (pending.length)
         throw new Error('Sync or review pending changes before backup/restore / زامن أو راجع التغييرات المعلقة قبل النسخ أو الاستعادة');
     const response = await fetch('/api/backups', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(body) });

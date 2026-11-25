@@ -741,10 +741,99 @@ const base = process.env.TEST_BASE || "http://localhost:3100";
     );
     await page.evaluate(() =>
       [...document.querySelectorAll("button")]
+        .find((b) => b.textContent.includes("مزامنة الآن"))
+        ?.click(),
+    );
+    await page.waitForFunction(() =>
+      document.body.innerText.includes("تمت المزامنة"),
+    );
+    const syncLine = await page.evaluate(() => document.body.innerText);
+    assert(syncLine.includes("متبقٍ 1"), syncLine.slice(-1500));
+    await page.screenshot({
+      path: "/downloads/offline-sync-result-line-ar-mobile.png",
+      fullPage: true,
+    });
+    console.log(
+      "PASS sync-now result line reports confirmed and remaining counts.",
+    );
+    await page.evaluate(() =>
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent.trim() === "إلغاء الطلب")
+        ?.click(),
+    );
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll("button")].some(
+        (b) => b.textContent.trim() === "نعم، إلغاء الطلب",
+      ),
+    );
+    await page.evaluate(() =>
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent.trim() === "نعم، إلغاء الطلب")
+        ?.click(),
+    );
+    await page.waitForFunction(() =>
+      document.body.innerText.includes("لا توجد طلبات معلقة"),
+    );
+    assert.equal(
+      (await page.evaluate(() => OfflineAudit.getPendingCommands())).length,
+      0,
+    );
+    const afterCancel = await page.evaluate(
+      async (cid) =>
+        (
+          await OfflineAudit.getDoc(
+            OfflineAudit.doc(
+              OfflineAudit.db,
+              "clinics",
+              cid,
+              "appointments",
+              "queue_a",
+            ),
+            true,
+          )
+        ).data(),
+      cid,
+    );
+    assert.equal(afterCancel.time, "12:00");
+    await page.screenshot({
+      path: "/downloads/offline-conflict-cancel-ar-mobile.png",
+      fullPage: true,
+    });
+    console.log(
+      "PASS cancel-request button discards a conflict and restores the server version locally.",
+    );
+    await page.setOfflineMode(true);
+    await page.evaluate(
+      (cid) =>
+        OfflineAudit.updateDoc(
+          OfflineAudit.doc(
+            OfflineAudit.db,
+            "clinics",
+            cid,
+            "appointments",
+            "queue_a",
+          ),
+          { time: "11:00" },
+        ),
+      cid,
+    );
+    await post({
+      action: "write",
+      table: "appointments",
+      id: "queue_a",
+      data: { time: "13:00" },
+    });
+    await page.setOfflineMode(false);
+    await page.evaluate(() => OfflineAudit.flushDurableCommands());
+    await page.waitForFunction(() =>
+      document.body.innerText.includes("مقارنة بنسخة السيرفر"),
+    );
+    await page.evaluate(() =>
+      [...document.querySelectorAll("button")]
         .find((b) => b.textContent.includes("مقارنة بنسخة السيرفر"))
         ?.click(),
     );
-    await page.waitForFunction(() => document.body.innerText.includes("12:00"));
+    await page.waitForFunction(() => document.body.innerText.includes("13:00"));
     await page.setViewport({ width: 390, height: 844 });
     await page.screenshot({
       path: "/downloads/offline-appointment-conflict-mobile.png",
@@ -776,10 +865,12 @@ const base = process.env.TEST_BASE || "http://localhost:3100";
         ).data(),
       cid,
     );
-    assert.equal(aptServer.time, "12:00");
+    assert.equal(aptServer.time, "13:00");
     console.log(
-      "PASS appointment time conflict local11 vs server12; explicit keep-server choice leaves12, original archived.",
+      "PASS appointment time conflict local11 vs server13; explicit keep-server choice leaves13, original archived.",
     );
+    // A money write the server rejects by rule is now discarded with its
+    // reason instead of parking an unresolvable conflict on the device.
     await page.setOfflineMode(true);
     await collect(page, 9999);
     const rejectedCommand = (
@@ -789,50 +880,16 @@ const base = process.env.TEST_BASE || "http://localhost:3100";
     await page.setOfflineMode(false);
     await page.evaluate(() => OfflineAudit.flushDurableCommands());
     await page.waitForFunction(() =>
-      document.body.innerText.includes("مراجعة مالية"),
+      document.body.innerText.includes("لا توجد طلبات معلقة"),
     );
-    await page.evaluate(() =>
-      [...document.querySelectorAll("button")]
-        .find((b) => b.textContent.trim() === "مراجعة مالية")
-        ?.click(),
-    );
-    await page.waitForFunction(() =>
-      document.body.innerText.includes("تأكيد المراجعة بدون إضافة مبلغ"),
+    assert.equal(
+      (await page.evaluate(() => OfflineAudit.getPendingCommands())).length,
+      0,
     );
     await page.screenshot({
-      path: "/downloads/offline-financial-review-ar-mobile.png",
+      path: "/downloads/offline-rejected-money-discarded-ar-mobile.png",
       fullPage: true,
     });
-    await page.evaluate(() =>
-      [...document.querySelectorAll("button")]
-        .find((b) => b.textContent.trim() === "English")
-        ?.click(),
-    );
-    await page.waitForFunction(() =>
-      document.body.innerText.includes(
-        "Financial review, no forced balance changes",
-      ),
-    );
-    await page.screenshot({
-      path: "/downloads/offline-financial-review-en-mobile.png",
-      fullPage: true,
-    });
-    await page.type(
-      'input[aria-label="Review reason"]',
-      "Confirmed amount was not received; invalid test amount",
-    );
-    await page.evaluate(() =>
-      [...document.querySelectorAll("button")]
-        .find((b) =>
-          b.textContent.includes("Confirm review without adding money"),
-        )
-        ?.click(),
-    );
-    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Confirm'));
-    await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Confirm')?.click());
-    await page.waitForFunction(() =>
-      document.body.innerText.includes("No pending requests"),
-    );
     const retry = await fetch(base + "/api/finance", {
       method: "POST",
       headers: {
@@ -847,7 +904,15 @@ const base = process.env.TEST_BASE || "http://localhost:3100";
     });
     assert.equal(retry.status, 409);
     console.log(
-      "PASS rejected financial command reviewed without adding money; server tombstone prevents all future replays.",
+      "PASS rule-rejected money write is discarded instead of a stuck conflict; queue clears and the server still rejects the replay.",
+    );
+    await page.evaluate(() =>
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent.trim() === "English")
+        ?.click(),
+    );
+    await page.waitForFunction(() =>
+      document.body.innerText.includes("No pending requests"),
     );
     await page.evaluate(() =>
       [...document.querySelectorAll("button")]
@@ -935,7 +1000,7 @@ const base = process.env.TEST_BASE || "http://localhost:3100";
         ?.click(),
     );
     await page.waitForFunction(() =>
-      document.body.innerText.includes("Patient could not be deleted:"),
+      document.body.innerText.includes("Delete not allowed"),
     );
     const deletionText=await page.evaluate(() => document.body.innerText);
     assert(deletionText.includes("cannot be deleted because"),deletionText.slice(-2000));
@@ -943,8 +1008,65 @@ const base = process.env.TEST_BASE || "http://localhost:3100";
       path: "/downloads/offline-patient-delete-blocked-en.png",
       fullPage: true,
     });
+    await page.evaluate(() =>
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent.trim() === "OK")
+        ?.click(),
+    );
+    await page.waitForFunction(
+      () => !document.body.innerText.includes("Delete not allowed"),
+    );
+    assert.equal(
+      (await page.evaluate(() => OfflineAudit.getPendingCommands())).length,
+      0,
+    );
     console.log(
-      "PASS actual patient More > Delete > Confirm controls show English history-protection message and leave patient intact.",
+      "PASS actual patient More > Delete > Confirm shows a white popup with the English history-protection reason and leaves patient intact with nothing queued.",
+    );
+    await page.setOfflineMode(true);
+    await page.evaluate(() => {
+      const row = [...document.querySelectorAll("tr")].find((r) =>
+        r.textContent.includes("اختبار دورة بلا نت"),
+      );
+      row.querySelector('button[title="More"]').click();
+    });
+    await page.evaluate(() =>
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent.trim() === "Delete")
+        ?.click(),
+    );
+    await page.evaluate(() =>
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent.trim() === "Confirm")
+        ?.click(),
+    );
+    await page.waitForFunction(() =>
+      document.body.innerText.includes("needs a server connection"),
+    );
+    await page.screenshot({
+      path: "/downloads/offline-patient-delete-offline-blocked-en.png",
+      fullPage: true,
+    });
+    await page.evaluate(() =>
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent.trim() === "OK")
+        ?.click(),
+    );
+    await page.waitForFunction(
+      () => !document.body.innerText.includes("Delete not allowed"),
+    );
+    assert.equal(
+      (await page.evaluate(() => OfflineAudit.getPendingCommands())).length,
+      0,
+    );
+    await page.setOfflineMode(false);
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll("tr")].some((r) =>
+        r.textContent.includes("اختبار دورة بلا نت"),
+      ),
+    );
+    console.log(
+      "PASS offline patient delete is blocked with a needs-connection popup, queues nothing, and the popup closes.",
     );
   } finally {
     await browser.close();

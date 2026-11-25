@@ -1,6 +1,7 @@
 import React, { useState, useEffect, FormEvent, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { searchClinicPatients, getClinicPatientStats, getPatientsRef, getAppointmentsRef, OperationType, handleDbError, getDocsSmart as getDocs, getDocSmart as getDoc, db, addDoc, updateDoc, deleteDoc, doc, query, orderBy, limit, startAfter, where, clearQueryCache } from '../dbClient';
+import { commandMessage } from '../utils/commandMessages';
 import { Patient, PatientQuestionnaire, Clinic, QuestionnaireQuestion, DEFAULT_QUESTIONNAIRE_QUESTIONS } from '../types';
 import { 
   Users, UserPlus, Search, Phone, Edit, Trash2, Heart, Sparkles, 
@@ -640,7 +641,15 @@ export default function PatientsManager({ clinic, isStaff, onOpenMedicalFile, on
       await fetchPatients();
     } catch (err: any) {
       console.error(err);
-      setError((isEn?'Patient could not be deleted: ':'حدث خطأ أثناء حذف المريض: ') + (err.message || err.toString()));
+      if (err?.rejected) {
+        dialogs.alert(commandMessage(err.message || '', isEn), {
+          severity: 'error',
+          title: isEn ? 'Delete not allowed' : 'تعذر حذف المريض',
+          confirmText: isEn ? 'OK' : 'تمام',
+        });
+      } else {
+        setError((isEn?'Patient could not be deleted: ':'حدث خطأ أثناء حذف المريض: ') + commandMessage(err.message || err.toString(), isEn));
+      }
     } finally {
       setLoading(false);
     }

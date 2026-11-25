@@ -12,6 +12,7 @@ import {
   pendingMoneyAmount,
   inspectFinancialConflict,
   reconcileFinancialConflict,
+  cancelDurableCommand,
 } from "../dbClient";
 import { getSyncQueue, getAllPendingOfflineMedia } from "../utils/offlineDb";
 import { commandOwner, type DurableCommand } from "../utils/commandQueue";
@@ -35,6 +36,7 @@ export default function OfflineCommands({
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [syncResult, setSyncResult] = useState("");
   const [review, setReview] = useState<{
     command: DurableCommand;
     current: any;
@@ -101,6 +103,64 @@ export default function OfflineCommands({
     } finally {
       setBusy(false);
     }
+  };
+  const cancelOne = async (c: DurableCommand) => {
+    const money = pendingMoneyAmount(c) > 0;
+    const ok = await dialogs.confirm(
+      (isEn
+        ? "Cancel this request permanently and keep the server version?"
+        : "إلغاء هذا الطلب نهائيًا والاحتفاظ بنسخة السيرفر؟") +
+        (money
+          ? isEn
+            ? " The amount will not be added."
+            : " المبلغ مش هيتضاف."
+          : ""),
+      {
+        title: isEn ? "Cancel request" : "إلغاء الطلب",
+        confirmText: isEn ? "Yes, cancel it" : "نعم، إلغاء الطلب",
+        cancelText: isEn ? "Back" : "رجوع",
+        severity: "warning",
+      },
+    );
+    if (!ok) return;
+    await run(async () => {
+      await cancelDurableCommand(c.id);
+      setSyncResult(
+        isEn
+          ? "Request cancelled. The server version is kept."
+          : "اتلغى الطلب واتحفظت نسخة السيرفر.",
+      );
+    });
+  };
+  const cancelAll = async () => {
+    const rejected = commands.filter((c) => c.status === "conflict");
+    if (!rejected.length) return;
+    const money = rejected.some((c) => pendingMoneyAmount(c) > 0);
+    const ok = await dialogs.confirm(
+      (isEn
+        ? `Cancel all ${rejected.length} rejected requests and keep the server versions?`
+        : `إلغاء كل الطلبات المرفوضة (${rejected.length}) والاحتفاظ بنسخة السيرفر؟`) +
+        (money
+          ? isEn
+            ? " The amounts will not be added."
+            : " المبالغ مش هتتضاف."
+          : ""),
+      {
+        title: isEn ? "Cancel all rejected" : "إلغاء كل المرفوض",
+        confirmText: isEn ? "Yes, cancel all" : "نعم، إلغاء الكل",
+        cancelText: isEn ? "Back" : "رجوع",
+        severity: "warning",
+      },
+    );
+    if (!ok) return;
+    await run(async () => {
+      for (const c of rejected) await cancelDurableCommand(c.id);
+      setSyncResult(
+        isEn
+          ? "All rejected requests were cancelled. Server versions kept."
+          : "اتلغت كل الطلبات المرفوضة واتحفظت نسخة السيرفر.",
+      );
+    });
   };
   const exportQueue = async () => {
     const { default: JSZip } = await import("jszip");
@@ -337,8 +397,20 @@ export default function OfflineCommands({
           disabled={busy}
           onClick={() =>
             run(async () => {
-              await flushDurableCommands({manual:true});
+              const summary = await flushDurableCommands({manual:true});
               await processSyncQueue();
+              const remaining = await getPendingCommands();
+              const needReview = remaining.filter((c) => c.status === "conflict").length;
+              const confirmed = summary?.confirmed || 0;
+              setSyncResult(
+                !remaining.length
+                  ? isEn
+                    ? `Sync complete: ${confirmed} request(s) confirmed, nothing pending.`
+                    : `تمت المزامنة: تأكد ${confirmed} طلب، ولا توجد طلبات معلقة.`
+                  : isEn
+                    ? `Sync done: ${confirmed} confirmed, ${remaining.length} still pending (${needReview} need review).`
+                    : `تمت المزامنة: تأكد ${confirmed}، ومتبقٍ ${remaining.length} (${needReview} يحتاج مراجعة).`
+              );
             })
           }
           className="underline font-bold"
@@ -373,6 +445,11 @@ export default function OfflineCommands({
           {error}
         </p>
       )}
+      {syncResult && (
+        <p role="status" className="mt-3 font-bold">
+          {syncResult}
+        </p>
+      )}
       {expanded && (
         <div className="mt-4 space-y-3">
           <p>
@@ -380,6 +457,16 @@ export default function OfflineCommands({
               ? "Do not re-enter pending money or clear browser data. Conflicting requests stay saved instead of overwriting another device."
               : "لا تسجل المبالغ المعلقة مرة ثانية ولا تمسح بيانات المتصفح. الطلب المتعارض يفضل محفوظ بدل استبدال تعديل جهاز آخر."}
           </p>
+          {conflicts > 0 && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={cancelAll}
+              className="rounded-lg bg-rose-600 px-3 py-1.5 text-white font-bold disabled:opacity-50"
+            >
+              {isEn ? "Cancel all rejected requests" : "إلغاء كل الطلبات المرفوضة"}
+            </button>
+          )}
           {commands.map((c) => (
             <div
               key={c.id}
@@ -445,6 +532,16 @@ export default function OfflineCommands({
                     ? "Financial review required. No amount is added to confirmed totals."
                     : "تحتاج مراجعة مالية مع المدير. المبلغ غير مضاف للإجماليات المؤكدة."}
                 </p>
+              )}
+              {c.status === "conflict" && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => cancelOne(c)}
+                  className="rounded-lg bg-rose-600 px-3 py-1.5 text-white font-bold disabled:opacity-50"
+                >
+                  {isEn ? "Cancel request" : "إلغاء الطلب"}
+                </button>
               )}
             </div>
           ))}
