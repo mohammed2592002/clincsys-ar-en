@@ -3763,7 +3763,7 @@ export default function ClinicSettings({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="md:col-span-2 p-5 bg-slate-50 rounded-2xl border border-slate-200/60 space-y-4">
+              <div className="md:col-span-3 p-5 bg-slate-50 rounded-2xl border border-slate-200/60 space-y-4">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-500 font-bold">{isEn ? 'Programmed Expiration Date:' : 'تاريخ انتهاء الاشتراك المبرمج:'}</span>
                   <span className="font-mono font-bold text-slate-800 bg-white px-3 py-1 rounded-lg border border-slate-200">
@@ -3781,17 +3781,6 @@ export default function ClinicSettings({
                 </div>
               </div>
 
-              <div className="bg-gradient-to-br from-slate-900 to-indigo-950 text-white p-5 rounded-2xl flex flex-col justify-between shadow-xs border border-slate-800">
-                <div>
-                  <h4 className="text-[11px] font-bold text-slate-400 uppercase">{isEn ? 'Encrypted Data Protection' : 'حماية البيانات المشفرة'}</h4>
-                  <p className="text-[10px] text-slate-300 mt-1 leading-relaxed text-right">
-                    {isEn ? 'Clinic data and patient files are securely saved and protected with cloud encryption technology.' : 'بيانات العيادة وملفات المرضى محفوظة بشكل مستقل كلياً ومحمية بتقنيات التعمية السحابية على خوادم Turso المشفرة.'}
-                  </p>
-                </div>
-                <div className="text-[9px] text-slate-400 mt-4 pt-2 border-t border-slate-800">
-                  {isEn ? '* Subscription upgrade requires contacting platform technical support.' : '* ترقية الاشتراك تتطلب التواصل مع الدعم الفني للمنصة.'}
-                </div>
-              </div>
             </div>
 
             <div className="text-[10px] text-slate-400 leading-relaxed pt-4 border-t border-slate-100 text-center">
