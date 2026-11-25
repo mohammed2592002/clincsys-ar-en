@@ -5,6 +5,7 @@ import {
 } from '../../types';
 import { useDialogs } from '../DialogContext';
 import { uploadFileToR2 } from '../../utils/r2Upload';
+import { db, doc, setDoc } from '../../dbClient';
 import {
   Save, Plus, Trash2, Image as ImageIcon, Upload, Loader2,
   Type, Phone, LayoutGrid, ListOrdered, CreditCard, BarChart3, ExternalLink,
@@ -154,7 +155,19 @@ function FaviconField({ value, onChange, uploading, setUploading, en }: {
       }
       const url = await uploadFileToR2(toUpload, 'landing', 'superadmin', undefined, { skipCompression: true });
       onChange(url);
-      dialogs.alert('تم رفع الأيقونة وحفظ رابطها هنا. لا تنسَ الضغط على «حفظ التعديلات».', { severity: 'success' });
+      // Auto-persist immediately: the URL used to land only in form state,
+      // so a refresh before pressing "حفظ التعديلات" lost it. Merge-write
+      // only the favicon so other half-edited fields stay untouched.
+      try {
+        await setDoc(doc(db, 'system_settings', 'landing_page'), { faviconUrl: url, updatedAt: new Date().toISOString() }, { merge: true });
+        dialogs.alert(en
+          ? 'Icon uploaded and saved. It goes live on all pages within a few minutes.'
+          : 'تم رفع الأيقونة وحفظها تلقائياً. ستظهر على كل الصفحات خلال دقائق قليلة.', { severity: 'success' });
+      } catch {
+        dialogs.alert(en
+          ? 'Icon uploaded, but auto-save failed. Press "Save changes" to keep it.'
+          : 'تم رفع الأيقونة لكن تعذّر حفظها تلقائياً. اضغط «حفظ التعديلات» لتثبيتها.', { severity: 'warning' });
+      }
     } catch (err: any) {
       dialogs.alert('فشل رفع الأيقونة: ' + (err?.message || err), { severity: 'error' });
     } finally {
@@ -164,7 +177,9 @@ function FaviconField({ value, onChange, uploading, setUploading, en }: {
   };
   const resetToDefault = () => {
     onChange('');
-    dialogs.alert('سيتم الرجوع للأيقونة الافتراضية بعد الضغط على «حفظ التعديلات».', { severity: 'info' });
+    setDoc(doc(db, 'system_settings', 'landing_page'), { faviconUrl: '', updatedAt: new Date().toISOString() }, { merge: true })
+      .then(() => dialogs.alert(en ? 'Back to the default icon.' : 'تم الرجوع للأيقونة الافتراضية وحفظ ذلك.', { severity: 'info' }))
+      .catch(() => dialogs.alert(en ? 'Could not auto-save. Press "Save changes".' : 'تعذّر الحفظ التلقائي. اضغط «حفظ التعديلات».', { severity: 'warning' }));
   };
   return (
     <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/60">
@@ -213,7 +228,7 @@ function FaviconField({ value, onChange, uploading, setUploading, en }: {
               </button>
             )}
           </div>
-          <span className="text-[10px] text-slate-400">أي صورة بحد أقصى 10 ميجابايت — JPG وWebP وPNG تتحوّل تلقائياً لمربع PNG، وSVG/ICO تُرفع كما هي، وتُقدَّم على /favicon.ico بعد الحفظ.</span>
+          <span className="text-[10px] text-slate-400">أي صورة بحد أقصى 10 ميجابايت — JPG وWebP وPNG تتحوّل تلقائياً لمربع PNG، وSVG/ICO تُرفع كما هي، وتُقدَّم على /favicon.ico فور رفعها.</span>
         </div>
       </div>
     </div>
