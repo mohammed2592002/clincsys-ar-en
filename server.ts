@@ -53,6 +53,25 @@ async function startServer() {
         next();
       });
 
+      // Localized landing pages: / (Arabic default + x-default), /ar, /en.
+      // Registered before static so / is not served the raw index.html.
+      const { renderLandingHtml } = await import('./landingSeo');
+      const baseHtml = fs.readFileSync(path.join(distPath, 'index.html'), 'utf-8');
+      const landingHtml: Record<string, string> = {
+        root: renderLandingHtml('root', baseHtml),
+        ar: renderLandingHtml('ar', baseHtml),
+        en: renderLandingHtml('en', baseHtml),
+      };
+      app.get(['/', '/ar', '/en'], (req, res) => {
+        const q = String((req.query as any)?.lang || '');
+        if (q === 'en' || q === 'ar') {
+          const target = '/' + q;
+          if (req.path !== target) return res.redirect(301, target);
+        }
+        const key = req.path === '/en' ? 'en' : req.path === '/ar' ? 'ar' : 'root';
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(landingHtml[key]);
+      });
       app.use(express.static(distPath));
       app.get('*', (req, res) => {
         res.sendFile(path.join(distPath, 'index.html'));

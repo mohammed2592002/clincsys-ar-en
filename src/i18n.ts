@@ -36,9 +36,12 @@ i18n
       escapeValue: false
     },
     detection: {
-      order: ['localStorage', 'navigator'],
+      // /ar and /en pick the language from the URL first; otherwise the saved
+      // choice wins and the Arabic default stays for brand-new visitors.
+      order: ['path', 'localStorage'],
       caches: ['localStorage'],
-      lookupLocalStorage: 'i18nextLng'
+      lookupLocalStorage: 'i18nextLng',
+      lookupFromPathIndex: 0
     }
   });
 

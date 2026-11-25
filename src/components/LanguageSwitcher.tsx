@@ -11,13 +11,26 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({ variant = 'p
   const { i18n, t } = useTranslation();
   const currentLang = i18n.language?.startsWith('en') ? 'en' : 'ar';
 
+  const applyLanguage = (lang: 'ar' | 'en') => {
+    // The public landing page has a dedicated URL per language (/ar, /en);
+    // switching there navigates so Google sees two standalone pages.
+    const path = window.location.pathname.replace(/\/+$/, '') || '/';
+    if (path === '/' || path === '/ar' || path === '/en') {
+      const target = '/' + lang;
+      if (path !== target) {
+        window.location.assign(target);
+        return;
+      }
+    }
+    i18n.changeLanguage(lang);
+  };
+
   const toggleLanguage = () => {
-    const nextLang = currentLang === 'ar' ? 'en' : 'ar';
-    i18n.changeLanguage(nextLang);
+    applyLanguage(currentLang === 'ar' ? 'en' : 'ar');
   };
 
   const setLanguage = (lang: 'ar' | 'en') => {
-    i18n.changeLanguage(lang);
+    applyLanguage(lang);
   };
 
   if (variant === 'compact') {

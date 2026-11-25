@@ -86,7 +86,11 @@ interface LandingPageProps {
 
 export default function LandingPage({ onLogin }: LandingPageProps) {
   const [content, setContent] = useState<LandingSiteContent>(() => mergeLandingContent(null));
-  const [lang, setLang] = useState<'ar' | 'en'>('ar');
+  // /en and /ar are standalone language URLs (server-rendered head per path);
+  // the root stays the Arabic default.
+  const [lang, setLang] = useState<'ar' | 'en'>(() =>
+    window.location.pathname.replace(/\/+$/, '') === '/en' ? 'en' : 'ar',
+  );
 
   useEffect(() => { ensureLandingFonts(); }, []);
 
@@ -116,11 +120,11 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
     const prevTitle = document.title;
     const prevDesc = meta?.getAttribute('content') ?? null;
     document.title = isEn
-      ? 'CoreDentSys | Dental Clinic Management System — run your entire clinic from one place'
+      ? 'CoreDentSys | Dental Clinic Management System — your whole clinic in one place'
       : 'CoreDentSys | نظام إدارة عيادات الأسنان — إدارة عيادتك كلها من مكان واحد';
     meta?.setAttribute('content', isEn
-      ? 'CoreDentSys is a complete system for dental clinics: queue or time-based booking, full patient files, an interactive dental chart, x-rays, prescriptions, and daily closing — works offline, in Arabic and English, on any device.'
-      : 'CoreDentSys نظام متكامل لإدارة عيادات ومراكز الأسنان: حجوزات بالدور أو بالوقت، ملفات مرضى كاملة، مخطط أسنان تفاعلي، أشعة، روشتات، وحسابات وتقفيل يومي — يعمل بدون إنترنت، بالعربي والإنجليزي، ومن أي جهاز.');
+      ? 'CoreDentSys is a complete management system for dental clinics: queue or timed appointments, full patient files, an interactive dental chart, x-rays, prescriptions, labs, accounts with daily closing, and reports. Works online and offline, in Arabic and English, from any device.'
+      : 'CoreDentSys نظام متكامل لإدارة عيادات ومراكز الأسنان: حجوزات بالدور أو بالوقت، ملفات مرضى كاملة، مخطط أسنان تفاعلي، أشعة، روشتات، مختبرات، حسابات وتقفيل يومي، وتقارير. يعمل أونلاين وأوفلاين، بالعربي والإنجليزي، ومن أي جهاز.');
     return () => {
       document.title = prevTitle;
       if (meta && prevDesc !== null) meta.setAttribute('content', prevDesc);
@@ -226,7 +230,15 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
             <a href="#contact" onClick={scrollTo('contact')}><Copy>{T.navContact}</Copy></a>
           </div>
           <div className="nav-cta">
-            <button type="button" className="lang" onClick={() => setLang(isEn ? 'ar' : 'en')}>
+            <button
+              type="button"
+              className="lang"
+              onClick={() => {
+                const next = isEn ? 'ar' : 'en';
+                // Each language has its own public URL; switch by navigating.
+                window.location.assign('/' + next);
+              }}
+            >
               {isEn ? 'العربية' : 'English'}
             </button>
             <button type="button" className="login" onClick={onLogin}>
