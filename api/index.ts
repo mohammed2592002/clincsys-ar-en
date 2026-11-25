@@ -2545,8 +2545,14 @@ async function writeClinicDocument(action: string, id: string, input: any, optio
   });
 }
 
+// Reserved upload scopes that are not real clinics: superadmin uploads (site
+// logo, favicon, landing images) and the legacy global default. Files in these
+// scopes skip the clinic-exists check — there is no clinics row for them.
+const NON_CLINIC_UPLOAD_SCOPES = new Set(['superadmin', 'global']);
+
 async function clinicMutation(clinicId:string|null|undefined,fn:()=>Promise<any>){
   if(!clinicId)return fn();
+  if(NON_CLINIC_UPLOAD_SCOPES.has(clinicId))return fn();
   return dbClient.financeTransaction(clinicId,async()=>{
     if(!(await getExistingClinicData(clinicId)))throw Object.assign(new Error('Clinic not found / العيادة غير موجودة'),{status:404});
     return fn();
@@ -3509,7 +3515,9 @@ function validateUploadedFile(name: string, data: Buffer | undefined, size: numb
 // trusted, and the stored ownership always comes from the authenticated token.
 function resolveUploadClinicId(auth: AuthInfo, requested?: string): { clinicId: string } | { errorStatus: number } {
   const requestedId = (requested || '').trim();
-  if (auth.type === 'admin') return { clinicId: requestedId || 'global' };
+  // Every superadmin upload lands under the dedicated clinics/superadmin/ R2
+  // prefix (an explicit clinic id is still honored when one is requested).
+  if (auth.type === 'admin') return { clinicId: requestedId || 'superadmin' };
   if (requestedId && auth.clinicId && requestedId !== auth.clinicId) return { errorStatus: 403 };
   return { clinicId: auth.clinicId || requestedId || 'global' };
 }
