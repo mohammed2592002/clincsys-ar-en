@@ -4241,13 +4241,17 @@ app.get('/api/broadcasts/active', async (req, res) => {
       return res.json(null);
     }
     const row = result.rows[0] as any;
+    // Postgres lower-cases unquoted column names (isActive -> isactive),
+    // while SQLite keeps the declared case. Read both so colors, createdAt
+    // and the active flag are never lost.
+    const col = (name: string) => row[name] ?? row[name.toLowerCase()];
     return res.json({
-      id: row.id,
-      content: row.content,
-      bgColor: row.bgColor || '#059669',
-      textColor: row.textColor || '#ffffff',
-      isActive: Number(row.isActive) === 1,
-      createdAt: row.createdAt
+      id: col('id'),
+      content: col('content'),
+      bgColor: col('bgColor') || '#059669',
+      textColor: col('textColor') || '#ffffff',
+      isActive: Number(col('isActive')) === 1,
+      createdAt: col('createdAt')
     });
   } catch (err: any) {
     console.error('Error fetching active broadcast:', err);

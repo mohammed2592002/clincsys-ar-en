@@ -1,5 +1,5 @@
 import {normalizeSupportUrl, configuredSocialLinks} from '../utils/supportLinks';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db, doc, collection, getDocsSmart as getDocs, getDocSmart, setDoc , authHeaders } from '../dbClient';
 import { Clinic, SupportSettings, DEFAULT_SUPPORT_SETTINGS, LandingSiteContent, DEFAULT_LANDING_CONTENT, mergeLandingContent } from '../types';
 import { useDialogs } from './DialogContext';
@@ -133,6 +133,11 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
   const [showColorCustomizer, setShowColorCustomizer] = useState(false);
   const [broadcastLoading, setBroadcastLoading] = useState(false);
   const [activeBroadcast, setActiveBroadcast] = useState<{ id: string; content: string; bgColor?: string; textColor?: string; isActive: boolean } | null>(null);
+  // Set once the admin types in the broadcast field. While true, the 15s
+  // poll and manual refresh never overwrite or empty what he is writing;
+  // the active announcement text stays in the field until he publishes or
+  // presses مسح التنويه.
+  const broadcastEditedRef = useRef(false);
 
   // SuperAdmin Header Color State
   const [headerBgColor, setHeaderBgColor] = useState<string>(() => {
@@ -310,10 +315,12 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
         const bData = await bRes.json();
         setActiveBroadcast(bData);
         if (bData) {
-          setBroadcastMessage(bData.content || '');
-          setBroadcastBgColor(bData.bgColor || '#059669');
-          setBroadcastTextColor(bData.textColor || '#ffffff');
-        } else {
+          if (!broadcastEditedRef.current) {
+            setBroadcastMessage(bData.content || '');
+            setBroadcastBgColor(bData.bgColor || '#059669');
+            setBroadcastTextColor(bData.textColor || '#ffffff');
+          }
+        } else if (!broadcastEditedRef.current) {
           setBroadcastMessage('');
         }
       }
@@ -441,6 +448,7 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
       });
       if (res.ok) {
         const data = await res.json();
+        broadcastEditedRef.current = false;
         if (data.cleared) {
           setActiveBroadcast(null);
           setBroadcastMessage('');
@@ -473,6 +481,7 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
         body: JSON.stringify({ content: '' })
       });
       if (res.ok) {
+        broadcastEditedRef.current = false;
         setActiveBroadcast(null);
         setBroadcastMessage('');
         dialogs.alert('تم مسح وإلغاء التنويه النشط بنجاح.', { severity: 'success' });
@@ -958,7 +967,7 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
                 <input
                   type="text"
                   value={broadcastMessage}
-                  onChange={(e) => setBroadcastMessage(e.target.value)}
+                  onChange={(e) => { broadcastEditedRef.current = true; setBroadcastMessage(e.target.value); }}
                   placeholder="اكتب نص الإعلان التنبيهي هنا (مثال: نود إحاطتكم بإجراء صيانة دورية اليوم من الساعة 2 إلى 3 صباحاً)..."
                   className="w-full pl-3 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 text-slate-800 placeholder:text-slate-400"
                 />
