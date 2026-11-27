@@ -230,6 +230,28 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
 
   // Fetch Analytics & Active Broadcast
   const fetchAnalyticsAndBroadcast = async () => {
+    // Broadcast first: the analytics branch below returns early when the
+    // endpoint succeeds, which used to skip this fetch entirely and left
+    // the field empty with "لا يوجد إعلان معمم" despite an active one.
+    try {
+      const bRes = await fetch('/api/broadcasts/active');
+      if (bRes.ok) {
+        const bData = await bRes.json();
+        setActiveBroadcast(bData);
+        if (bData) {
+          if (!broadcastEditedRef.current) {
+            setBroadcastMessage(bData.content || '');
+            setBroadcastBgColor(bData.bgColor || '#059669');
+            setBroadcastTextColor(bData.textColor || '#ffffff');
+          }
+        } else if (!broadcastEditedRef.current) {
+          setBroadcastMessage('');
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching active broadcast:', err);
+    }
+
     try {
       const todayStr = new Date().toISOString().split('T')[0];
       const res = await fetch(`/api/superadmin/analytics?today=${todayStr}`, { headers: { ...authHeaders() } });
@@ -307,25 +329,6 @@ export default function SuperAdminDashboard({ saveSession, handleLogout }: Super
       setClinicUsage(list);
     } catch (fallbackErr) {
       console.error('Error computing fallback admin analytics:', fallbackErr);
-    }
-
-    try {
-      const bRes = await fetch('/api/broadcasts/active');
-      if (bRes.ok) {
-        const bData = await bRes.json();
-        setActiveBroadcast(bData);
-        if (bData) {
-          if (!broadcastEditedRef.current) {
-            setBroadcastMessage(bData.content || '');
-            setBroadcastBgColor(bData.bgColor || '#059669');
-            setBroadcastTextColor(bData.textColor || '#ffffff');
-          }
-        } else if (!broadcastEditedRef.current) {
-          setBroadcastMessage('');
-        }
-      }
-    } catch (err) {
-      console.warn('Error fetching active broadcast:', err);
     }
   };
 
